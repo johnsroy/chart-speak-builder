@@ -17,6 +17,34 @@ export interface Dataset {
 }
 
 export const dataService = {
+  // Preview schema inference without uploading
+  async previewSchemaInference(file: File): Promise<Record<string, string>> {
+    return new Promise((resolve, reject) => {
+      try {
+        // Parse a preview of the file to infer schema
+        Papa.parse(file, {
+          header: true,
+          preview: 50, // Read first 50 rows to infer schema
+          skipEmptyLines: true,
+          complete: (results) => {
+            if (!results.data || results.data.length === 0) {
+              reject(new Error('The file appears to be empty or invalid'));
+              return;
+            }
+
+            const schema = this._inferSchema(results.data);
+            resolve(schema);
+          },
+          error: (error) => {
+            reject(new Error(`Error parsing file: ${error.message}`));
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  },
+  
   // Upload a dataset from a CSV file
   async uploadDataset(file: File, name: string, description?: string) {
     try {
@@ -53,25 +81,33 @@ export const dataService = {
       // Estimate total rows in the file
       const estimatedRowCount = this._estimateTotalRows(file, parseResult);
       
+      // Generate a unique filename using UUID to avoid collisions
+      const fileExt = file.name.split('.').pop() || '';
+      const uniqueFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
+      
       // Store the file in Supabase storage with retry logic
-      const filePath = `datasets/${session.user.id}/${Date.now()}_${file.name}`;
+      const filePath = `${session.user.id}/${uniqueFileName}`;
       
       // Attempt to upload with retry logic
       let uploadResult = null;
       let attempts = 0;
+      let lastError = null;
       const maxAttempts = 3;
       
       while (attempts < maxAttempts) {
         try {
+          console.log(`Upload attempt ${attempts + 1} for ${file.name}`);
+          
           const { data, error } = await supabase.storage
             .from('datasets')
             .upload(filePath, file, {
               cacheControl: '3600',
-              upsert: false
+              upsert: attempts > 0 // Only use upsert after first attempt
             });
           
           if (error) {
             console.error(`Upload attempt ${attempts + 1} failed:`, error);
+            lastError = error;
             
             if (attempts === maxAttempts - 1) {
               throw error;
@@ -83,6 +119,7 @@ export const dataService = {
           }
         } catch (uploadError) {
           console.error(`Upload attempt ${attempts + 1} error:`, uploadError);
+          lastError = uploadError;
           
           if (attempts === maxAttempts - 1) {
             throw uploadError;
@@ -95,7 +132,7 @@ export const dataService = {
       }
       
       if (!uploadResult) {
-        throw new Error('Failed to upload file after multiple attempts');
+        throw new Error(lastError?.message || 'Failed to upload file after multiple attempts');
       }
       
       // Create dataset metadata entry
@@ -402,11 +439,12 @@ export const dataService = {
         'number': 0,
         'integer': 0,
         'date': 0,
-        'boolean': 0
+        'boolean': 0,
+        'null': 0
       };
       
-      // Sample up to 50 rows for type detection
-      const sampleSize = Math.min(50, data.length);
+      // Sample up to 100 rows for type detection (improved from 50)
+      const sampleSize = Math.min(100, data.length);
       let nonNullValues = 0;
       
       for (let i = 0; i < sampleSize; i++) {
@@ -414,17 +452,25 @@ export const dataService = {
         const value = row[column];
         
         if (value === null || value === undefined || value === '') {
+          typeVotes.null++;
           continue; // Skip null/empty values
         }
         
         nonNullValues++;
         
         // Check if it's a boolean
-        if (typeof value === 'boolean' || value === 'true' || value === 'false') {
+        if (value === true || value === false || 
+            value === 'true' || value === 'false' || 
+            value === 'TRUE' || value === 'FALSE' ||
+            value === 'True' || value === 'False' ||
+            value === 'yes' || value === 'no' ||
+            value === 'YES' || value === 'NO' ||
+            value === 'Y' || value === 'N' ||
+            value === '1' || value === '0') {
           typeVotes.boolean++;
         }
         // Check if it's a number
-        else if (!isNaN(Number(value))) {
+        else if (!isNaN(Number(value)) && value !== '') {
           if (Number.isInteger(Number(value))) {
             typeVotes.integer++;
           } else {
@@ -432,7 +478,11 @@ export const dataService = {
           }
         }
         // Check if it's a date
-        else if (!isNaN(Date.parse(String(value)))) {
+        else if (!isNaN(Date.parse(String(value))) && 
+                // Additional checks to avoid false positives
+                (String(value).includes('-') || 
+                 String(value).includes('/') || 
+                 String(value).includes(':'))) {
           typeVotes.date++;
         }
         // Otherwise string
@@ -449,10 +499,10 @@ export const dataService = {
       
       // Find the most common type
       let maxVotes = 0;
-      let winningType = 'string';
+      let winningType = 'string'; // Default to string if no clear winner
       
       for (const [type, votes] of Object.entries(typeVotes)) {
-        if (votes > maxVotes) {
+        if (type !== 'null' && votes > maxVotes) {
           maxVotes = votes;
           winningType = type;
         }
@@ -463,9 +513,22 @@ export const dataService = {
         const integerRatio = typeVotes.integer / nonNullValues;
         const numberRatio = typeVotes.number / nonNullValues;
         
-        if (numberRatio > 0.3) { // If more than 30% are floating point numbers
+        if (numberRatio > 0.2) { // If more than 20% are floating point numbers
           winningType = 'number';
         }
+      }
+      
+      // Special case: if string and date are close, check if strings look like dates
+      if (winningType === 'string' && typeVotes.date > 0) {
+        const dateRatio = typeVotes.date / nonNullValues;
+        if (dateRatio > 0.5) { // If more than 50% look like dates
+          winningType = 'date';
+        }
+      }
+      
+      // If majority of values are null, but we have some data, ensure we still type it properly
+      if (typeVotes.null > sampleSize * 0.7 && nonNullValues > 0) {
+        console.log(`Column ${column} is mostly null (${typeVotes.null} nulls out of ${sampleSize}), but detected as ${winningType}`);
       }
       
       schema[column] = winningType;
@@ -477,16 +540,28 @@ export const dataService = {
   // Helper function to estimate total rows in a CSV file
   _estimateTotalRows(file: File, parseResult: Papa.ParseResult<any>): number {
     const sampleRows = parseResult.data.length;
-    const sampleBytes = new TextEncoder().encode(Papa.unparse(parseResult.data)).length;
     
-    // If sample is small, just use its row count
-    if (sampleRows < 100 || sampleBytes > file.size * 0.5) {
+    // Create a sample of the parsed data 
+    const sampleData = parseResult.data.slice(0, Math.min(200, sampleRows));
+    const sampleText = Papa.unparse(sampleData);
+    const sampleBytes = new TextEncoder().encode(sampleText).length;
+    
+    // If we have a very small file or we parsed most of it already, just use the row count
+    if (sampleRows < 200 || sampleBytes > file.size * 0.5) {
       return sampleRows;
     }
     
     // Otherwise estimate based on the size ratio
-    const bytesPerRow = sampleBytes / sampleRows;
-    const estimatedRowCount = Math.round(file.size / bytesPerRow);
+    // Calculate bytes per row on average from sample
+    const bytesPerRow = sampleBytes / sampleData.length;
+    
+    // Estimate row count based on file size, with a correction factor
+    // Correction factor is to account for CSV complexity differences
+    const correctionFactor = 0.9; // Adjust if estimates are consistently off
+    const estimatedRowCount = Math.round((file.size / bytesPerRow) * correctionFactor);
+    
+    console.log(`Estimated ${estimatedRowCount} rows in file of size ${file.size} bytes`);
+    console.log(`Sample had ${sampleData.length} rows using ${sampleBytes} bytes (${bytesPerRow} bytes per row)`);
     
     // Cap to a reasonable maximum to avoid overflow issues
     return Math.min(estimatedRowCount, 1000000);

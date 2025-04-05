@@ -25,3 +25,6 @@ port = 9999
 [functions]
 [functions.ai-query]
 verify_jwt = true
+
+[storage]
+file_size_limit = "100MiB"
