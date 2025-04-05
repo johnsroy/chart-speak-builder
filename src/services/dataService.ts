@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+
+import { supabase, createStorageBuckets, verifyStorageBuckets } from '@/lib/supabase';
 import Papa from 'papaparse';
 import { toast } from '@/hooks/use-toast';
 import { User } from '@/services/authService';
@@ -97,6 +98,20 @@ export const dataService = {
         console.log("User authenticated for upload:", userId);
       }
       
+      // CRITICAL: Ensure storage buckets exist before attempting to use them
+      console.log("CRITICAL: Ensuring storage buckets exist before upload");
+      const bucketsVerified = await verifyStorageBuckets();
+      
+      if (!bucketsVerified) {
+        console.log("Buckets not verified, attempting to create them directly...");
+        const creationResult = await createStorageBuckets();
+        
+        if (!creationResult) {
+          console.error("Failed to create required storage buckets");
+          throw new Error("Failed to create required storage infrastructure. Please try again later.");
+        }
+      }
+      
       // Parse the CSV to get schema and row count
       const parseResult = await new Promise<Papa.ParseResult<any>>((resolve, reject) => {
         Papa.parse(file, {
@@ -130,26 +145,47 @@ export const dataService = {
       
       console.log(`Attempting to upload ${file.name} (${file.size} bytes) to ${bucketName}/${filePath}`);
 
-      // Verify bucket exists before uploading
+      // Double check bucket exists before uploading
       const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
       
       if (bucketsError) {
         console.error("Error listing buckets:", bucketsError);
-        throw new Error(`Failed to verify storage buckets: ${bucketsError.message}`);
+        
+        // Try one more time to create the buckets
+        await createStorageBuckets();
+        
+        // Check again after creation attempt
+        const { data: retryBuckets, error: retryError } = await supabase.storage.listBuckets();
+        if (retryError || !retryBuckets?.some(bucket => bucket.name === bucketName)) {
+          throw new Error(`Failed to access or create storage buckets. Please try again later.`);
+        }
       }
       
+      // CRITICAL: DIRECT BUCKET CHECK
       const bucketExists = buckets?.some(bucket => bucket.name === bucketName);
       
       if (!bucketExists) {
-        console.error(`Bucket '${bucketName}' does not exist`);
-        throw new Error(`Storage bucket '${bucketName}' does not exist. Please contact support.`);
+        console.error(`Bucket '${bucketName}' does not exist, attempting to create it directly`);
+        
+        // Try to create the bucket directly as a final resort
+        const { data: createData, error: createError } = await supabase.storage.createBucket(bucketName, {
+          public: false,
+          fileSizeLimit: 50 * 1024 * 1024
+        });
+        
+        if (createError) {
+          console.error(`Failed to create bucket:`, createError);
+          throw new Error(`Storage system not properly configured. Please contact support.`);
+        }
+        
+        console.log(`Bucket ${bucketName} created successfully at the last minute`);
+      } else {
+        console.log(`Confirmed bucket '${bucketName}' exists`);
       }
-      
-      console.log(`Confirmed bucket '${bucketName}' exists`);
 
       // For large files, use chunked upload
       let uploadResult;
-      if (file.size > CHUNK_SIZE) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB
         uploadResult = await this._uploadLargeFile(file, filePath, userId, bucketName);
       } else {
         uploadResult = await this._uploadRegularFile(file, filePath, bucketName);

@@ -29,6 +29,24 @@ serve(async (req) => {
     const { pathname } = url;
     const operation = pathname.split('/').pop();
     
+    // Special debug operation to help identify issues
+    if (operation === "debug-info") {
+      // Get environment information that might help with debugging
+      const debugInfo = {
+        deploymentId: Deno.env.get("SUPABASE_FUNCTION_DEPLOYMENT_ID") || "unknown",
+        functionName: Deno.env.get("SUPABASE_FUNCTION_NAME") || "unknown",
+        projectRef: Deno.env.get("SUPABASE_PROJECT_REF") || "unknown",
+        version: Deno.version,
+        hasServiceKey: Boolean(supabaseServiceKey),
+        hasUrl: Boolean(supabaseUrl),
+      };
+
+      return new Response(
+        JSON.stringify({ success: true, debug: debugInfo }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+    
     if (req.method === "POST") {
       if (operation === "setup") {
         // Setup storage buckets if they don't exist
@@ -90,6 +108,66 @@ serve(async (req) => {
             status: 200
           }
         );
+      } else if (operation === "create-datasets-bucket") {
+        // This focused operation just creates the datasets bucket
+        try {
+          // Try to delete the bucket first (ignore errors)
+          try {
+            await supabase.storage.deleteBucket("datasets");
+          } catch (err) {
+            // Ignore deletion errors
+          }
+          
+          // Create the datasets bucket
+          const { data, error } = await supabase.storage.createBucket("datasets", {
+            public: false,
+            fileSizeLimit: 50 * 1024 * 1024
+          });
+          
+          if (error) {
+            return new Response(
+              JSON.stringify({ success: false, message: error.message }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 500
+              }
+            );
+          }
+          
+          // Verify the bucket exists
+          const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+          
+          if (listError) {
+            return new Response(
+              JSON.stringify({ success: false, message: listError.message }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 500
+              }
+            );
+          }
+          
+          const hasDatasetsBacket = buckets?.some(b => b.name === "datasets");
+          
+          return new Response(
+            JSON.stringify({ 
+              success: hasDatasetsBacket,
+              message: hasDatasetsBacket ? "datasets bucket created successfully" : "datasets bucket creation failed"
+            }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              status: hasDatasetsBacket ? 200 : 500
+            }
+          );
+        } catch (err) {
+          return new Response(
+            JSON.stringify({ success: false, message: err.message }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              status: 500
+            }
+          );
+        }
       }
     }
 
@@ -135,6 +213,9 @@ async function forceCreateBuckets(supabase) {
           console.log(`Bucket ${bucket.name} does not exist or couldn't be deleted, creating new`);
         }
         
+        // Small delay to ensure the deletion is processed
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Create the bucket with specified configuration
         const { data, error } = await supabase.storage.createBucket(bucket.name, {
           public: bucket.public,
@@ -163,6 +244,9 @@ async function forceCreateBuckets(supabase) {
           message: createError.message
         });
       }
+      
+      // Small delay between bucket operations
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
     
     // Verify buckets after creation attempts

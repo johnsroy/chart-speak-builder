@@ -1,11 +1,10 @@
-
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
 import { dataService } from '@/services/dataService';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase, verifyStorageBuckets } from '@/lib/supabase';
+import { supabase, verifyStorageBuckets, createStorageBuckets } from '@/lib/supabase';
 
 export const useFileUpload = () => {
   const [dragActive, setDragActive] = useState(false);
@@ -225,21 +224,66 @@ export const useFileUpload = () => {
       
       // Explicitly create buckets before proceeding with upload
       console.log("Verifying storage buckets exist...");
-      const bucketsVerified = await verifyStorageBuckets();
+      let bucketsVerified = await verifyStorageBuckets();
       
       if (!bucketsVerified) {
         console.log("Buckets not verified, attempting to create them...");
-        const bucketsCreated = await createStorageBucketIfNeeded();
+        
+        // Try direct creation
+        const bucketsCreated = await createStorageBuckets();
+        
         if (!bucketsCreated) {
-          throw new Error("Failed to create required storage buckets. Please try again or contact support.");
+          console.log("Direct bucket creation failed, trying force create via edge function...");
+          
+          // Try force creation via edge function
+          const functionUrl = `${process.env.SUPABASE_URL || 'https://rehadpogugijylybwmoe.supabase.co'}/functions/v1/storage-manager/create-datasets-bucket`;
+          
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (!session) {
+            console.error("No active session when creating storage buckets");
+            throw new Error("Authentication session required for upload infrastructure setup");
+          }
+          
+          const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({})
+          });
+          
+          const edgeFunctionResult = await response.json();
+          
+          if (!edgeFunctionResult.success) {
+            throw new Error("Failed to create the required storage infrastructure. Please try again later.");
+          }
+          
+          bucketsVerified = true;
+        } else {
+          console.log("Direct bucket creation successful");
+          bucketsVerified = true;
         }
-        console.log("Buckets created successfully");
-      } else {
-        console.log("Buckets verification successful");
       }
       
+      // Double-check buckets exist
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      if (bucketsError) {
+        console.error("Error checking buckets:", bucketsError);
+      } else {
+        const hasDatasetsBacket = buckets?.some(b => b.name === 'datasets');
+        console.log("Final bucket check:", hasDatasetsBacket ? "datasets bucket exists" : "datasets bucket STILL MISSING");
+        
+        if (!hasDatasetsBacket) {
+          throw new Error("Storage system could not be properly configured. Please contact support.");
+        }
+      }
+      
+      console.log("Buckets verification successful, proceeding with upload");
+      
+      // Test permission before full upload
       try {
-        // Test if we have write permission
         const testBlob = new Blob(["test"], { type: "text/plain" });
         const testFile = new File([testBlob], "test-permission.txt");
         
@@ -287,16 +331,6 @@ export const useFileUpload = () => {
     } catch (error) {
       console.error('Error uploading dataset:', error);
       let errorMessage = error instanceof Error ? error.message : "Failed to upload dataset";
-      
-      if (errorMessage.includes('row-level security policy')) {
-        errorMessage = "Upload failed due to storage permissions. Please try logging out and back in.";
-      }
-      
-      if (errorMessage.includes('Bucket not found')) {
-        errorMessage = "Storage configuration issue. The required storage bucket doesn't exist. Attempting to create it now...";
-        // Try one more time to create buckets
-        await createStorageBucketIfNeeded();
-      }
       
       setUploadError(errorMessage);
       toast({
