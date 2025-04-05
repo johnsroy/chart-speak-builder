@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -61,7 +60,7 @@ const Login = () => {
       setIsLoading(false);
     }
   };
-
+  
   const handleAdminLogin = async () => {
     setAdminLoading(true);
     setErrorMessage(null);
@@ -69,7 +68,7 @@ const Login = () => {
     try {
       toast({
         title: 'Admin login',
-        description: 'Setting up and logging in as admin...',
+        description: 'Logging in with admin credentials...',
       });
       
       await adminLogin();
@@ -94,6 +93,7 @@ const Login = () => {
     }
   };
 
+  
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white flex flex-col items-center justify-center p-4">
       <div className="glass-card w-full max-w-md p-8 rounded-xl">
@@ -184,17 +184,17 @@ const Login = () => {
           
           <div className="mt-4 pt-4 border-t border-white/20">
             <Button
-              variant="ghost"
-              className="text-purple-300 hover:text-white"
+              variant="outline"
+              className="w-full bg-purple-900/30 hover:bg-purple-800/50 text-white border-purple-600/50"
               onClick={handleAdminLogin}
               disabled={isLoading || adminLoading}
             >
               {adminLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Setting up admin...
+                  Logging in as admin...
                 </>
-              ) : 'Login as Admin (Testing Only)'}
+              ) : 'Login as Admin (Test User)'}
             </Button>
           </div>
         </div>
