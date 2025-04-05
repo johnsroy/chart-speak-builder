@@ -51,7 +51,14 @@ export const dataService = {
   },
   
   // Upload a dataset from a CSV file
-  async uploadDataset(file: File, name: string, description?: string, user?: User | null, userSession?: Session | null, providedUserId?: string | null) {
+  async uploadDataset(
+    file: File, 
+    name: string, 
+    description?: string, 
+    user?: User | null, 
+    userSession?: Session | null, 
+    providedUserId?: string | null
+  ) {
     try {
       // First check if user is authenticated
       let userId = null;

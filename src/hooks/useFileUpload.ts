@@ -50,7 +50,6 @@ export const useFileUpload = () => {
   };
 
   const handleFileSelection = (file: File) => {
-    // Validate file type
     const validFileTypes = [
       'text/csv', 
       'application/vnd.ms-excel', 
@@ -58,7 +57,6 @@ export const useFileUpload = () => {
       'application/json'
     ];
     
-    // Special handling for CSV files without correct MIME type
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
     const isCSVByExtension = fileExtension === 'csv';
     
@@ -71,7 +69,6 @@ export const useFileUpload = () => {
       return;
     }
     
-    // Validate file size (100MB limit)
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
       toast({
@@ -83,14 +80,8 @@ export const useFileUpload = () => {
     }
     
     setSelectedFile(file);
-    // Auto-fill dataset name with file name (without extension)
-    const fileName = file.name;
-    setDatasetName(fileName.substring(0, fileName.lastIndexOf('.')) || fileName);
-    
-    // Reset any previous errors
+    setDatasetName(file.name.substring(0, file.name.lastIndexOf('.')) || file.name);
     setUploadError(null);
-    
-    // Preview schema inference
     previewSchemaInference(file);
     
     toast({
@@ -101,7 +92,6 @@ export const useFileUpload = () => {
 
   const previewSchemaInference = async (file: File) => {
     try {
-      // Only preview for CSV files
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       if (file.type === 'text/csv' || fileExtension === 'csv') {
         const schemaSample = await dataService.previewSchemaInference(file);
@@ -118,14 +108,11 @@ export const useFileUpload = () => {
   const simulateProgress = () => {
     setUploadProgress(0);
     
-    // For large files, use a slower progress simulation
     const fileSize = selectedFile?.size || 0;
     const isLargeFile = fileSize > 5 * 1024 * 1024; // 5MB threshold
     
-    // Calculate appropriate interval based on file size
     const interval = isLargeFile ? 2000 : 500; // slower for large files
     
-    // Calculate max progress before completion
     const maxProgress = isLargeFile ? 75 : 90; // leave more room for backend processing
     
     const progressInterval = setInterval(() => {
@@ -135,7 +122,6 @@ export const useFileUpload = () => {
           return maxProgress;
         }
         
-        // For large files, increment more slowly as progress increases
         if (isLargeFile && prev > 50) {
           return prev + 2;
         }
@@ -148,7 +134,6 @@ export const useFileUpload = () => {
   };
 
   const handleUpload = async (isAuthenticated: boolean, userId: string) => {
-    // Validate inputs first
     if (!selectedFile) {
       toast({
         title: "No file selected",
@@ -176,11 +161,9 @@ export const useFileUpload = () => {
       return;
     }
     
-    // Special handling for admin user to ensure valid UUID format
     if (userId === 'test-admin-id') {
       userId = '00000000-0000-0000-0000-000000000000';
     } else {
-      // Validate the UUID format for other users
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!uuidRegex.test(userId)) {
         toast({
@@ -191,7 +174,7 @@ export const useFileUpload = () => {
         return;
       }
     }
-
+    
     setIsUploading(true);
     setUploadError(null);
     const progressInterval = simulateProgress();
@@ -199,9 +182,7 @@ export const useFileUpload = () => {
     try {
       console.log("Starting upload for user:", userId);
       
-      // Verify we have permission to upload to storage
       try {
-        // Test storage bucket access with a minimal file
         const testBlob = new Blob(["test"], { type: "text/plain" });
         const testFile = new File([testBlob], "test-permission.txt");
         
@@ -214,12 +195,10 @@ export const useFileUpload = () => {
           throw new Error(`Storage access denied: ${permissionError.message}`);
         } else {
           console.log("Storage permission test passed, proceeding with upload");
-          // Clean up test file
           await supabase.storage.from('datasets').remove([`${userId}/test-permission.txt`]);
         }
       } catch (permTestErr) {
         console.error("Permission test failed:", permTestErr);
-        // Continue anyway, the main upload might still work
       }
 
       const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -228,23 +207,20 @@ export const useFileUpload = () => {
         selectedFile, 
         datasetName, 
         datasetDescription || undefined,
-        null, // Don't pass user object
-        null, // Use fresh session from dataService 
-        userId // Pass the validated UUID
+        null,
+        null,
+        userId
       );
       
-      // Set progress to 100% when complete
       setUploadProgress(100);
       
       sonnerToast.success("Upload successful", {
         description: `Dataset "${datasetName}" has been uploaded successfully`
       });
 
-      // Store the uploaded dataset ID for visualization
       setUploadedDatasetId(dataset.id);
       setShowVisualizeAfterUpload(true);
 
-      // Clear form
       setSelectedFile(null);
       setDatasetName('');
       setDatasetDescription('');
@@ -255,7 +231,6 @@ export const useFileUpload = () => {
       console.error('Error uploading dataset:', error);
       let errorMessage = error instanceof Error ? error.message : "Failed to upload dataset";
       
-      // Improve error messages for common issues
       if (errorMessage.includes('row-level security policy')) {
         errorMessage = "Upload failed due to storage permissions. Please try logging out and back in.";
       }
