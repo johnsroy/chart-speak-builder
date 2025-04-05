@@ -1,10 +1,10 @@
-
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
 import { dataService } from '@/services/dataService';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 
 export const useFileUpload = () => {
   const [dragActive, setDragActive] = useState(false);
@@ -147,18 +147,8 @@ export const useFileUpload = () => {
     return progressInterval;
   };
 
-  const handleUpload = async (isAuthenticated: boolean, userId?: string | null) => {
-    // Ensure we have authentication
-    if (!isAuthenticated && !user) {
-      toast({
-        title: "Authentication required",
-        description: "Please log in to upload datasets",
-        variant: "destructive"
-      });
-      navigate('/login');
-      return;
-    }
-    
+  const handleUpload = async (isAuthenticated: boolean, userId: string) => {
+    // Validate inputs first
     if (!selectedFile) {
       toast({
         title: "No file selected",
@@ -177,21 +167,55 @@ export const useFileUpload = () => {
       return;
     }
 
+    if (!userId || typeof userId !== 'string' || userId.length < 10) {
+      toast({
+        title: "Authentication issue",
+        description: "Unable to identify the user. Please try logging in again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsUploading(true);
     setUploadError(null);
     const progressInterval = simulateProgress();
-    
+
     try {
-      console.log("Starting upload with auth status:", isAuthenticated, "User:", user?.id, "Provided userId:", userId);
+      console.log("Starting upload for user:", userId);
       
-      // Explicitly pass the current user and session to ensure authentication is recognized
+      // Verify we have permission to upload to storage
+      try {
+        // Test storage bucket access with a minimal file
+        const testBlob = new Blob(["test"], { type: "text/plain" });
+        const testFile = new File([testBlob], "test-permission.txt");
+        
+        const { data: permissionTest, error: permissionError } = await supabase.storage
+          .from('datasets')
+          .upload(`${userId}/test-permission.txt`, testFile);
+        
+        if (permissionError) {
+          console.error("Storage permission test failed:", permissionError);
+          throw new Error(`Storage access denied: ${permissionError.message}`);
+        } else {
+          console.log("Storage permission test passed, proceeding with upload");
+          // Clean up test file
+          await supabase.storage.from('datasets').remove([`${userId}/test-permission.txt`]);
+        }
+      } catch (permTestErr) {
+        console.error("Permission test failed:", permTestErr);
+        // Continue anyway, the main upload might still work
+      }
+
+      // Get a fresh session to ensure we have the latest auth state
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      
       const dataset = await dataService.uploadDataset(
         selectedFile, 
         datasetName, 
         datasetDescription || undefined,
-        user,  // Make sure to pass the current user
-        session, // Make sure to pass the current session
-        userId  // Pass the actual UUID, not test-admin-id
+        null, // Don't pass user object, it's not needed since we're passing userId
+        currentSession, // Pass fresh session
+        userId // The valid UUID from the user
       );
       
       // Set progress to 100% when complete
@@ -214,10 +238,17 @@ export const useFileUpload = () => {
       return dataset;
     } catch (error) {
       console.error('Error uploading dataset:', error);
-      setUploadError(error instanceof Error ? error.message : "Failed to upload dataset");
+      let errorMessage = error instanceof Error ? error.message : "Failed to upload dataset";
+      
+      // Improve error messages for common issues
+      if (errorMessage.includes('row-level security policy')) {
+        errorMessage = "Upload failed due to storage permissions. Please try logging out and back in.";
+      }
+      
+      setUploadError(errorMessage);
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to upload dataset",
+        description: errorMessage,
         variant: "destructive"
       });
       throw error;
@@ -227,7 +258,7 @@ export const useFileUpload = () => {
     }
   };
 
-  const retryUpload = (isAuthenticated: boolean, userId?: string | null) => {
+  const retryUpload = (isAuthenticated: boolean, userId: string) => {
     setUploadError(null);
     handleUpload(isAuthenticated, userId);
   };

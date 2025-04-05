@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 import { toast } from '@/hooks/use-toast';
@@ -18,8 +19,8 @@ export interface Dataset {
   storage_path: string;
 }
 
-// Maximum chunk size for uploads (5MB)
-const CHUNK_SIZE = 5 * 1024 * 1024;
+// Maximum chunk size for uploads (2MB)
+const CHUNK_SIZE = 2 * 1024 * 1024;
 
 export const dataService = {
   // Preview schema inference without uploading
@@ -53,33 +54,33 @@ export const dataService = {
   // Upload a dataset from a CSV file
   async uploadDataset(file: File, name: string, description?: string, user?: User | null, userSession?: Session | null, providedUserId?: string | null) {
     try {
-      console.log("Starting dataset upload process");
-      
       // First check if user is authenticated
       let userId = null;
       
       // Use provided explicit userId first (most reliable)
-      if (providedUserId) {
+      if (providedUserId && typeof providedUserId === 'string' && providedUserId.length >= 10) {
         console.log("Using explicitly provided userId:", providedUserId);
         userId = providedUserId;
       }
-      // Then try user from auth if available
-      else if (user && user.id) {
-        console.log("Using provided user authentication:", user.id);
-        userId = user.id;
-      } 
-      // Finally, fall back to checking current session
+      // Then try to get user from Supabase session
       else {
-        // Fall back to Supabase session check
+        // Fall back to checking current session
         const { data: { session } } = await supabase.auth.getSession();
         
-        if (!session || !session.user) {
+        if (!session?.user?.id) {
           console.error("No authenticated user found during dataset upload");
           throw new Error('User not authenticated');
         }
         
         userId = session.user.id;
         console.log("User authenticated for upload:", userId);
+      }
+      
+      // Check that userId is a valid UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId)) {
+        console.error("Invalid user ID format:", userId);
+        throw new Error('Invalid user ID format. Please login again.');
       }
       
       // Parse the CSV to get schema and row count
@@ -181,6 +182,14 @@ export const dataService = {
         
         while (!chunkUploaded && attempts < maxRetries) {
           try {
+            // Before each chunk upload, refresh the auth session if needed
+            if (attempts > 0) {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) {
+                throw new Error("Authentication session expired during chunked upload");
+              }
+            }
+            
             const { data, error } = await supabase.storage
               .from('datasets')
               .upload(partPath, chunk, {
@@ -190,13 +199,21 @@ export const dataService = {
             
             if (error) {
               console.error(`Chunk ${i}/${totalChunks} upload attempt ${attempts + 1} failed:`, error);
+              
+              if (error.message && error.message.includes('row-level security policy')) {
+                throw new Error(`Failed to upload chunk ${i} due to RLS policy: ${error.message}`);
+              }
+              
               attempts++;
               
               // Wait before retrying (exponential backoff)
               if (attempts < maxRetries) {
                 await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempts)));
               } else {
-                return { success: false, error: `Failed to upload chunk ${i} after ${maxRetries} attempts: ${error.message}` };
+                return { 
+                  success: false, 
+                  error: `Failed to upload chunk ${i} after ${maxRetries} attempts: ${error.message}` 
+                };
               }
             } else {
               chunkUploaded = true;
@@ -215,18 +232,24 @@ export const dataService = {
             if (attempts < maxRetries) {
               await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempts)));
             } else {
-              return { success: false, error: `Failed to upload chunk ${i} after ${maxRetries} attempts: ${error instanceof Error ? error.message : String(error)}` };
+              return { 
+                success: false, 
+                error: `Failed to upload chunk ${i} after ${maxRetries} attempts: ${error instanceof Error ? error.message : String(error)}` 
+              };
             }
           }
         }
       }
       
-      // All chunks uploaded successfully, now we need to combine them
-      console.log("All chunks uploaded, combining into final file");
-
-      // For now, just return success - in a production app, you'd have a backend
-      // function to combine the chunks into a single file
-      return { success: true, path: filePath };
+      if (uploadedChunks === totalChunks) {
+        console.log("All chunks uploaded successfully, file upload complete");
+        return { success: true, path: filePath };
+      } else {
+        return { 
+          success: false, 
+          error: `Only ${uploadedChunks} of ${totalChunks} chunks were uploaded successfully` 
+        };
+      }
     } catch (error) {
       console.error("Chunked upload failed:", error);
       return { 
@@ -247,6 +270,14 @@ export const dataService = {
       try {
         console.log(`Upload attempt ${attempts + 1} for ${file.name}`);
         
+        // Before each attempt, refresh the auth session if needed
+        if (attempts > 0) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            throw new Error("Authentication session expired during upload");
+          }
+        }
+        
         const { data, error } = await supabase.storage
           .from('datasets')
           .upload(filePath, file, {
@@ -256,6 +287,10 @@ export const dataService = {
         
         if (error) {
           console.error(`Upload attempt ${attempts + 1} failed:`, error);
+          
+          if (error.message && error.message.includes('row-level security policy')) {
+            throw new Error(`Upload failed due to RLS policy: ${error.message}`);
+          }
           
           if (attempts === maxRetries - 1) {
             return { success: false, error: error.message };

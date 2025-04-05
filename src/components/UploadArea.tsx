@@ -11,6 +11,7 @@ import UploadTabContent from './upload/UploadTabContent';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useDatasets } from '@/hooks/useDatasets';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const UploadArea = () => {
   const [activeTab, setActiveTab] = useState('upload');
@@ -49,61 +50,98 @@ const UploadArea = () => {
     loadDatasets
   } = useDatasets();
 
-  // Attempt admin login on initial load to ensure we're authenticated
+  // Ensure we have a valid user session on component mount
   useEffect(() => {
-    if (!isAuthenticated && !user) {
-      const performAdminLogin = async () => {
-        try {
+    const ensureAuthentication = async () => {
+      try {
+        // First check if we already have a valid session
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (!currentSession) {
+          console.log("No active session found, performing admin login");
           await adminLogin();
-          console.log("Admin login completed on component mount");
-        } catch (err) {
-          console.error("Failed to perform auto admin login:", err);
+          
+          // Verify login was successful
+          const { data: { session: verifySession } } = await supabase.auth.getSession();
+          if (verifySession) {
+            console.log("Admin login successful, session established");
+          } else {
+            console.error("Admin login didn't create a session");
+          }
+        } else {
+          console.log("Existing session found:", currentSession.user.id);
         }
-      };
-      
-      performAdminLogin();
-    }
+      } catch (err) {
+        console.error("Authentication error:", err);
+      }
+    };
+    
+    ensureAuthentication();
   }, []);
 
   const handleUploadClick = async () => {
     try {
-      // Always ensure we have admin authentication before upload
-      if (!isAuthenticated || !user) {
-        console.log("Performing admin login before upload");
+      // Always ensure we're authenticated before upload
+      if (!user?.id) {
+        console.log("No user ID found, authenticating before upload");
         await adminLogin();
         
-        // Give a moment for auth state to update
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Get the session after login
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (!currentSession?.user?.id) {
+          toast({
+            title: "Authentication failed",
+            description: "Couldn't establish a user session for uploading",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        console.log("Using user ID for upload:", currentSession.user.id);
+        
+        if (selectedFile && selectedFile.size > 50 * 1024 * 1024) {
+          toast({
+            title: "Large file detected",
+            description: "Uploading large files may take some time. Please be patient.",
+          });
+        }
+        
+        // Pass the actual UUID from the session
+        await handleUpload(true, currentSession.user.id);
+      } else {
+        console.log("Using existing user ID for upload:", user.id);
+        await handleUpload(true, user.id);
       }
       
-      if (selectedFile && selectedFile.size > 50 * 1024 * 1024) {
-        toast({
-          title: "Large file detected",
-          description: "Uploading large files may take some time. Please be patient.",
-        });
-      }
-      
-      // Pass the actual UUID from user.id, not the test-admin-id string
-      const userId = user?.id || null;
-      await handleUpload(true, userId);
       loadDatasets();
     } catch (error) {
-      console.error("Upload failed after admin login:", error);
+      console.error("Upload failed:", error);
     }
   };
 
   const handleRetryUpload = async () => {
-    // Always ensure we have admin authentication before retry
-    if (!isAuthenticated || !user) {
-      await adminLogin();
-      
-      // Give a moment for auth state to update
-      await new Promise(resolve => setTimeout(resolve, 100));
+    try {
+      // Ensure authentication before retry
+      if (!user?.id) {
+        await adminLogin();
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (currentSession?.user?.id) {
+          retryUpload(true, currentSession.user.id);
+        } else {
+          toast({
+            title: "Authentication failed",
+            description: "Couldn't establish a user session for retrying upload",
+            variant: "destructive"
+          });
+        }
+      } else {
+        retryUpload(true, user.id);
+      }
+    } catch (error) {
+      console.error("Retry upload failed:", error);
     }
-    
-    // Pass the actual UUID from user.id, not the test-admin-id string
-    const userId = user?.id || null;
-    retryUpload(true, userId);
   };
 
   return (
