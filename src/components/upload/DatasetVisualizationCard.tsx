@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button';
 import ChartVisualization from '@/components/ChartVisualization';
 import { useNavigate } from 'react-router-dom';
 
-interface DatasetVisualizationCardProps {
+export interface DatasetVisualizationCardProps {
   datasetId: string;
   onHideClick: () => void;
-  onExploreClick?: () => void; // Making this optional with a default implementation
+  onExploreClick?: () => void;
 }
 
 const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
