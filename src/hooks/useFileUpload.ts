@@ -137,7 +137,7 @@ export const useFileUpload = () => {
     }
 
     try {
-      // Validate user ID - simplified validation for admin users
+      // Use the provided user ID with simplified validation for admin users
       const validatedUserId = validateUserId(userId);
       
       // Start upload process

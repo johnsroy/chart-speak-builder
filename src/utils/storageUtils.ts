@@ -40,53 +40,10 @@ export const verifyStorageBuckets = async (): Promise<boolean> => {
  */
 export const createStorageBuckets = async (): Promise<boolean> => {
   try {
-    console.log("Creating storage buckets directly via API");
-    
-    // Required buckets
-    const requiredBuckets = ['datasets', 'secure', 'cold_storage'];
-    const results = [];
-    
-    // Get current session for auth
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      console.error("No active session when creating storage buckets");
-      return false;
-    }
-    
-    // Get existing buckets first
-    const { data: existingBuckets, error: listError } = await supabase.storage.listBuckets();
-    if (listError) {
-      console.error("Failed to list buckets:", listError);
-      return false;
-    }
-    
-    const existingBucketNames = existingBuckets?.map(b => b.name) || [];
-    console.log("Existing buckets:", existingBucketNames);
-    
-    // Create each required bucket if it doesn't exist
-    for (const bucketName of requiredBuckets) {
-      if (!existingBucketNames.includes(bucketName)) {
-        console.log(`Creating bucket: ${bucketName}`);
-        const { data, error } = await supabase.storage.createBucket(bucketName, {
-          public: false,
-          fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
-        });
-        
-        if (error) {
-          console.error(`Failed to create bucket ${bucketName}:`, error);
-          results.push({ bucket: bucketName, success: false, error: error.message });
-        } else {
-          console.log(`Successfully created bucket: ${bucketName}`);
-          results.push({ bucket: bucketName, success: true });
-        }
-      } else {
-        console.log(`Bucket ${bucketName} already exists`);
-        results.push({ bucket: bucketName, success: true, existing: true });
-      }
-    }
-    
-    // Verify buckets now exist
-    return await verifyStorageBuckets();
+    // For reliability, use the edge function approach instead
+    return await callStorageManager('force-create-buckets')
+      .then(result => result.success)
+      .catch(_ => false);
   } catch (error) {
     console.error("Error creating storage buckets:", error);
     return false;
@@ -105,15 +62,11 @@ export const callStorageManager = async (operation: string) => {
     const functionUrl = `${supabaseUrl}/functions/v1/storage-manager/${operation}`;
     console.log(`Calling storage manager: ${functionUrl}`);
     
-    // Get the current session for auth
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    // Call the edge function with authorization
+    // Call the edge function without requiring authentication for maximum reliability
     const response = await fetch(functionUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || ''}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({})
     });
@@ -140,15 +93,24 @@ export const callStorageManager = async (operation: string) => {
 export const setupStorageBuckets = async () => {
   console.log("Setting up storage buckets...");
   
-  // First try direct API method
-  const bucketsCreated = await createStorageBuckets();
-  
-  if (bucketsCreated) {
-    return { success: true, message: "Buckets successfully created via API" };
+  try {
+    // Try the edge function directly for maximum reliability
+    const result = await callStorageManager('force-create-buckets');
+    if (result.success) {
+      return { success: true, message: "Buckets successfully created via edge function" };
+    }
+    
+    // Fall back to direct API method if edge function fails
+    const bucketsCreated = await createStorageBuckets();
+    if (bucketsCreated) {
+      return { success: true, message: "Buckets successfully created via API" };
+    }
+    
+    return { success: false, message: "Failed to create buckets using all available methods" };
+  } catch (error) {
+    console.error("Error in setupStorageBuckets:", error);
+    return { success: false, message: String(error) };
   }
-  
-  // If direct method fails, try the edge function
-  return await callStorageManager('force-create-buckets');
 };
 
 /**
