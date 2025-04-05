@@ -18,7 +18,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 interface ChartVisualizationProps {
   datasetId: string;
@@ -33,6 +33,18 @@ const COLORS = [
   '#83a6ed', '#8dd1e1', '#6970d5', '#a05195', '#d45087'
 ];
 
+// Fallback data to use when actual data cannot be loaded
+const generateFallbackData = () => {
+  // Generate fallback data based on common fields
+  return [
+    { category: 'Category A', value: 120, count: 50, date: '2025-01-01' },
+    { category: 'Category B', value: 150, count: 30, date: '2025-01-02' },
+    { category: 'Category C', value: 200, count: 80, date: '2025-01-03' },
+    { category: 'Category D', value: 80, count: 40, date: '2025-01-04' },
+    { category: 'Category E', value: 100, count: 20, date: '2025-01-05' }
+  ];
+};
+
 const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) => {
   const [data, setData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
@@ -41,6 +53,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
   const [yAxisField, setYAxisField] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallbackData, setUsingFallbackData] = useState<boolean>(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -49,6 +62,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
       
       setLoading(true);
       setError(null);
+      setUsingFallbackData(false);
       
       try {
         console.log('Loading dataset with ID:', datasetId);
@@ -65,66 +79,80 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         console.log('Dataset metadata loaded:', dataset);
         
         // Then get the preview data
-        const previewData = await dataService.previewDataset(datasetId);
-        
-        if (!previewData || previewData.length === 0) {
-          console.error('No preview data available for dataset');
-          setError("No data available in dataset");
-          setLoading(false);
-          return;
+        try {
+          const previewData = await dataService.previewDataset(datasetId);
+          
+          if (!previewData || previewData.length === 0) {
+            throw new Error("No data available in dataset");
+          }
+          
+          console.log("Dataset preview data loaded:", previewData.length, "rows", previewData[0]);
+          setData(previewData);
+          
+          const cols = Object.keys(previewData[0]);
+          setColumns(cols);
+          
+          // Auto-select first string/date column for X axis and first number column for Y axis
+          // Find suitable X axis (categorical data)
+          let foundStringColumn = false;
+          const stringColumn = cols.find(col => {
+            const isString = typeof previewData[0][col] === 'string';
+            const isDate = String(previewData[0][col]).match(/^\d{4}-\d{2}-\d{2}/);
+            return isString || isDate;
+          });
+          
+          if (stringColumn) {
+            setXAxisField(stringColumn);
+            foundStringColumn = true;
+          } else {
+            setXAxisField(cols[0]);
+          }
+          
+          // Find suitable Y axis (numerical data)
+          let foundNumberColumn = false;
+          const numberColumn = cols.find(col => {
+            const isNumber = typeof previewData[0][col] === 'number' || !isNaN(Number(previewData[0][col]));
+            return isNumber && (!foundStringColumn || col !== stringColumn);
+          });
+          
+          if (numberColumn) {
+            setYAxisField(numberColumn);
+            foundNumberColumn = true;
+          } else {
+            setYAxisField(cols[foundStringColumn ? 1 : 0] || cols[0]);
+          }
+        } catch (previewError) {
+          console.error('Error loading dataset preview:', previewError);
+          
+          // Use fallback data if we can't load the actual data
+          const fallbackData = generateFallbackData();
+          setData(fallbackData);
+          setColumns(Object.keys(fallbackData[0]));
+          setXAxisField('category');
+          setYAxisField('value');
+          setUsingFallbackData(true);
+          
+          toast({
+            title: 'Using sample data',
+            description: 'We encountered an issue loading your dataset. Using sample data for visualization.',
+            variant: 'warning',
+          });
         }
-        
-        console.log("Dataset preview data loaded:", previewData.length, "rows", previewData[0]);
-        setData(previewData);
-        
-        const cols = Object.keys(previewData[0]);
-        setColumns(cols);
-        
-        // Get the column schema from dataset metadata or infer from the data
-        const schema = dataset.column_schema || {};
-        console.log("Column schema:", schema);
-        
-        // Auto-select first string/date column for X axis and first number column for Y axis
-        // Find suitable X axis (categorical data)
-        let foundStringColumn = false;
-        const stringColumn = cols.find(col => {
-          const isString = typeof previewData[0][col] === 'string';
-          const isDate = schema[col] === 'date' || String(previewData[0][col]).match(/^\d{4}-\d{2}-\d{2}/);
-          const isCategory = schema[col] === 'string' || schema[col] === 'text';
-          return isString || isDate || isCategory;
-        });
-        
-        if (stringColumn) {
-          setXAxisField(stringColumn);
-          foundStringColumn = true;
-        } else {
-          setXAxisField(cols[0]);
-        }
-        
-        // Find suitable Y axis (numerical data)
-        let foundNumberColumn = false;
-        const numberColumn = cols.find(col => {
-          const isNumber = typeof previewData[0][col] === 'number' || !isNaN(Number(previewData[0][col]));
-          const isNumericType = schema[col] === 'number' || schema[col] === 'integer' || schema[col] === 'float';
-          return (isNumber || isNumericType) && (!foundStringColumn || col !== stringColumn);
-        });
-        
-        if (numberColumn) {
-          setYAxisField(numberColumn);
-          foundNumberColumn = true;
-        } else {
-          setYAxisField(cols[foundStringColumn ? 1 : 0] || cols[0]);
-        }
-        
-        console.log("Selected X axis:", stringColumn || cols[0]);
-        console.log("Selected Y axis:", numberColumn || (cols[1] || cols[0]));
       } catch (error) {
         console.error('Error loading dataset preview:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load dataset preview');
+        
+        // Use fallback data as a last resort
+        const fallbackData = generateFallbackData();
+        setData(fallbackData);
+        setColumns(Object.keys(fallbackData[0]));
+        setXAxisField('category');
+        setYAxisField('value');
+        setUsingFallbackData(true);
+        
         toast({
-          title: 'Error loading data',
-          description: error instanceof Error ? error.message : 'Failed to load dataset preview',
-          variant: 'destructive',
+          title: 'Using sample data',
+          description: 'We encountered an issue loading your dataset. Using sample data for visualization.',
+          variant: 'warning',
         });
       } finally {
         setLoading(false);
@@ -151,7 +179,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
       );
     }
     
-    if (error) {
+    if (error && !usingFallbackData) {
       return (
         <div className="flex justify-center items-center h-[400px] text-red-400">
           <p>Error: {error}</p>
@@ -258,7 +286,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
               cy="50%"
               outerRadius={150}
               fill="#8884d8"
-              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+              label={({ name, percent }) => `${name}: ${(Number(percent) * 100).toFixed(0)}%`}
             >
               {pieData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -281,11 +309,23 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     <div className="space-y-4">
       <h2 className="text-xl font-medium mb-4">Visualize Your Data</h2>
       
+      {usingFallbackData && (
+        <div className="bg-yellow-500/20 border border-yellow-500/40 rounded-lg p-4 mb-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
+          <div>
+            <p className="font-medium text-yellow-300">Using sample data</p>
+            <p className="text-sm text-yellow-200/80">
+              We're experiencing issues accessing your dataset. Showing sample visualizations instead.
+            </p>
+          </div>
+        </div>
+      )}
+      
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div>
           <p className="mb-2 text-sm">Chart Type</p>
           <Select value={chartType} onValueChange={(value: ChartType) => setChartType(value)}>
-            <SelectTrigger className="bg-black/50 border-gray-700">
+            <SelectTrigger className="bg-black/70 border-gray-700">
               <SelectValue placeholder="Select chart type" />
             </SelectTrigger>
             <SelectContent>
@@ -299,7 +339,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">X-Axis Field</p>
           <Select value={xAxisField} onValueChange={setXAxisField}>
-            <SelectTrigger className="bg-black/50 border-gray-700">
+            <SelectTrigger className="bg-black/70 border-gray-700">
               <SelectValue placeholder="Select X-axis field" />
             </SelectTrigger>
             <SelectContent>
@@ -313,7 +353,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">Y-Axis Field</p>
           <Select value={yAxisField} onValueChange={setYAxisField}>
-            <SelectTrigger className="bg-black/50 border-gray-700">
+            <SelectTrigger className="bg-black/70 border-gray-700">
               <SelectValue placeholder="Select Y-axis field" />
             </SelectTrigger>
             <SelectContent>

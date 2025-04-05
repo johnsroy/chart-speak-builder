@@ -175,7 +175,7 @@ export const useFileUpload = () => {
           },
         });
         
-        // Redirect to library page
+        // Automatically redirect to dashboard after successful upload
         navigate('/dashboard');
         
         return dataset;
