@@ -5,7 +5,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import Logo from '@/components/Logo';
-import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -17,6 +16,7 @@ const Login = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { login, register, adminLogin, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -63,21 +63,22 @@ const Login = () => {
   };
 
   const handleAdminLogin = async () => {
-    setIsLoading(true);
+    setAdminLoading(true);
     setErrorMessage(null);
     
     try {
-      // First try to set up the admin user via edge function
-      const setupResponse = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup');
-      const setupResult = await setupResponse.json();
-      console.log('Admin setup response:', setupResult);
+      toast({
+        title: 'Admin login',
+        description: 'Setting up and logging in as admin...',
+      });
       
-      // Then attempt to login
       await adminLogin();
+      
       toast({
         title: 'Admin access granted',
         description: 'You have been logged in as admin.',
       });
+      
       navigate('/upload');
     } catch (error) {
       console.error('Admin login error:', error);
@@ -89,7 +90,7 @@ const Login = () => {
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setAdminLoading(false);
     }
   };
 
@@ -186,12 +187,12 @@ const Login = () => {
               variant="ghost"
               className="text-purple-300 hover:text-white"
               onClick={handleAdminLogin}
-              disabled={isLoading}
+              disabled={isLoading || adminLoading}
             >
-              {isLoading ? (
+              {adminLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
+                  Setting up admin...
                 </>
               ) : 'Login as Admin (Testing Only)'}
             </Button>

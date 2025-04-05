@@ -44,7 +44,10 @@ export const authService = {
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error logging in:', error);
+        throw error;
+      }
       return data;
     } catch (error) {
       console.error('Error logging in:', error);
@@ -55,8 +58,13 @@ export const authService = {
   // Admin bypass login (for development only)
   async adminLogin() {
     try {
-      // First check if the admin user exists, if not create it
-      await this.setupAdminUser();
+      // First ensure admin user is properly set up with confirmed email
+      const setupResult = await this.setupAdminUser();
+      console.log("Admin setup result:", setupResult);
+      
+      if (!setupResult.success) {
+        throw new Error(`Admin setup failed: ${setupResult.message}`);
+      }
       
       // Then attempt to login with admin credentials
       return this.login(adminCredentials.email, adminCredentials.password);
@@ -95,22 +103,30 @@ export const authService = {
     }
   },
 
-  // Setup admin user (should be called once during initial setup)
+  // Setup admin user
   async setupAdminUser() {
     try {
       console.log("Setting up admin user");
       
-      // Call the admin-setup edge function to ensure admin user exists
+      // Call the admin-setup edge function to ensure admin user exists with confirmed email
       const response = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
       const result = await response.json();
       
       if (!result.success) {
         console.error('Error from admin-setup edge function:', result.message);
       } else {
-        console.log('Admin user created successfully');
+        console.log('Admin user setup result:', result.message);
       }
+      
+      return result;
     } catch (error) {
       console.error('Error setting up admin user:', error);
+      return { success: false, message: error instanceof Error ? error.message : String(error) };
     }
   },
 };
