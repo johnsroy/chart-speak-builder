@@ -26,7 +26,12 @@ interface ChartVisualizationProps {
 
 type ChartType = 'bar' | 'line' | 'pie';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'];
+// Rich color palette for beautiful visualizations
+const COLORS = [
+  '#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', 
+  '#00C49F', '#FFBB28', '#FF8042', '#a4de6c', '#d0ed57', 
+  '#83a6ed', '#8dd1e1', '#6970d5', '#a05195', '#d45087'
+];
 
 const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) => {
   const [data, setData] = useState<any[]>([]);
@@ -46,6 +51,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
       setError(null);
       
       try {
+        console.log('Loading dataset with ID:', datasetId);
+        
         // First get the dataset metadata to understand its schema
         const dataset = await dataService.getDataset(datasetId);
         
@@ -55,49 +62,62 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
           return;
         }
         
-        const schema = dataset.column_schema;
+        console.log('Dataset metadata loaded:', dataset);
         
         // Then get the preview data
         const previewData = await dataService.previewDataset(datasetId);
         
         if (!previewData || previewData.length === 0) {
+          console.error('No preview data available for dataset');
           setError("No data available in dataset");
           setLoading(false);
           return;
         }
         
-        console.log("Dataset preview data loaded:", previewData.length, "rows");
+        console.log("Dataset preview data loaded:", previewData.length, "rows", previewData[0]);
         setData(previewData);
         
         const cols = Object.keys(previewData[0]);
         setColumns(cols);
         
+        // Get the column schema from dataset metadata or infer from the data
+        const schema = dataset.column_schema || {};
+        console.log("Column schema:", schema);
+        
         // Auto-select first string/date column for X axis and first number column for Y axis
         // Find suitable X axis (categorical data)
-        const stringColumn = cols.find(col => 
-          schema[col] === 'string' || 
-          schema[col] === 'date' || 
-          typeof previewData[0][col] === 'string'
-        );
+        let foundStringColumn = false;
+        const stringColumn = cols.find(col => {
+          const isString = typeof previewData[0][col] === 'string';
+          const isDate = schema[col] === 'date' || String(previewData[0][col]).match(/^\d{4}-\d{2}-\d{2}/);
+          const isCategory = schema[col] === 'string' || schema[col] === 'text';
+          return isString || isDate || isCategory;
+        });
         
         if (stringColumn) {
           setXAxisField(stringColumn);
+          foundStringColumn = true;
         } else {
           setXAxisField(cols[0]);
         }
         
         // Find suitable Y axis (numerical data)
-        const numberColumn = cols.find(col => 
-          schema[col] === 'number' || 
-          schema[col] === 'integer' || 
-          typeof previewData[0][col] === 'number'
-        );
+        let foundNumberColumn = false;
+        const numberColumn = cols.find(col => {
+          const isNumber = typeof previewData[0][col] === 'number' || !isNaN(Number(previewData[0][col]));
+          const isNumericType = schema[col] === 'number' || schema[col] === 'integer' || schema[col] === 'float';
+          return (isNumber || isNumericType) && (!foundStringColumn || col !== stringColumn);
+        });
         
         if (numberColumn) {
           setYAxisField(numberColumn);
+          foundNumberColumn = true;
         } else {
-          setYAxisField(cols[1] || cols[0]);
+          setYAxisField(cols[foundStringColumn ? 1 : 0] || cols[0]);
         }
+        
+        console.log("Selected X axis:", stringColumn || cols[0]);
+        console.log("Selected Y axis:", numberColumn || (cols[1] || cols[0]));
       } catch (error) {
         console.error('Error loading dataset preview:', error);
         setError(error instanceof Error ? error.message : 'Failed to load dataset preview');
@@ -265,7 +285,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">Chart Type</p>
           <Select value={chartType} onValueChange={(value: ChartType) => setChartType(value)}>
-            <SelectTrigger className="bg-black border-gray-700">
+            <SelectTrigger className="bg-black/50 border-gray-700">
               <SelectValue placeholder="Select chart type" />
             </SelectTrigger>
             <SelectContent>
@@ -279,7 +299,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">X-Axis Field</p>
           <Select value={xAxisField} onValueChange={setXAxisField}>
-            <SelectTrigger className="bg-black border-gray-700">
+            <SelectTrigger className="bg-black/50 border-gray-700">
               <SelectValue placeholder="Select X-axis field" />
             </SelectTrigger>
             <SelectContent>
@@ -293,7 +313,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">Y-Axis Field</p>
           <Select value={yAxisField} onValueChange={setYAxisField}>
-            <SelectTrigger className="bg-black border-gray-700">
+            <SelectTrigger className="bg-black/50 border-gray-700">
               <SelectValue placeholder="Select Y-axis field" />
             </SelectTrigger>
             <SelectContent>

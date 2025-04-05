@@ -197,7 +197,7 @@ const UserDatasetLibrary = () => {
       ) : (
         <div className="space-y-8">
           {recentDataset && (
-            <div>
+            <div className="glass-card p-6 rounded-lg border border-purple-500/30">
               <h3 className="text-xl font-medium mb-4 flex items-center">
                 <Calendar className="mr-2 h-5 w-5" /> Recent Upload
               </h3>
@@ -206,7 +206,7 @@ const UserDatasetLibrary = () => {
           )}
           
           {pastDatasets.length > 0 && (
-            <div>
+            <div className="glass-card p-6 rounded-lg">
               <h3 className="text-xl font-medium mb-4">Previous Uploads</h3>
               <div className="space-y-4">
                 {pastDatasets.map(dataset => renderDatasetCard(dataset))}

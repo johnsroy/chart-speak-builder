@@ -204,37 +204,24 @@ export const nlpService = {
       chartData.length === 10 ? 'Showing the top 10 results.' : ''
     }`;
     
-    // Choose a color scheme based on the chart type
-    const colorScheme = 
-      chartType === 'pie' ? COLOR_SCHEMES.vibrant :
-      chartType === 'line' ? COLOR_SCHEMES.gradient :
-      chartType === 'scatter' ? COLOR_SCHEMES.purple :
-      COLOR_SCHEMES.gradient;
+    // Choose a color scheme based on chart type
+    let colorScheme = COLOR_SCHEMES.vibrant;
+    if (chartType === 'pie') {
+      colorScheme = COLOR_SCHEMES.gradient;
+    } else if (chartType === 'line') {
+      colorScheme = COLOR_SCHEMES.purple;
+    }
     
     return {
       data: chartData,
       explanation,
       chartType,
       chartConfig: {
-        title: this._generateTitle(query, valueColumn, categoryColumn),
+        title: `${valueColumn} by ${categoryColumn}`,
         xAxisTitle: categoryColumn,
         yAxisTitle: valueColumn,
         colorScheme
       }
     };
-  },
-  
-  _generateTitle(query: string, measure: string, dimension: string): string {
-    const queryLower = query.toLowerCase();
-    
-    if (queryLower.includes('how many')) {
-      return `Count of ${dimension}`;
-    } else if (queryLower.includes('average') || queryLower.includes('avg')) {
-      return `Average ${measure} by ${dimension}`;
-    } else if (queryLower.includes('total') || queryLower.includes('sum')) {
-      return `Total ${measure} by ${dimension}`;
-    } else {
-      return `${measure} by ${dimension}`;
-    }
   }
 };

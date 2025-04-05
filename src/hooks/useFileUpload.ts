@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -164,6 +165,18 @@ export const useFileUpload = () => {
         setDatasetName('');
         setDatasetDescription('');
         setSchemaPreview(null);
+        
+        // Show success toast and redirect to library page
+        sonnerToast.success("Upload complete!", {
+          description: "Your dataset was successfully uploaded.",
+          action: {
+            label: "View Dataset",
+            onClick: () => navigate(`/visualize/${dataset.id}`),
+          },
+        });
+        
+        // Redirect to library page
+        navigate('/dashboard');
         
         return dataset;
       } catch (error) {
