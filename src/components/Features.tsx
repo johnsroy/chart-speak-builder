@@ -38,13 +38,19 @@ const Features = () => {
   ];
 
   return (
-    <section className="py-20 px-4" id="features">
+    <section className="py-20 px-4 relative" id="features">
+      {/* Background blur elements */}
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute top-40 right-1/4 w-96 h-96 rounded-full bg-blue-400/20 blur-3xl"></div>
+        <div className="absolute bottom-20 left-1/4 w-80 h-80 rounded-full bg-purple-400/20 blur-3xl"></div>
+      </div>
+
       <div className="container mx-auto">
-        <div className="text-center mb-8">
-          <span className="inline-flex items-center px-3 py-1 rounded-full bg-secondary text-primary mb-4">
+        <div className="text-center mb-16">
+          <span className="inline-flex items-center px-3 py-1 glass-card rounded-full mb-4">
             ✨ Features
           </span>
-          <h2 className="text-3xl md:text-5xl font-bold mb-4 text-gradient">Powerful Features, Simple Interface</h2>
+          <h2 className="text-3xl md:text-5xl font-bold mb-6 text-gradient">Powerful Features, Simple Interface</h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
             GenBI combines the power of AI with intuitive design to make data visualization 
             accessible to everyone in your organization.

@@ -2,10 +2,11 @@
 import React from 'react';
 import Logo from './Logo';
 import { Twitter, Linkedin, Github } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const Footer = () => {
   return (
-    <footer className="bg-white/50 pt-16 pb-8 px-4">
+    <footer className="bg-black/20 backdrop-blur-lg pt-16 pb-8 px-4 border-t border-white/10">
       <div className="container mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
           <div className="md:col-span-1">
@@ -14,13 +15,13 @@ const Footer = () => {
               Transform your data experience with AI-powered visualizations.
             </p>
             <div className="flex space-x-4 mt-4">
-              <a href="#" className="text-gray-400 hover:text-primary">
+              <a href="#" className="text-gray-400 hover:text-primary transition-colors">
                 <Twitter className="h-5 w-5" />
               </a>
-              <a href="#" className="text-gray-400 hover:text-primary">
+              <a href="#" className="text-gray-400 hover:text-primary transition-colors">
                 <Linkedin className="h-5 w-5" />
               </a>
-              <a href="#" className="text-gray-400 hover:text-primary">
+              <a href="#" className="text-gray-400 hover:text-primary transition-colors">
                 <Github className="h-5 w-5" />
               </a>
             </div>
@@ -57,7 +58,7 @@ const Footer = () => {
           </div>
         </div>
         
-        <div className="border-t border-gray-200 pt-8 text-center text-sm text-gray-500">
+        <div className="border-t border-white/10 pt-8 text-center text-sm text-gray-500">
           <p>© 2025 GenBI. All rights reserved.</p>
         </div>
       </div>
@@ -67,9 +68,9 @@ const Footer = () => {
 
 const FooterLink = ({ href, children }: { href: string, children: React.ReactNode }) => (
   <li>
-    <a href={href} className="text-gray-600 hover:text-primary transition-colors">
+    <Link to={href} className="text-gray-400 hover:text-primary transition-colors">
       {children}
-    </a>
+    </Link>
   </li>
 );
 

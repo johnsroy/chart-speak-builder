@@ -22,13 +22,19 @@ const Testimonials = () => {
   ];
 
   return (
-    <section className="py-20 px-4" id="testimonials">
+    <section className="py-24 px-4 relative" id="testimonials">
+      {/* Background blur elements */}
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-purple-400/10 blur-3xl"></div>
+        <div className="absolute bottom-20 right-20 w-72 h-72 rounded-full bg-blue-400/10 blur-3xl"></div>
+      </div>
+    
       <div className="container mx-auto">
         <div className="text-center mb-16">
-          <span className="inline-flex items-center px-3 py-1 rounded-full bg-secondary text-primary mb-4">
+          <span className="inline-flex items-center px-3 py-1 rounded-full glass-card mb-4">
             ⭐ Testimonials
           </span>
-          <h2 className="text-3xl md:text-5xl font-bold mb-4 text-gradient">What Our Customers Say</h2>
+          <h2 className="text-3xl md:text-5xl font-bold mb-6 text-gradient">What Our Customers Say</h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
             Don't just take our word for it. See what data professionals and business leaders have to say about GenBI.
           </p>

@@ -2,6 +2,7 @@
 import React from 'react';
 import BenefitCard from './BenefitCard';
 import { Clock, Users, LineChart, Zap } from 'lucide-react';
+import { Button } from './ui/button';
 
 const Benefits = () => {
   const benefits = [
@@ -28,13 +29,19 @@ const Benefits = () => {
   ];
 
   return (
-    <section className="py-20 px-4 bg-secondary/30" id="benefits">
+    <section className="py-24 px-4 bg-black/5 backdrop-blur-lg relative" id="benefits">
+      {/* Background blur elements */}
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute top-20 right-20 w-96 h-96 rounded-full bg-pink-400/10 blur-3xl"></div>
+        <div className="absolute bottom-20 left-20 w-80 h-80 rounded-full bg-blue-400/10 blur-3xl"></div>
+      </div>
+
       <div className="container mx-auto">
         <div className="text-center mb-16">
-          <span className="inline-flex items-center px-3 py-1 rounded-full bg-secondary text-primary mb-4">
+          <span className="inline-flex items-center px-3 py-1 rounded-full glass-card mb-4">
             ✓ Benefits
           </span>
-          <h2 className="text-3xl md:text-5xl font-bold mb-4 text-gradient">Why Choose GenBI?</h2>
+          <h2 className="text-3xl md:text-5xl font-bold mb-6 text-gradient">Why Choose GenBI?</h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
             Our platform delivers tangible benefits that transform how your organization works with data.
           </p>
@@ -51,7 +58,7 @@ const Benefits = () => {
           ))}
         </div>
 
-        <div className="mt-20 glass-card p-10 text-center">
+        <div className="mt-20 backdrop-blur-lg bg-white/10 border border-white/20 rounded-2xl p-10 text-center">
           <div className="flex justify-center mb-4">
             <div className="flex">
               {Array(5).fill(0).map((_, i) => (
@@ -61,15 +68,15 @@ const Benefits = () => {
               ))}
             </div>
           </div>
-          <p className="text-xl italic text-gray-700 mb-8">
+          <p className="text-xl italic mb-8">
             "GenBI has a 4.9/5 rating across 500+ reviews. Join our community of satisfied customers today."
           </p>
-          <button className="purple-gradient text-white px-6 py-3 rounded-lg inline-flex items-center">
+          <Button className="purple-gradient text-white px-6 py-6 rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-105 text-lg inline-flex items-center gap-2">
             Start Your Free Trial
             <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
-          </button>
+          </Button>
         </div>
       </div>
     </section>
