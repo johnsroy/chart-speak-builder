@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { dataService } from '@/services/dataService';
 
 interface Message {
   id: string;
@@ -34,8 +35,37 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeModel, setActiveModel] = useState<'openai' | 'anthropic'>('openai');
+  const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [dataset, setDataset] = useState(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Fetch dataset and generate recommendations
+  useEffect(() => {
+    const fetchDatasetAndRecommendations = async () => {
+      try {
+        const datasetData = await dataService.getDataset(datasetId);
+        setDataset(datasetData);
+        
+        // Generate dataset-specific recommendations
+        const suggestedQueries = nlpService.getRecommendationsForDataset(datasetData);
+        setRecommendations(suggestedQueries);
+        
+      } catch (error) {
+        console.error('Error fetching dataset details:', error);
+        // Use general recommendations if dataset fetch fails
+        setRecommendations([
+          "Show me a summary of the main trends",
+          "Create a breakdown by category",
+          "Compare the top values in the dataset",
+          "Show the distribution across categories", 
+          "What patterns can you find in this data?"
+        ]);
+      }
+    };
+    
+    fetchDatasetAndRecommendations();
+  }, [datasetId]);
 
   // Welcome message when chat is first opened
   useEffect(() => {
@@ -263,34 +293,16 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       </div>
       
       <div className="flex flex-wrap gap-2 mt-4">
-        <Badge 
-          variant="outline" 
-          className="bg-purple-500/20 border-purple-500/30 cursor-pointer hover:bg-purple-500/30" 
-          onClick={() => setInputText("Show me a breakdown of the data by region")}
-        >
-          Breakdown by region
-        </Badge>
-        <Badge 
-          variant="outline" 
-          className="bg-purple-500/20 border-purple-500/30 cursor-pointer hover:bg-purple-500/30" 
-          onClick={() => setInputText("What's the trend over time?")}
-        >
-          Trend over time
-        </Badge>
-        <Badge 
-          variant="outline" 
-          className="bg-purple-500/20 border-purple-500/30 cursor-pointer hover:bg-purple-500/30" 
-          onClick={() => setInputText("Compare top 5 categories")}
-        >
-          Top 5 comparison
-        </Badge>
-        <Badge 
-          variant="outline" 
-          className="bg-purple-500/20 border-purple-500/30 cursor-pointer hover:bg-purple-500/30" 
-          onClick={() => setInputText("Show outliers in the dataset")}
-        >
-          Find outliers
-        </Badge>
+        {recommendations.map((query, index) => (
+          <Badge 
+            key={index}
+            variant="outline" 
+            className="bg-purple-500/20 border-purple-500/30 cursor-pointer hover:bg-purple-500/30" 
+            onClick={() => setInputText(query)}
+          >
+            {query}
+          </Badge>
+        ))}
       </div>
     </div>
   );

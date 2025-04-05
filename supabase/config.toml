@@ -4,49 +4,30 @@ project_id = "rehadpogugijylybwmoe"
 [api]
 enabled = true
 port = 54321
-schemas = ["public", "storage"]
+schemas = ["public", "storage", "graphql_public"]
 
 [db]
 port = 54322
 
-[db.shadow]
-port = 54320
-
 [studio]
 enabled = true
 port = 54323
-
-[auth]
-enabled = true
-port = 54324
-
-[realtime]
-enabled = true
-port = 54325
-
-[storage]
-enabled = true
-port = 54326
-
-[analytics]
-enabled = false
-port = 54327
+api_url = "http://localhost"
 
 [inbucket]
 enabled = true
-port = 54328
+port = 54324
 
-[functions.admin-setup]
-verify_jwt = false
+[auth]
+enabled = true
+port = 54325
 
+[realtime]
+enabled = true
+
+[storage]
+enabled = true
+
+[functions]
 [functions.ai-query]
-verify_jwt = false
-
-[functions.storage-manager]
-verify_jwt = false
-
-[functions.transform]
-verify_jwt = false
-
-[functions.data-processor]
-verify_jwt = false
+verify_jwt = true

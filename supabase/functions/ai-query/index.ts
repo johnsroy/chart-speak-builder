@@ -1,66 +1,38 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
-// CORS headers for all responses
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
-
-// Define our result interface
-interface QueryResult {
-  data: any[];
-  explanation: string;
-  chartType: string;
-  chartConfig: {
-    title: string;
-    xAxisTitle: string;
-    yAxisTitle: string;
-    colorScheme?: string[];
-  };
-}
-
-// Color schemes for visualizations
-const COLOR_SCHEMES = {
-  purple: ['#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', '#E5DEFF'],
-  gradient: ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'],
-  vibrant: ['#8B5CF6', '#D946EF', '#F97316', '#0EA5E9', '#22C55E'],
-  pastel: ['#FEC6A1', '#FEF7CD', '#F2FCE2', '#D3E4FD', '#FFDEE2'],
-  dark: ['#1A1F2C', '#403E43', '#221F26', '#333333', '#555555']
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
   }
-
+  
   try {
-    // Create a Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") as string;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Parse request payload
+    // Get environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const openaiKey = Deno.env.get('OPENAI_API_KEY');
+    const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
+    
+    // Create Supabase client
+    const supabase = createClient(supabaseUrl, supabaseServiceRole);
+    
+    // Parse request body
     const { datasetId, query, modelType = 'openai' } = await req.json();
-
-    // Validate input
-    if (!datasetId) {
+    
+    // Validate inputs
+    if (!datasetId || !query) {
       return new Response(
-        JSON.stringify({ error: "Dataset ID is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: 'Missing required parameters: datasetId or query' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
-
-    if (!query) {
-      return new Response(
-        JSON.stringify({ error: "Query is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log(`Processing query for dataset ${datasetId}: "${query}" using ${modelType} model`);
 
     // Get dataset information
     const { data: dataset, error: datasetError } = await supabase
@@ -68,375 +40,230 @@ serve(async (req) => {
       .select('*')
       .eq('id', datasetId)
       .single();
-
+      
     if (datasetError) {
-      console.error("Dataset error:", datasetError);
       return new Response(
-        JSON.stringify({ error: `Dataset not found: ${datasetError.message}` }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: `Failed to get dataset: ${datasetError.message}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    console.log("Dataset found:", dataset.name, "Storage path:", dataset.storage_path);
-
-    // Download the dataset file
-    const { data: fileData, error: fileError } = await supabase
-      .storage
+    // Get a preview of the data for analysis
+    const { data: fileData, error: storageError } = await supabase.storage
       .from(dataset.storage_type || 'datasets')
       .download(dataset.storage_path);
-
-    if (fileError) {
-      console.error("File download error:", fileError);
+      
+    if (storageError) {
       return new Response(
-        JSON.stringify({ error: `Failed to download dataset file: ${fileError.message}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: `Failed to download dataset: ${storageError.message}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    // Parse CSV data
-    const text = await fileData.text();
-    console.log("File content sample:", text.substring(0, 200) + "...");
+    // Process the data based on model type
+    let result;
     
-    const parsedData = await parseCSV(text);
-    console.log(`Parsed ${parsedData.length} rows of data`);
-
-    // Process the data with "AI" (rule-based approach for now)
-    const result = await processDataWithAI(parsedData, query, dataset, modelType);
-    console.log("Generated result:", JSON.stringify(result).substring(0, 200) + "...");
-
+    if (modelType === 'anthropic' && anthropicKey) {
+      result = await processWithAnthropic(
+        query, 
+        dataset, 
+        fileData, 
+        anthropicKey
+      );
+    } else {
+      // Default to OpenAI if anthropic not specified or key not available
+      result = await processWithOpenAI(
+        query, 
+        dataset, 
+        fileData, 
+        openaiKey || ''
+      );
+    }
+    
+    // Return the result
     return new Response(
       JSON.stringify(result),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
+    
   } catch (error) {
-    console.error("Error processing AI query:", error);
+    console.error('Error in ai-query function:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error occurred' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });
 
-// Parse CSV data with proper type conversion
-async function parseCSV(text: string) {
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(',').map(h => h.trim());
-  
-  const data = [];
-  for (let i = 1; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
+async function processWithOpenAI(query: string, dataset: any, fileData: any, apiKey: string): Promise<any> {
+  try {
+    // Limit the amount of data to avoid token limits
+    const fileText = await fileData.text();
+    const filePreview = fileText.split('\n').slice(0, 100).join('\n');
     
-    // Handle quoted values with commas inside them
-    const values: string[] = [];
-    let currentValue = '';
-    let inQuotes = false;
-    
-    for (let j = 0; j < lines[i].length; j++) {
-      const char = lines[i][j];
-      
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        values.push(currentValue);
-        currentValue = '';
-      } else {
-        currentValue += char;
-      }
-    }
-    
-    // Add the last value
-    values.push(currentValue);
-    
-    const row: Record<string, any> = {};
-    
-    headers.forEach((header, index) => {
-      const value = index < values.length ? values[index].trim() : '';
-      
-      // Try to intelligently convert types
-      if (value === '') {
-        row[header] = null;
-      } else if (value.toLowerCase() === 'true') {
-        row[header] = true;
-      } else if (value.toLowerCase() === 'false') {
-        row[header] = false;
-      } else if (!isNaN(Date.parse(value)) && 
-                 (value.includes('-') || value.includes('/')) && 
-                 value.length >= 8) {
-        // This looks like a date
-        row[header] = value;
-      } else if (!isNaN(Number(value))) {
-        row[header] = Number(value);
-      } else {
-        row[header] = value.replace(/^"|"$/g, ''); // Remove surrounding quotes
-      }
+    // Prepare the system message based on dataset metadata
+    let systemMessage = `You are an AI data analysis assistant. You'll help analyze a dataset and generate appropriate visualizations based on user queries.
+
+Dataset Information:
+- Name: ${dataset.name}
+- Description: ${dataset.description || 'No description provided'}
+- File: ${dataset.file_name}
+- Columns: ${JSON.stringify(dataset.column_schema)}
+
+When responding, I need you to:
+1. Analyze the data sample I'll provide
+2. Choose the most appropriate visualization based on the user's query
+3. Return a JSON object with this exact structure:
+{
+  "data": [array of processed data points for visualization],
+  "chartType": "bar" | "line" | "pie" | "scatter",
+  "explanation": "Brief explanation of the visualization and insights",
+  "chartConfig": {
+    "title": "Chart title",
+    "xAxisTitle": "X-axis label",
+    "yAxisTitle": "Y-axis label"
+  }
+}
+
+Here's a sample of the data:
+\`\`\`
+${filePreview}
+\`\`\`
+
+Respond with ONLY the requested JSON structure. Do not include any other explanations outside the JSON.`;
+
+    // Call OpenAI API
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: query }
+        ],
+        temperature: 0.5,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' }
+      }),
     });
     
-    data.push(row);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+    }
+    
+    const result = await response.json();
+    const content = result.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error('Empty response from OpenAI');
+    }
+    
+    // Parse the JSON response
+    try {
+      const parsedResult = JSON.parse(content);
+      return parsedResult;
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response:', parseError);
+      console.log('Raw response:', content);
+      throw new Error('Failed to parse AI response');
+    }
+    
+  } catch (error) {
+    console.error('Error processing with OpenAI:', error);
+    throw error;
   }
-  
-  return data;
 }
 
-// Simple AI-inspired data processing for visualization
-async function processDataWithAI(data: any[], query: string, dataset: any, modelType: string): Promise<QueryResult> {
-  // For MVP, we'll use a rules-based approach since we don't have a real AI model integration yet
-  const queryLower = query.toLowerCase();
-  const schema = dataset.column_schema || {};
-  
-  // Find numeric and categorical columns
-  const numericColumns: string[] = [];
-  const categoricalColumns: string[] = [];
-  const dateColumns: string[] = [];
-  
-  // First pass - identify column types from the schema
-  Object.entries(schema).forEach(([column, type]) => {
-    if (typeof type === 'string') {
-      if (type === 'number' || type === 'integer') {
-        numericColumns.push(column);
-      } else if (type === 'date') {
-        dateColumns.push(column);
-        categoricalColumns.push(column);
-      } else {
-        categoricalColumns.push(column);
-      }
-    }
-  });
-  
-  // Second pass - if schema doesn't have enough info, infer from data
-  if (numericColumns.length === 0 || categoricalColumns.length === 0) {
-    if (data.length > 0) {
-      const firstRow = data[0];
-      Object.entries(firstRow).forEach(([column, value]) => {
-        if (typeof value === 'number') {
-          if (!numericColumns.includes(column)) {
-            numericColumns.push(column);
-          }
-        } else {
-          if (!categoricalColumns.includes(column)) {
-            categoricalColumns.push(column);
-            
-            // Check if it looks like a date
-            if (typeof value === 'string' && 
-                !isNaN(Date.parse(value)) && 
-                (value.includes('-') || value.includes('/'))) {
-              dateColumns.push(column);
-            }
-          }
-        }
-      });
-    }
-  }
-  
-  console.log("Identified columns - Numeric:", numericColumns, "Categorical:", categoricalColumns, "Dates:", dateColumns);
-  
-  // Determine chart type from query
-  let chartType = 'bar'; // Default
-  if (queryLower.includes('distribution') || 
-      queryLower.includes('proportion') || 
-      queryLower.includes('percentage') || 
-      queryLower.includes('pie')) {
-    chartType = 'pie';
-  } else if (queryLower.includes('trend') || 
-             queryLower.includes('over time') ||
-             queryLower.includes('line') || 
-             dateColumns.some(col => queryLower.includes(col.toLowerCase()))) {
-    chartType = 'line';
-  } else if (queryLower.includes('scatter') || 
-             queryLower.includes('correlation') || 
-             queryLower.includes('relationship')) {
-    chartType = 'scatter';
-  }
-  
-  // Try to find dimensions and measures from the query
-  let dimensionColumn: string | null = null;
-  let measureColumn: string | null = null;
-  
-  // Look for categorical columns mentioned in the query
-  for (const column of categoricalColumns) {
-    if (queryLower.includes(column.toLowerCase())) {
-      dimensionColumn = column;
-      break;
-    }
-  }
-  
-  // Look for numeric columns mentioned in the query
-  for (const column of numericColumns) {
-    if (queryLower.includes(column.toLowerCase())) {
-      measureColumn = column;
-      break;
-    }
-  }
-  
-  // If no dimension found, pick the most relevant one
-  if (!dimensionColumn) {
-    if (chartType === 'line' && dateColumns.length > 0) {
-      // For line charts, prefer date columns
-      dimensionColumn = dateColumns[0];
-    } else if (categoricalColumns.length > 0) {
-      // Otherwise use the first categorical column
-      dimensionColumn = categoricalColumns[0];
-    } else if (data.length > 0) {
-      // Last resort: use the first non-numeric column
-      const firstRow = data[0];
-      const firstNonNumericColumn = Object.entries(firstRow)
-        .find(([_, value]) => typeof value !== 'number')?.[0];
-      
-      if (firstNonNumericColumn) {
-        dimensionColumn = firstNonNumericColumn;
-      }
-    }
-  }
-  
-  // If no measure found, pick the first numeric column
-  if (!measureColumn && numericColumns.length > 0) {
-    measureColumn = numericColumns[0];
-  } else if (!measureColumn && data.length > 0) {
-    // Last resort: use the first numeric column
-    const firstRow = data[0];
-    const firstNumericColumn = Object.entries(firstRow)
-      .find(([_, value]) => typeof value === 'number')?.[0];
+async function processWithAnthropic(query: string, dataset: any, fileData: any, apiKey: string): Promise<any> {
+  try {
+    // Limit the amount of data to avoid token limits
+    const fileText = await fileData.text();
+    const filePreview = fileText.split('\n').slice(0, 100).join('\n');
     
-    if (firstNumericColumn) {
-      measureColumn = firstNumericColumn;
-    }
+    // Prepare the system message based on dataset metadata
+    let systemMessage = `You are an AI data analysis assistant. You'll help analyze a dataset and generate appropriate visualizations based on user queries.
+
+You'll be working with this dataset:
+- Name: ${dataset.name}
+- Description: ${dataset.description || 'No description provided'}
+- File: ${dataset.file_name}
+- Columns: ${JSON.stringify(dataset.column_schema)}
+
+When responding, I need you to:
+1. Analyze the data sample I'll provide
+2. Choose the most appropriate visualization based on the user's query
+3. Return a JSON object with this exact structure:
+{
+  "data": [array of processed data points for visualization],
+  "chartType": "bar" | "line" | "pie" | "scatter",
+  "explanation": "Brief explanation of the visualization and insights",
+  "chartConfig": {
+    "title": "Chart title",
+    "xAxisTitle": "X-axis label",
+    "yAxisTitle": "Y-axis label"
   }
-  
-  // If we have no measure but have dimension, use count as measure
-  if (!measureColumn && dimensionColumn) {
-    measureColumn = 'count';
-  } else if (!dimensionColumn && !measureColumn && data.length > 0) {
-    // Complete fallback if no dimensions or measures found
-    const columns = Object.keys(data[0]);
-    if (columns.length >= 2) {
-      dimensionColumn = columns[0];
-      measureColumn = columns[1];
-    } else if (columns.length === 1) {
-      dimensionColumn = columns[0];
-      measureColumn = 'count';
-    }
-  }
-  
-  console.log(`Selected dimension: ${dimensionColumn}, measure: ${measureColumn}`);
-  
-  // Process data based on the selected dimension and measure
-  let processedData: any[] = [];
-  
-  if (dimensionColumn && measureColumn) {
-    if (measureColumn === 'count') {
-      // Count by dimension
-      const counts: Record<string, number> = {};
-      data.forEach(row => {
-        const dimValue = String(row[dimensionColumn!] || 'Unknown');
-        counts[dimValue] = (counts[dimValue] || 0) + 1;
-      });
-      
-      processedData = Object.entries(counts).map(([dimension, count]) => ({
-        [dimensionColumn!]: dimension,
-        count: count
-      }));
-      
-      measureColumn = 'count';
-    } else {
-      // Aggregate measure by dimension
-      const aggregates: Record<string, number[]> = {};
-      
-      data.forEach(row => {
-        const dimValue = String(row[dimensionColumn!] || 'Unknown');
-        const measure = Number(row[measureColumn!]) || 0;
-        
-        if (!aggregates[dimValue]) {
-          aggregates[dimValue] = [];
-        }
-        
-        aggregates[dimValue].push(measure);
-      });
-      
-      // Calculate averages and create data points
-      processedData = Object.entries(aggregates).map(([dimension, values]) => {
-        const sum = values.reduce((a, b) => a + b, 0);
-        const avg = sum / values.length;
-        
-        return {
-          [dimensionColumn!]: dimension,
-          [measureColumn!]: avg
-        };
-      });
-    }
-    
-    // Sort the data for better visualization
-    processedData.sort((a, b) => b[measureColumn!] - a[measureColumn!]);
-    
-    // Limit data points for better visualization
-    if (processedData.length > 15) {
-      processedData = processedData.slice(0, 15);
-    }
-  }
-  
-  // Generate explanation based on the data
-  let explanation = '';
-  if (chartType === 'pie') {
-    explanation = `Here's a pie chart showing the distribution of ${measureColumn} by ${dimensionColumn}.`;
-  } else if (chartType === 'line') {
-    explanation = `This line chart shows the trend of ${measureColumn} over ${dimensionColumn}.`;
-  } else if (chartType === 'scatter') {
-    explanation = `This scatter plot shows the relationship between ${dimensionColumn} and ${measureColumn}.`;
-  } else {
-    explanation = `Here's a bar chart comparing ${measureColumn} across different ${dimensionColumn} values.`;
-  }
-  
-  // Add information about data filtering if applicable
-  if (processedData.length === 15 && data.length > 15) {
-    explanation += ` Showing only the top 15 results out of ${data.length} total records for better visualization.`;
-  }
-  
-  // Choose appropriate color scheme based on the chart type
-  let colorScheme;
-  if (chartType === 'pie') {
-    colorScheme = COLOR_SCHEMES.vibrant;
-  } else if (chartType === 'line') {
-    colorScheme = COLOR_SCHEMES.gradient;
-  } else if (chartType === 'scatter') {
-    colorScheme = COLOR_SCHEMES.purple;
-  } else {
-    colorScheme = COLOR_SCHEMES.gradient;
-  }
-  
-  // Generate title based on the query
-  const title = generateTitle(query, measureColumn, dimensionColumn);
-  
-  return {
-    data: processedData,
-    chartType,
-    explanation,
-    chartConfig: {
-      title,
-      xAxisTitle: dimensionColumn as string,
-      yAxisTitle: measureColumn as string,
-      colorScheme
-    }
-  };
 }
 
-// Generate a descriptive title for the chart
-function generateTitle(query: string, measure: string | null, dimension: string | null): string {
-  const queryLower = query.toLowerCase();
-  
-  if (!measure || !dimension) return 'Data Visualization';
-  
-  if (queryLower.includes('how many') || queryLower.includes('count')) {
-    return `Count of ${dimension}`;
-  } else if (queryLower.includes('average') || queryLower.includes('avg') || queryLower.includes('mean')) {
-    return `Average ${measure} by ${dimension}`;
-  } else if (queryLower.includes('total') || queryLower.includes('sum')) {
-    return `Total ${measure} by ${dimension}`;
-  } else if (queryLower.includes('distribution') || queryLower.includes('breakdown')) {
-    return `Distribution of ${measure} across ${dimension}`;
-  } else if (queryLower.includes('compare') || queryLower.includes('comparison')) {
-    return `Comparison of ${measure} by ${dimension}`;
-  } else if (queryLower.includes('trend') || queryLower.includes('over time')) {
-    return `${measure} Trend Over ${dimension}`;
-  } else {
-    return `${measure} by ${dimension}`;
+You must return ONLY the requested JSON structure with no markdown formatting or other text.`;
+
+    // Call Anthropic API
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-3-7-sonnet-20240620',
+        max_tokens: 2000,
+        system: systemMessage,
+        messages: [
+          { role: 'user', 
+            content: `Here's a sample of the data:
+\`\`\`
+${filePreview}
+\`\`\`
+
+Based on this data, please analyze this query: "${query}"
+
+Respond with ONLY the requested JSON structure. No other text or explanations.`
+          }
+        ],
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
+    }
+    
+    const result = await response.json();
+    const content = result.content?.[0]?.text;
+    
+    if (!content) {
+      throw new Error('Empty response from Anthropic');
+    }
+    
+    // Parse the JSON response (removing any potential markdown formatting)
+    try {
+      // Strip any markdown code block formatting that Claude might add
+      const jsonContent = content.replace(/```json\s*|\s*```/g, '').trim();
+      const parsedResult = JSON.parse(jsonContent);
+      return parsedResult;
+    } catch (parseError) {
+      console.error('Failed to parse Anthropic response:', parseError);
+      console.log('Raw response:', content);
+      throw new Error('Failed to parse AI response');
+    }
+    
+  } catch (error) {
+    console.error('Error processing with Anthropic:', error);
+    throw error;
   }
 }

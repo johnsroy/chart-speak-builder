@@ -37,8 +37,15 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
     const keys = Object.keys(firstRow);
     
     // For grouped data, look for keys with aggregation prefixes
-    const measureKey = keys.find(key => key.includes('_')) || keys[1] || keys[0];
-    const dimensionKey = keys.find(key => !key.includes('_')) || keys[0];
+    const measureKey = keys.find(key => 
+      key.includes('_') || 
+      typeof firstRow[key] === 'number'
+    ) || keys[1] || keys[0];
+    
+    const dimensionKey = keys.find(key => 
+      !key.includes('_') && 
+      typeof firstRow[key] !== 'number'
+    ) || keys[0];
     
     return {
       xAxis: chartConfig?.xAxisTitle || dimensionKey,
@@ -56,6 +63,43 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
     </linearGradient>
   );
 
+  // Format label to handle various data types
+  const formatLabel = (value: any) => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'number') return value.toLocaleString();
+    return String(value);
+  };
+
+  // Default formatter for values
+  const defaultFormatter = (value: any) => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'number') {
+      // Handle different magnitudes
+      if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+      if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+      if (value % 1 === 0) return value.toLocaleString();
+      return value.toFixed(2);
+    }
+    return String(value);
+  };
+  
+  // Format tick for axis
+  const formatTick = (value: any) => {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string' && value.length > 15) {
+      return `${value.substring(0, 12)}...`;
+    }
+    return String(value);
+  };
+
+  // Detect if xAxis contains dates
+  const containsDates = data.some(item => {
+    const value = item[xAxis];
+    return typeof value === 'string' && 
+      (value.match(/^\d{4}-\d{2}-\d{2}/) || 
+       value.match(/^\d{2}\/\d{2}\/\d{4}/));
+  });
+
   const renderChart = () => {
     switch(chartType) {
       case 'bar':
@@ -70,15 +114,19 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
                 angle={-45}
                 textAnchor="end"
                 height={80}
+                tickFormatter={formatTick}
                 label={{ value: chartConfig?.xAxisTitle || xAxis, position: 'insideBottom', offset: -10, fill: '#ddd' }}
               />
               <YAxis 
                 tick={{ fill: '#ddd' }}
+                tickFormatter={defaultFormatter}
                 label={{ value: chartConfig?.yAxisTitle || yAxis, angle: -90, position: 'insideLeft', fill: '#ddd' }}
               />
               <Tooltip 
                 contentStyle={{ backgroundColor: '#222', border: '1px solid #444' }}
                 labelStyle={{ color: '#ddd' }}
+                formatter={(value, name) => [defaultFormatter(value), name]}
+                labelFormatter={formatLabel}
                 cursor={{ fill: 'rgba(255,255,255,0.1)' }}
               />
               <Legend wrapperStyle={{ color: '#ddd' }} />
@@ -112,28 +160,31 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
               <XAxis 
                 dataKey={xAxis} 
                 tick={{ fill: '#ddd' }}
-                angle={-45}
-                textAnchor="end"
-                height={80}
+                angle={containsDates ? -45 : 0}
+                textAnchor={containsDates ? "end" : "middle"}
+                height={containsDates ? 80 : 30}
+                tickFormatter={formatTick}
                 label={{ value: chartConfig?.xAxisTitle || xAxis, position: 'insideBottom', offset: -10, fill: '#ddd' }}
               />
               <YAxis 
                 tick={{ fill: '#ddd' }}
+                tickFormatter={defaultFormatter}
                 label={{ value: chartConfig?.yAxisTitle || yAxis, angle: -90, position: 'insideLeft', fill: '#ddd' }}
               />
               <Tooltip 
                 contentStyle={{ backgroundColor: '#222', border: '1px solid #444' }}
                 labelStyle={{ color: '#ddd' }}
+                formatter={(value, name) => [defaultFormatter(value), name]}
+                labelFormatter={formatLabel}
               />
               <Legend wrapperStyle={{ color: '#ddd' }} />
               <Area
                 type="monotone"
                 dataKey={yAxis}
                 stroke="#9b87f5"
-                strokeWidth={2}
+                strokeWidth={0}
                 fillOpacity={1}
                 fill="url(#colorArea)"
-                activeDot={{ r: 8 }}
                 animationDuration={1500}
               />
               <Line 
@@ -164,26 +215,33 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
                 innerRadius={60} // Make it a donut chart for more modern look
                 fill="#8884d8"
                 paddingAngle={2} // Add spacing between sections
-                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }) => `${formatTick(name)}: ${(percent * 100).toFixed(0)}%`}
                 labelLine={false} // Remove label lines for cleaner look
                 animationDuration={1500}
                 animationBegin={0}
                 animationEasing="ease-out"
               >
                 {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="rgba(0,0,0,0.2)" strokeWidth={1} />
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={COLORS[index % COLORS.length]} 
+                    stroke="rgba(0,0,0,0.2)" 
+                    strokeWidth={1} 
+                  />
                 ))}
               </Pie>
               <Tooltip 
                 contentStyle={{ backgroundColor: '#222', border: '1px solid #444' }}
                 labelStyle={{ color: '#ddd' }}
+                formatter={(value, name) => [defaultFormatter(value), name]}
+                labelFormatter={formatLabel}
               />
               <Legend 
                 wrapperStyle={{ color: '#ddd' }}
                 layout="horizontal" 
                 verticalAlign="bottom"
                 align="center"
-                formatter={(value) => <span className="text-sm">{value}</span>}
+                formatter={(value) => <span className="text-sm">{formatTick(value)}</span>}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -204,17 +262,20 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
                 dataKey={xAxis} 
                 name={chartConfig?.xAxisTitle || xAxis}
                 tick={{ fill: '#ddd' }}
+                tickFormatter={defaultFormatter}
                 label={{ value: chartConfig?.xAxisTitle || xAxis, position: 'insideBottom', fill: '#ddd' }}
               />
               <YAxis 
                 dataKey={yAxis}
                 name={chartConfig?.yAxisTitle || yAxis}
                 tick={{ fill: '#ddd' }}
+                tickFormatter={defaultFormatter}
                 label={{ value: chartConfig?.yAxisTitle || yAxis, angle: -90, position: 'insideLeft', fill: '#ddd' }}
               />
               <Tooltip 
                 contentStyle={{ backgroundColor: '#222', border: '1px solid #444' }}
                 labelStyle={{ color: '#ddd' }}
+                formatter={(value, name) => [defaultFormatter(value), name]}
                 cursor={{ strokeDasharray: '3 3' }}
               />
               <Legend wrapperStyle={{ color: '#ddd' }} />
@@ -254,7 +315,11 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
                 {data.slice(0, 100).map((row, rowIndex) => (
                   <TableRow key={rowIndex}>
                     {columns.map((column, colIndex) => (
-                      <TableCell key={`${rowIndex}-${colIndex}`}>{row[column]}</TableCell>
+                      <TableCell key={`${rowIndex}-${colIndex}`}>
+                        {typeof row[column] === 'number' ? 
+                          defaultFormatter(row[column]) : 
+                          formatLabel(row[column])}
+                      </TableCell>
                     ))}
                   </TableRow>
                 ))}
