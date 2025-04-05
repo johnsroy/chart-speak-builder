@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, Database, Library, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,7 +18,7 @@ const UploadArea = () => {
   const [selectedStorage, setSelectedStorage] = useState<string | null>(null);
   const [showStorageDialog, setShowStorageDialog] = useState(false);
   const [bucketsVerified, setBucketsVerified] = useState<boolean | null>(null);
-
+  
   const navigate = useNavigate();
   const { isAuthenticated, user, session, adminLogin } = useAuth();
   
