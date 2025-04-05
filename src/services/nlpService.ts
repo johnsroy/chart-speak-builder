@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 
 export interface QueryResult {
@@ -81,6 +82,17 @@ export const nlpService = {
   },
   
   /**
+   * Process a query (alias for processNaturalLanguageQuery for backward compatibility)
+   */
+  processQuery: async (
+    query: string,
+    datasetId: string,
+    modelType: 'openai' | 'anthropic' = 'openai'
+  ): Promise<QueryResult> => {
+    return nlpService.processNaturalLanguageQuery(datasetId, query, modelType);
+  },
+  
+  /**
    * Generates chart recommendations based on a dataset.
    * @param datasetId The ID of the dataset.
    * @returns A promise that resolves with an array of chart recommendations.
@@ -127,6 +139,74 @@ export const nlpService = {
         }
       ];
     }
+  },
+
+  /**
+   * Generate recommendations for a specific dataset
+   * @param dataset The dataset object
+   * @returns Array of query string recommendations
+   */
+  getRecommendationsForDataset: (dataset: any): string[] => {
+    if (!dataset || !dataset.column_schema) {
+      return [
+        "Show me a summary of this dataset",
+        "What are the key insights from this data?",
+        "Create a visualization of the main trends",
+        "Compare the top values in this dataset",
+        "Find patterns in this dataset"
+      ];
+    }
+    
+    const columns = Object.keys(dataset.column_schema);
+    const recommendations: string[] = [];
+    
+    // Find numeric and categorical columns
+    const numericColumns = columns.filter(col => 
+      dataset.column_schema[col] === 'number' || 
+      dataset.column_schema[col] === 'integer'
+    );
+    
+    const categoricalColumns = columns.filter(col => 
+      dataset.column_schema[col] === 'string' ||
+      col.toLowerCase().includes('category') ||
+      col.toLowerCase().includes('type')
+    );
+    
+    const dateColumns = columns.filter(col => 
+      dataset.column_schema[col] === 'date' ||
+      col.toLowerCase().includes('date') ||
+      col.toLowerCase().includes('time') ||
+      col.toLowerCase().includes('year')
+    );
+    
+    // Generate data-specific recommendations
+    if (categoricalColumns.length > 0 && numericColumns.length > 0) {
+      recommendations.push(`Show me a breakdown of ${numericColumns[0]} by ${categoricalColumns[0]}`);
+      recommendations.push(`What is the distribution of ${categoricalColumns[0]}?`);
+    }
+    
+    if (dateColumns.length > 0 && numericColumns.length > 0) {
+      recommendations.push(`Show the trend of ${numericColumns[0]} over time`);
+      recommendations.push(`How has ${numericColumns[0]} changed over ${dateColumns[0]}?`);
+    }
+    
+    if (numericColumns.length > 1) {
+      recommendations.push(`Is there a correlation between ${numericColumns[0]} and ${numericColumns[1]}?`);
+    }
+    
+    // Add some general recommendations
+    recommendations.push(`What are the key insights from this dataset?`);
+    recommendations.push(`Show me the most interesting patterns in this data`);
+    
+    // Ensure we have at least 5 recommendations
+    if (recommendations.length < 5) {
+      recommendations.push(`Summarize this dataset visually`);
+      recommendations.push(`What are the outliers in this dataset?`);
+      recommendations.push(`Show me the most important relationships in this data`);
+    }
+    
+    // Return the first 5 recommendations (or all if less than 5)
+    return recommendations.slice(0, 5);
   }
 };
 

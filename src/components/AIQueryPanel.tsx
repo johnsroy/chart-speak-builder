@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +78,7 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
     setIsLoading(true);
     try {
       console.log(`Processing query for dataset: ${datasetId} using model: ${activeModel}`);
+      // Use processQuery method from nlpService
       const result = await nlpService.processQuery(query, datasetId, activeModel);
       onQueryResult(result);
       toast({
