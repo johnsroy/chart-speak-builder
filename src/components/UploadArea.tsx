@@ -70,8 +70,7 @@ const UploadArea = () => {
       // Always ensure we have admin authentication before upload
       if (!isAuthenticated || !user) {
         console.log("Performing admin login before upload");
-        const authResult = await adminLogin();
-        console.log("Admin login result before upload:", authResult);
+        await adminLogin();
         
         // Give a moment for auth state to update
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -84,7 +83,9 @@ const UploadArea = () => {
         });
       }
       
-      await handleUpload(true);
+      // Pass the actual UUID from user.id, not the test-admin-id string
+      const userId = user?.id || null;
+      await handleUpload(true, userId);
       loadDatasets();
     } catch (error) {
       console.error("Upload failed after admin login:", error);
@@ -94,14 +95,15 @@ const UploadArea = () => {
   const handleRetryUpload = async () => {
     // Always ensure we have admin authentication before retry
     if (!isAuthenticated || !user) {
-      const authResult = await adminLogin();
-      console.log("Admin login result before retry:", authResult);
+      await adminLogin();
       
       // Give a moment for auth state to update
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     
-    retryUpload(true);
+    // Pass the actual UUID from user.id, not the test-admin-id string
+    const userId = user?.id || null;
+    retryUpload(true, userId);
   };
 
   return (

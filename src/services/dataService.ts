@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 import { toast } from '@/hooks/use-toast';
@@ -52,18 +51,25 @@ export const dataService = {
   },
   
   // Upload a dataset from a CSV file
-  async uploadDataset(file: File, name: string, description?: string, user?: User | null, userSession?: Session | null) {
+  async uploadDataset(file: File, name: string, description?: string, user?: User | null, userSession?: Session | null, providedUserId?: string | null) {
     try {
       console.log("Starting dataset upload process");
       
       // First check if user is authenticated
       let userId = null;
       
-      // Use provided user and session if available
-      if (user && userSession) {
+      // Use provided explicit userId first (most reliable)
+      if (providedUserId) {
+        console.log("Using explicitly provided userId:", providedUserId);
+        userId = providedUserId;
+      }
+      // Then try user from auth if available
+      else if (user && user.id) {
         console.log("Using provided user authentication:", user.id);
         userId = user.id;
-      } else {
+      } 
+      // Finally, fall back to checking current session
+      else {
         // Fall back to Supabase session check
         const { data: { session } } = await supabase.auth.getSession();
         

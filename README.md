@@ -1,73 +1,151 @@
-# Welcome to your Lovable project
 
-## Project info
+# Data Visualization Platform
 
-**URL**: https://lovable.dev/projects/ca652665-7295-45da-89ad-95758a7c7cb4
+A powerful data visualization platform for uploading, analyzing, and visualizing datasets with advanced AI capabilities.
 
-## How can I edit this code?
+## Project Overview
 
-There are several ways of editing your application.
+This platform allows users to upload datasets (CSV, Excel, JSON), analyze them, and create interactive visualizations. Built with modern web technologies and integrating AI-powered features, it streamlines the data analysis process for both technical and non-technical users.
 
-**Use Lovable**
+## Features
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/ca652665-7295-45da-89ad-95758a7c7cb4) and start prompting.
+- **Data Upload**: Upload CSV, Excel, or JSON files with automatic schema inference
+- **Large File Support**: Handles large files with chunked uploading and progress tracking
+- **Cloud Storage Integration**: Connect to AWS S3, Azure Storage, Google Cloud Storage, or Dropbox
+- **Interactive Data Visualization**: Create charts and graphs using Recharts and shadcn/ui
+- **AI-Powered Analytics**: Generate insights using OpenAI and Anthropic AI models
+- **Authentication**: Secure user authentication via Supabase
+- **Responsive Design**: Fully responsive UI that works on desktop and mobile devices
 
-Changes made via Lovable will be committed automatically to this repo.
+## Technology Stack
 
-**Use your preferred IDE**
+### Frontend
+- **React**: UI library for building component-based interfaces
+- **TypeScript**: For type safety and improved developer experience
+- **Vite**: For fast development and optimized builds
+- **Tailwind CSS**: For utility-first styling
+- **shadcn/ui**: For high-quality UI components
+- **Recharts**: For data visualization components
+- **Tanstack Query**: For efficient data fetching and state management
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Backend (Supabase)
+- **PostgreSQL**: For database storage
+- **Supabase Storage**: For file storage
+- **Supabase Auth**: For user authentication
+- **Row Level Security (RLS)**: For data protection
+- **Edge Functions**: For serverless API endpoints
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### AI Integration
+- **OpenAI API**: For natural language processing and data analysis
+- **Anthropic API**: For conversational AI and alternative NLP capabilities
 
-Follow these steps:
+## Database Schema
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### Tables
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+#### datasets
+- **id**: UUID (Primary Key)
+- **name**: Text
+- **description**: Text (optional)
+- **user_id**: UUID (Foreign Key to auth.users)
+- **file_name**: Text
+- **file_size**: Integer
+- **row_count**: Integer
+- **column_schema**: JSONB (column name -> data type)
+- **created_at**: Timestamp with timezone
+- **updated_at**: Timestamp with timezone
+- **storage_type**: Text ('supabase', 's3', 'azure', 'gcs', 'dropbox')
+- **storage_path**: Text
 
-# Step 3: Install the necessary dependencies.
-npm i
+#### queries
+- **id**: UUID (Primary Key)
+- **name**: Text
+- **query_text**: Text
+- **query_type**: Text
+- **query_config**: JSONB
+- **dataset_id**: UUID (Foreign Key to datasets)
+- **user_id**: UUID (Foreign Key to auth.users)
+- **created_at**: Timestamp with timezone
+- **updated_at**: Timestamp with timezone
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+#### visualizations
+- **id**: UUID (Primary Key)
+- **name**: Text
+- **chart_type**: Text
+- **chart_config**: JSONB
+- **query_id**: UUID (Foreign Key to queries)
+- **user_id**: UUID (Foreign Key to auth.users)
+- **created_at**: Timestamp with timezone
+- **updated_at**: Timestamp with timezone
 
-**Edit a file directly in GitHub**
+#### storage_connections
+- **id**: UUID (Primary Key)
+- **user_id**: UUID (Foreign Key to auth.users)
+- **storage_type**: Text ('s3', 'azure', 'gcs', 'dropbox')
+- **connection_details**: JSONB
+- **created_at**: Timestamp with timezone
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Storage Buckets
 
-**Use GitHub Codespaces**
+- **datasets**: Stores uploaded dataset files
+- **secure**: Stores sensitive credentials for cloud storage connections
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Authentication
 
-## What technologies are used for this project?
+The platform uses Supabase Authentication with:
+- Email/password authentication
+- JWT token-based sessions
+- Row Level Security policies ensuring users can only access their own data
+- Admin user capabilities for system management
 
-This project is built with:
+## AI Features
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Natural Language Querying
+- Transform natural language questions into SQL or data queries
+- Support for both OpenAI and Anthropic models
+- Query history and saved queries
 
-## How can I deploy this project?
+### Data Insights
+- Automatic pattern detection and insights generation
+- Anomaly detection in datasets
+- Smart visualization recommendations
 
-Simply open [Lovable](https://lovable.dev/projects/ca652665-7295-45da-89ad-95758a7c7cb4) and click on Share -> Publish.
+## File Upload & Processing
 
-## Can I connect a custom domain to my Lovable project?
+The platform handles file uploads with a robust approach:
+- Chunked uploads for large files (>5MB)
+- Automatic retries with exponential backoff
+- Progress tracking and cancelation
+- Server-side validation and schema inference
 
-Yes it is!
+## Getting Started
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+1. Clone the repository
+2. Install dependencies with `npm install`
+3. Run development server with `npm run dev`
+4. Open http://localhost:5173 in your browser
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Environment Setup
+
+The project connects to Supabase for backend functionality. The following environment variables are used:
+
+- Supabase URL: https://rehadpogugijylybwmoe.supabase.co
+- Supabase public key (automatically configured)
+- OpenAI API key (for AI features)
+- Anthropic API key (for alternative AI model)
+
+## Deployment
+
+The application can be deployed using the Lovable publishing feature, which provides:
+- Automatic builds and deployments
+- Custom domain support
+- SSL certificate management
+- CDN and edge caching
+
+## License
+
+This project is MIT licensed.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

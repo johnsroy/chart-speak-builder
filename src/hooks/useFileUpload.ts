@@ -147,7 +147,7 @@ export const useFileUpload = () => {
     return progressInterval;
   };
 
-  const handleUpload = async (isAuthenticated: boolean) => {
+  const handleUpload = async (isAuthenticated: boolean, userId?: string | null) => {
     // Ensure we have authentication
     if (!isAuthenticated && !user) {
       toast({
@@ -182,7 +182,7 @@ export const useFileUpload = () => {
     const progressInterval = simulateProgress();
     
     try {
-      console.log("Starting upload with auth status:", isAuthenticated, "User:", user?.id);
+      console.log("Starting upload with auth status:", isAuthenticated, "User:", user?.id, "Provided userId:", userId);
       
       // Explicitly pass the current user and session to ensure authentication is recognized
       const dataset = await dataService.uploadDataset(
@@ -190,7 +190,8 @@ export const useFileUpload = () => {
         datasetName, 
         datasetDescription || undefined,
         user,  // Make sure to pass the current user
-        session // Make sure to pass the current session
+        session, // Make sure to pass the current session
+        userId  // Pass the actual UUID, not test-admin-id
       );
       
       // Set progress to 100% when complete
@@ -226,9 +227,9 @@ export const useFileUpload = () => {
     }
   };
 
-  const retryUpload = (isAuthenticated: boolean) => {
+  const retryUpload = (isAuthenticated: boolean, userId?: string | null) => {
     setUploadError(null);
-    handleUpload(isAuthenticated);
+    handleUpload(isAuthenticated, userId);
   };
 
   return {
