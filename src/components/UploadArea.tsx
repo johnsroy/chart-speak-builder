@@ -17,7 +17,7 @@ const UploadArea = () => {
   const [showStorageDialog, setShowStorageDialog] = useState(false);
   
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, session, adminLogin } = useAuth();
   
   const {
     dragActive,
@@ -50,15 +50,25 @@ const UploadArea = () => {
 
   const handleUploadClick = async () => {
     try {
-      await handleUpload(isAuthenticated);
+      // If not authenticated, try admin login first
+      if (!isAuthenticated) {
+        await adminLogin();
+      }
+      
+      await handleUpload(true);
       loadDatasets(); // Refresh the datasets list after successful upload
     } catch (error) {
       // Error already handled in useFileUpload
     }
   };
 
-  const handleRetryUpload = () => {
-    retryUpload(isAuthenticated);
+  const handleRetryUpload = async () => {
+    // If not authenticated, try admin login first
+    if (!isAuthenticated) {
+      await adminLogin();
+    }
+    
+    retryUpload(true);
   };
 
   return (
@@ -73,7 +83,14 @@ const UploadArea = () => {
       {!isAuthenticated && (
         <div className="bg-yellow-500/20 border border-yellow-500/50 p-4 rounded-lg mb-8 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-yellow-500" />
-          <p>You need to be logged in to upload and visualize data. Please <Button variant="link" className="p-0 text-primary" onClick={() => navigate('/login')}>log in</Button> to continue.</p>
+          <div>
+            <p>You need to be logged in to upload and visualize data.</p>
+            <div className="mt-2 flex gap-2">
+              <Button variant="link" className="p-0 text-primary" onClick={() => navigate('/login')}>Log in</Button>
+              <span>or</span>
+              <Button variant="link" className="p-0 text-primary" onClick={adminLogin}>Use Admin Account</Button>
+            </div>
+          </div>
         </div>
       )}
       

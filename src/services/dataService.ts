@@ -1,6 +1,9 @@
+
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 import { toast } from '@/hooks/use-toast';
+import { User } from '@/services/authService';
+import { Session } from '@supabase/supabase-js';
 
 export interface Dataset {
   id: string;
@@ -46,19 +49,29 @@ export const dataService = {
   },
   
   // Upload a dataset from a CSV file
-  async uploadDataset(file: File, name: string, description?: string) {
+  async uploadDataset(file: File, name: string, description?: string, user?: User | null, userSession?: Session | null) {
     try {
       console.log("Starting dataset upload process");
       
       // First check if user is authenticated
-      const { data: { session } } = await supabase.auth.getSession();
+      let userId = null;
       
-      if (!session || !session.user) {
-        console.error("No authenticated user found during dataset upload");
-        throw new Error('User not authenticated');
+      // Use provided user and session if available
+      if (user && userSession) {
+        console.log("Using provided user authentication:", user.id);
+        userId = user.id;
+      } else {
+        // Fall back to Supabase session check
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session || !session.user) {
+          console.error("No authenticated user found during dataset upload");
+          throw new Error('User not authenticated');
+        }
+        
+        userId = session.user.id;
+        console.log("User authenticated for upload:", userId);
       }
-      
-      console.log("User authenticated for upload:", session.user.id);
       
       // Parse the CSV to get schema and row count
       const parseResult = await new Promise<Papa.ParseResult<any>>((resolve, reject) => {
@@ -86,7 +99,7 @@ export const dataService = {
       const uniqueFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
       
       // Store the file in Supabase storage with retry logic
-      const filePath = `${session.user.id}/${uniqueFileName}`;
+      const filePath = `${userId}/${uniqueFileName}`;
       
       // Attempt to upload with retry logic
       let uploadResult = null;
@@ -139,7 +152,7 @@ export const dataService = {
       const { data, error } = await supabase.from('datasets').insert({
         name,
         description,
-        user_id: session.user.id,
+        user_id: userId,
         file_name: file.name,
         file_size: file.size,
         row_count: estimatedRowCount,

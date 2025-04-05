@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
 import { dataService } from '@/services/dataService';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
 
 export const useFileUpload = () => {
   const [dragActive, setDragActive] = useState(false);
@@ -19,6 +20,7 @@ export const useFileUpload = () => {
   
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user, session } = useAuth();
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -121,7 +123,7 @@ export const useFileUpload = () => {
   };
 
   const handleUpload = async (isAuthenticated: boolean) => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !user) {
       toast({
         title: "Authentication required",
         description: "Please log in to upload datasets",
@@ -154,7 +156,8 @@ export const useFileUpload = () => {
     const progressInterval = simulateProgress();
     
     try {
-      const dataset = await dataService.uploadDataset(selectedFile, datasetName, datasetDescription || undefined);
+      // Explicitly pass the user and session to ensure authentication state is properly recognized
+      const dataset = await dataService.uploadDataset(selectedFile, datasetName, datasetDescription || undefined, user, session);
       
       // Set progress to 100% when complete
       setUploadProgress(100);

@@ -89,6 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(result?.session || null);
       // The admin login function now guarantees success by using a direct bypass if needed
       setUser(result?.user || await authService.getCurrentUser());
+      return result;
     } finally {
       setIsLoading(false);
     }
