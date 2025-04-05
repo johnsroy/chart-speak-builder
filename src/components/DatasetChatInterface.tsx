@@ -202,7 +202,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       </Card>
       
       <div className="mt-4 flex items-center gap-2">
-        <Input value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={handleKeyPress} placeholder="Ask a question about your dataset..." disabled={isLoading} className="flex-1" />
+        <Input value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={handleKeyPress} placeholder="Ask a question about your dataset..." disabled={isLoading} className="flex-1 bg-gray-950" />
         <Button onClick={handleSendMessage} disabled={isLoading || !inputText.trim()} className="purple-gradient">
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
