@@ -1,17 +1,20 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, MessageSquare, Brain, BrainCircuit } from "lucide-react";
+import { Loader2, MessageSquare, Brain, BrainCircuit, Database } from "lucide-react";
 import { nlpService, QueryResult } from '@/services/nlpService';
 import { useToast } from '@/hooks/use-toast';
 import { dataService } from '@/services/dataService';
+
 interface AIQueryPanelProps {
   datasetId: string;
   onQueryResult: (result: QueryResult) => void;
 }
+
 const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
   datasetId,
   onQueryResult
@@ -20,22 +23,40 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [activeModel, setActiveModel] = useState<'openai' | 'anthropic'>('openai');
   const [datasetSchema, setDatasetSchema] = useState<any>(null);
-  const {
-    toast
-  } = useToast();
+  const [isLoadingSchema, setIsLoadingSchema] = useState(true);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+  
+  const { toast } = useToast();
+
   useEffect(() => {
     const loadDatasetInfo = async () => {
+      if (!datasetId) return;
+      
+      setIsLoadingSchema(true);
+      setSchemaError(null);
+      
       try {
+        console.log(`Loading schema for dataset: ${datasetId}`);
         const dataset = await dataService.getDataset(datasetId);
+        
         if (dataset && dataset.column_schema) {
+          console.log("Dataset schema loaded:", dataset.column_schema);
           setDatasetSchema(dataset.column_schema);
+        } else {
+          console.warn("Dataset found but schema is missing:", dataset);
+          setSchemaError("Dataset schema is unavailable");
         }
       } catch (error) {
         console.error('Error loading dataset schema:', error);
+        setSchemaError(`Failed to load dataset schema: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+        setIsLoadingSchema(false);
       }
     };
+    
     loadDatasetInfo();
   }, [datasetId]);
+
   const handleQuerySubmit = async () => {
     if (!query.trim()) {
       toast({
@@ -45,6 +66,16 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
       });
       return;
     }
+    
+    if (schemaError) {
+      toast({
+        title: "Dataset issue",
+        description: "There was a problem with your dataset. Please try uploading it again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       console.log(`Processing query for dataset: ${datasetId} using model: ${activeModel}`);
@@ -65,6 +96,7 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
       setIsLoading(false);
     }
   };
+
   const generateSuggestedQuery = () => {
     if (!datasetSchema) return "Tell me about this dataset";
     const columns = Object.keys(datasetSchema);
@@ -87,6 +119,39 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
       return "Summarize this dataset";
     }
   };
+
+  // Display error state if schema loading fails
+  if (schemaError && !isLoadingSchema) {
+    return (
+      <Card className="glass-card">
+        <CardHeader>
+          <CardTitle className="text-xl font-medium text-pink-300">Dataset Error</CardTitle>
+          <CardDescription className="text-purple-50">
+            There was a problem loading your dataset
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert className="bg-red-900/30 border-red-500/40">
+            <Database className="h-4 w-4 text-red-400" />
+            <AlertTitle>Dataset Error</AlertTitle>
+            <AlertDescription>
+              {schemaError}. Please try refreshing the page or uploading your dataset again.
+            </AlertDescription>
+          </Alert>
+          <div className="mt-4 flex justify-center">
+            <Button 
+              variant="outline" 
+              onClick={() => window.location.reload()} 
+              className="bg-red-900/20 hover:bg-red-900/30 text-white border-red-500/40"
+            >
+              Retry Loading Dataset
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return <Card className="glass-card">
       <CardHeader>
         <CardTitle className="text-xl font-medium text-pink-300">Ask Your Data</CardTitle>
@@ -128,18 +193,39 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
 
         <div className="flex items-center space-x-2">
           <div className="relative flex-grow">
-            <Input type="text" placeholder={generateSuggestedQuery()} value={query} onChange={e => setQuery(e.target.value)} className="pr-10" onKeyPress={e => {
-            if (e.key === 'Enter') {
-              handleQuerySubmit();
-            }
-          }} />
+            <Input 
+              type="text" 
+              placeholder={isLoadingSchema ? "Loading dataset..." : generateSuggestedQuery()} 
+              value={query} 
+              onChange={e => setQuery(e.target.value)} 
+              className="pr-10 bg-gray-950/50 border-purple-500/30 focus:border-purple-500" 
+              disabled={isLoading || isLoadingSchema}
+              onKeyPress={e => {
+                if (e.key === 'Enter') {
+                  handleQuerySubmit();
+                }
+              }}
+            />
             <MessageSquare className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           </div>
-          <Button className="purple-gradient" onClick={handleQuerySubmit} disabled={isLoading}>
-            {isLoading ? <>
+          <Button 
+            className="purple-gradient" 
+            onClick={handleQuerySubmit} 
+            disabled={isLoading || isLoadingSchema}
+          >
+            {isLoading ? (
+              <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Processing...
-              </> : 'Generate'}
+              </>
+            ) : isLoadingSchema ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              'Generate'
+            )}
           </Button>
         </div>
       </CardContent>

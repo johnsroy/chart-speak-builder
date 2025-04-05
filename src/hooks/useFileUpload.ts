@@ -175,11 +175,14 @@ export const useFileUpload = () => {
           },
         });
         
-        // Automatically redirect to dashboard after successful upload
-        // Delay the navigation slightly to ensure toast is seen
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 500);
+        // Dispatch a custom event for upload success that other components can listen for
+        const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
+          detail: { datasetId: dataset.id }
+        });
+        window.dispatchEvent(uploadSuccessEvent);
+        
+        // Automatically navigate to dashboard after successful upload
+        navigate('/dashboard');
         
         return dataset;
       } catch (error) {
