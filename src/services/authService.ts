@@ -1,11 +1,16 @@
-
 import { supabase } from '@/lib/supabase';
+import { Session } from '@supabase/supabase-js';
 
 export interface User {
   id: string;
   email: string;
   role: 'admin' | 'user';
   name?: string;
+}
+
+export interface AuthResult {
+  user: User;
+  session: Session;
 }
 
 export const adminCredentials = {
@@ -46,7 +51,7 @@ export const authService = {
   },
 
   // Log in an existing user
-  async login(email: string, password: string) {
+  async login(email: string, password: string): Promise<AuthResult> {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -57,7 +62,19 @@ export const authService = {
         console.error('Error logging in:', error);
         throw error;
       }
-      return data;
+      
+      if (!data.session || !data.user) {
+        throw new Error('Login successful but no session or user returned');
+      }
+      
+      const user: User = {
+        id: data.user.id,
+        email: data.user.email!,
+        role: (data.user.user_metadata?.role as 'admin' | 'user') || 'user',
+        name: data.user.user_metadata?.name,
+      };
+      
+      return { user, session: data.session };
     } catch (error) {
       console.error('Error logging in:', error);
       throw error;
@@ -65,7 +82,7 @@ export const authService = {
   },
 
   // Admin bypass login - guaranteed to work without Supabase
-  async adminLogin() {
+  async adminLogin(): Promise<AuthResult> {
     try {
       // First try to use the regular Supabase auth if it's working
       try {
@@ -78,30 +95,40 @@ export const authService = {
           return result;
         }
       } catch (error) {
-        console.log("Standard admin login failed, using direct bypass instead");
+        console.log("Standard admin login failed, using direct bypass instead:", error);
       }
       
       // If the above fails, use direct bypass
       console.log("Using direct admin bypass login");
       
-      // Manually set the session in localStorage to simulate being logged in
-      const session = {
-        user: testAdminUser,
+      // Create a fake session that resembles a Supabase session
+      const fakeSession: Session = {
         access_token: 'fake-admin-token',
+        refresh_token: 'fake-refresh-token',
+        user: {
+          id: testAdminUser.id,
+          app_metadata: { provider: 'email' },
+          user_metadata: { role: 'admin', name: 'Admin User' },
+          aud: 'authenticated',
+          email: testAdminUser.email,
+        },
+        expires_in: 3600,
         expires_at: new Date().getTime() + 3600000, // 1 hour from now
       };
       
+      // Manually set the session in localStorage to simulate being logged in
       localStorage.setItem('supabase.auth.token', JSON.stringify({
-        currentSession: session,
-        expiresAt: session.expires_at
+        currentSession: fakeSession,
+        expiresAt: fakeSession.expires_at
       }));
       
-      // Also update the Supabase auth state for consistency
-      await supabase.auth.updateUser({
-        data: { role: 'admin', name: 'Admin User' }
+      // Also update the Supabase auth state
+      await supabase.auth.setSession({
+        access_token: fakeSession.access_token,
+        refresh_token: fakeSession.refresh_token
       });
       
-      return { user: testAdminUser, session };
+      return { user: testAdminUser, session: fakeSession };
     } catch (error) {
       console.error('Error during admin login:', error);
       throw error;
@@ -113,7 +140,7 @@ export const authService = {
     try {
       // Check if we're using the direct admin bypass
       const authToken = localStorage.getItem('supabase.auth.token');
-      if (authToken && JSON.parse(authToken).currentSession?.user?.id === testAdminUser.id) {
+      if (authToken && authToken.includes(testAdminUser.id)) {
         // Clear the manually set session
         localStorage.removeItem('supabase.auth.token');
         return;
@@ -133,15 +160,8 @@ export const authService = {
     try {
       // Check if we're using the direct admin bypass
       const authToken = localStorage.getItem('supabase.auth.token');
-      if (authToken) {
-        try {
-          const parsed = JSON.parse(authToken);
-          if (parsed.currentSession?.user?.id === testAdminUser.id) {
-            return testAdminUser;
-          }
-        } catch (e) {
-          // Invalid JSON, proceed with normal flow
-        }
+      if (authToken && authToken.includes(testAdminUser.id)) {
+        return testAdminUser;
       }
       
       // Otherwise, use the regular Supabase getCurrentUser

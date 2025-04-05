@@ -19,6 +19,8 @@ export const dataService = {
   // Upload a dataset from a CSV file
   async uploadDataset(file: File, name: string, description?: string) {
     try {
+      console.log("Starting dataset upload process");
+      
       // Parse the CSV to get schema and row count
       const parseResult = await new Promise<Papa.ParseResult<any>>((resolve, reject) => {
         Papa.parse(file, {
@@ -31,25 +33,35 @@ export const dataService = {
 
       // Infer schema types from the parsed data
       const columnSchema = this._inferSchema(parseResult.data);
-      const user = await supabase.auth.getUser();
       
-      if (!user.data.user) {
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session || !session.user) {
+        console.error("No authenticated user found during dataset upload");
         throw new Error('User not authenticated');
       }
+      
+      console.log("User authenticated for upload:", session.user.id);
 
       // Store the file in Supabase storage
-      const filePath = `datasets/${user.data.user.id}/${Date.now()}_${file.name}`;
+      const filePath = `datasets/${session.user.id}/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from('datasets')
         .upload(filePath, file);
       
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("File upload error:", uploadError);
+        throw uploadError;
+      }
+      
+      console.log("File uploaded successfully to storage");
       
       // Create dataset metadata entry
       const { data, error } = await supabase.from('datasets').insert({
         name,
         description,
-        user_id: user.data.user.id,
+        user_id: session.user.id,
         file_name: file.name,
         file_size: file.size,
         row_count: parseResult.data.length,
@@ -58,8 +70,12 @@ export const dataService = {
         storage_path: filePath,
       }).select().single();
       
-      if (error) throw error;
+      if (error) {
+        console.error("Dataset metadata insertion error:", error);
+        throw error;
+      }
       
+      console.log("Dataset created successfully:", data.id);
       return data;
     } catch (error) {
       console.error('Error uploading dataset:', error);
@@ -70,19 +86,27 @@ export const dataService = {
   // Get all datasets for the current user
   async getDatasets() {
     try {
-      const user = await supabase.auth.getUser();
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!user.data.user) {
+      if (!session || !session.user) {
+        console.error("No authenticated user found when fetching datasets");
         throw new Error('User not authenticated');
       }
+      
+      console.log("User authenticated for getting datasets:", session.user.id);
 
       const { data, error } = await supabase
         .from('datasets')
         .select('*')
-        .eq('user_id', user.data.user.id)
+        .eq('user_id', session.user.id)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching datasets:", error);
+        throw error;
+      }
+      
       return data;
     } catch (error) {
       console.error('Error fetching datasets:', error);
@@ -167,16 +191,17 @@ export const dataService = {
   // Connect to external cloud storage (AWS S3)
   async connectToS3(accessKey: string, secretKey: string, bucket: string, region: string) {
     try {
-      const user = await supabase.auth.getUser();
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!user.data.user) {
+      if (!session || !session.user) {
         throw new Error('User not authenticated');
       }
 
       // Store the connection details securely
       // In a production app, consider encrypting sensitive details
       const { data, error } = await supabase.from('storage_connections').insert({
-        user_id: user.data.user.id,
+        user_id: session.user.id,
         storage_type: 's3',
         connection_details: {
           accessKey,
@@ -200,14 +225,15 @@ export const dataService = {
   // Connect to Azure Storage
   async connectToAzure(accountName: string, accessKey: string, containerName: string) {
     try {
-      const user = await supabase.auth.getUser();
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!user.data.user) {
+      if (!session || !session.user) {
         throw new Error('User not authenticated');
       }
 
       const { data, error } = await supabase.from('storage_connections').insert({
-        user_id: user.data.user.id,
+        user_id: session.user.id,
         storage_type: 'azure',
         connection_details: {
           accountName,
@@ -230,14 +256,15 @@ export const dataService = {
   // Connect to Google Cloud Storage
   async connectToGCS(projectId: string, bucketName: string, keyFile: File) {
     try {
-      const user = await supabase.auth.getUser();
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!user.data.user) {
+      if (!session || !session.user) {
         throw new Error('User not authenticated');
       }
 
       // Store the key file in a secure storage
-      const filePath = `keys/${user.data.user.id}/${Date.now()}_${keyFile.name}`;
+      const filePath = `keys/${session.user.id}/${Date.now()}_${keyFile.name}`;
       const { error: uploadError } = await supabase.storage
         .from('secure')
         .upload(filePath, keyFile);
@@ -245,7 +272,7 @@ export const dataService = {
       if (uploadError) throw uploadError;
 
       const { data, error } = await supabase.from('storage_connections').insert({
-        user_id: user.data.user.id,
+        user_id: session.user.id,
         storage_type: 'gcs',
         connection_details: {
           projectId,
@@ -268,14 +295,15 @@ export const dataService = {
   // Connect to Dropbox
   async connectToDropbox(appKey: string, appSecret: string, accessToken: string) {
     try {
-      const user = await supabase.auth.getUser();
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!user.data.user) {
+      if (!session || !session.user) {
         throw new Error('User not authenticated');
       }
 
       const { data, error } = await supabase.from('storage_connections').insert({
-        user_id: user.data.user.id,
+        user_id: session.user.id,
         storage_type: 'dropbox',
         connection_details: {
           appKey,

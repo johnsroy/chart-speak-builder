@@ -1,7 +1,8 @@
 
-import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { ReactNode, useEffect } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { toast } from "sonner";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -9,7 +10,20 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, session } = useAuth();
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    // Show toast when authentication fails after loading completes
+    if (!isLoading && !isAuthenticated) {
+      toast.error("Please log in to access this page");
+    }
+    
+    // Show toast when admin permission is required but user is not an admin
+    if (!isLoading && isAuthenticated && requireAdmin && user?.role !== 'admin') {
+      toast.error("Admin permission required");
+    }
+  }, [isLoading, isAuthenticated, user, requireAdmin]);
   
   if (isLoading) {
     // Show loading state
@@ -22,7 +36,7 @@ const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps)
     );
   }
   
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !session) {
     // Redirect to login if not authenticated
     return <Navigate to="/login" replace />;
   }
