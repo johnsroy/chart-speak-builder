@@ -11,12 +11,13 @@ import UploadTabContent from './upload/UploadTabContent';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useDatasets } from '@/hooks/useDatasets';
 import { toast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, setupStorageBuckets, verifyStorageBuckets } from '@/lib/supabase';
 
 const UploadArea = () => {
   const [activeTab, setActiveTab] = useState('upload');
   const [selectedStorage, setSelectedStorage] = useState<string | null>(null);
   const [showStorageDialog, setShowStorageDialog] = useState(false);
+  const [bucketsVerified, setBucketsVerified] = useState<boolean | null>(null);
   
   const navigate = useNavigate();
   const { isAuthenticated, user, session, adminLogin } = useAuth();
@@ -39,8 +40,7 @@ const UploadArea = () => {
     handleDrop,
     handleFileInput,
     handleUpload,
-    retryUpload,
-    verifyStorageBucket
+    retryUpload
   } = useFileUpload();
 
   const {
@@ -55,16 +55,34 @@ const UploadArea = () => {
   useEffect(() => {
     const initialize = async () => {
       try {
-        // First verify storage buckets
-        const bucketsOk = await verifyStorageBucket();
-        console.log("Storage buckets verified:", bucketsOk);
+        // Verify storage buckets exist
+        const hasValidBuckets = await verifyStorageBuckets();
+        console.log("Storage buckets verification result:", hasValidBuckets);
+        setBucketsVerified(hasValidBuckets);
         
-        if (!bucketsOk) {
+        if (!hasValidBuckets) {
           toast({
             title: "Storage configuration issue",
-            description: "The required storage buckets are not available. File uploads may fail.",
-            variant: "destructive"
+            description: "The required storage buckets are not available. Attempting to create them...",
+            variant: "warning"
           });
+          
+          // Try to set up buckets
+          const setupResult = await setupStorageBuckets();
+          if (setupResult.success) {
+            setBucketsVerified(true);
+            toast({
+              title: "Storage setup complete",
+              description: "Storage buckets were successfully created.",
+              variant: "success"
+            });
+          } else {
+            toast({
+              title: "Storage setup failed",
+              description: setupResult.message || "Could not create required storage buckets. File uploads may fail.",
+              variant: "destructive"
+            });
+          }
         }
         
         // Check if we already have a valid session
@@ -94,6 +112,20 @@ const UploadArea = () => {
 
   const handleUploadClick = async () => {
     try {
+      // Make sure storage is configured
+      if (bucketsVerified === false) {
+        const setupResult = await setupStorageBuckets();
+        if (!setupResult.success) {
+          toast({
+            title: "Storage configuration issue",
+            description: "Storage buckets could not be created. Upload will likely fail.",
+            variant: "destructive"
+          });
+        } else {
+          setBucketsVerified(true);
+        }
+      }
+      
       // Always ensure we're authenticated before upload
       if (!user?.id) {
         console.log("No user ID found, authenticating before upload");
@@ -135,6 +167,20 @@ const UploadArea = () => {
 
   const handleRetryUpload = async () => {
     try {
+      // Make sure storage is configured
+      if (bucketsVerified === false) {
+        const setupResult = await setupStorageBuckets();
+        if (!setupResult.success) {
+          toast({
+            title: "Storage configuration issue",
+            description: "Storage buckets could not be created. Retry will likely fail.",
+            variant: "destructive"
+          });
+        } else {
+          setBucketsVerified(true);
+        }
+      }
+      
       // Ensure authentication before retry
       if (!user?.id) {
         await adminLogin();
@@ -175,6 +221,40 @@ const UploadArea = () => {
               <Button variant="link" className="p-0 text-primary" onClick={() => navigate('/login')}>Log in</Button>
               <span>or</span>
               <Button variant="link" className="p-0 text-primary" onClick={adminLogin}>Use Admin Account</Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {bucketsVerified === false && (
+        <div className="bg-red-500/20 border border-red-500/50 p-4 rounded-lg mb-8 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-red-500" />
+          <div>
+            <p>Storage system not properly configured. Required buckets are missing.</p>
+            <div className="mt-2">
+              <Button 
+                variant="outline" 
+                className="bg-red-500/20 hover:bg-red-500/30 border-red-500/50" 
+                onClick={async () => {
+                  const result = await setupStorageBuckets();
+                  if (result.success) {
+                    setBucketsVerified(true);
+                    toast({
+                      title: "Storage setup complete",
+                      description: "Storage buckets were successfully created.",
+                      variant: "success"
+                    });
+                  } else {
+                    toast({
+                      title: "Storage setup failed",
+                      description: result.message || "Could not create required storage buckets.",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+              >
+                Setup Storage Buckets
+              </Button>
             </div>
           </div>
         </div>

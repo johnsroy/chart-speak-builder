@@ -1,11 +1,10 @@
-
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
 import { dataService } from '@/services/dataService';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, verifyStorageBuckets } from '@/lib/supabase';
 
 export const useFileUpload = () => {
   const [dragActive, setDragActive] = useState(false);
@@ -133,32 +132,7 @@ export const useFileUpload = () => {
   };
 
   const verifyStorageBucket = async () => {
-    try {
-      console.log("Checking storage buckets...");
-      const { data: buckets, error } = await supabase.storage.listBuckets();
-      
-      if (error) {
-        console.error("Failed to list buckets:", error);
-        return false;
-      }
-      
-      if (!buckets || buckets.length === 0) {
-        console.error("No storage buckets found");
-        return false;
-      }
-      
-      const datasetsBucket = buckets.find(b => b.name === 'datasets');
-      if (!datasetsBucket) {
-        console.error("Required 'datasets' bucket not found");
-        return false;
-      }
-      
-      console.log("Storage buckets verified:", buckets.map(b => b.name).join(", "));
-      return true;
-    } catch (err) {
-      console.error("Storage bucket verification failed:", err);
-      return false;
-    }
+    return await verifyStorageBuckets();
   };
 
   const handleUpload = async (isAuthenticated: boolean, userId: string) => {
@@ -205,12 +179,12 @@ export const useFileUpload = () => {
     }
     
     // Verify storage buckets before uploading
-    const bucketsVerified = await verifyStorageBucket();
+    const bucketsVerified = await verifyStorageBuckets();
     
     if (!bucketsVerified) {
       toast({
         title: "Storage configuration issue",
-        description: "The storage system is not properly configured. Please contact support.",
+        description: "The storage system is not properly configured. Please set up storage buckets first.",
         variant: "destructive"
       });
       return;
@@ -224,6 +198,7 @@ export const useFileUpload = () => {
       console.log("Starting upload for user:", userId);
       
       try {
+        // Test if we have write permission
         const testBlob = new Blob(["test"], { type: "text/plain" });
         const testFile = new File([testBlob], "test-permission.txt");
         

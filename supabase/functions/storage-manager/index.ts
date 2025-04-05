@@ -79,37 +79,72 @@ async function setupStorageBuckets(supabase) {
     const { data: buckets, error: getBucketsError } = await supabase.storage.listBuckets();
     
     if (getBucketsError) {
-      throw getBucketsError;
-    }
-    
-    const existingBuckets = buckets.map(bucket => bucket.name);
-    const bucketsToCreate = ['datasets', 'cold_storage'].filter(
-      bucketName => !existingBuckets.includes(bucketName)
-    );
-    
-    // Create required buckets if they don't exist
-    const results = [];
-    for (const bucketName of bucketsToCreate) {
-      const { data, error } = await supabase.storage.createBucket(bucketName, {
-        public: false,
+      // If we can't list buckets, we need to create them using SQL
+      console.log("Failed to list buckets, attempting to create via SQL");
+      
+      // Create datasets bucket using SQL directly
+      await supabase.rpc('create_storage_bucket', { 
+        bucket_name: 'datasets',
+        public_bucket: false
       });
       
-      results.push({
-        bucketName,
-        success: !error,
-        error: error?.message
-      });
+      // Try to verify bucket was created
+      const { data: verifyBuckets } = await supabase.storage.listBuckets();
+      const existingBuckets = verifyBuckets?.map(bucket => bucket.name) || [];
+      
+      return { 
+        success: existingBuckets.includes('datasets'),
+        message: existingBuckets.includes('datasets') ? 
+          'Successfully created datasets bucket via RPC' : 
+          'Failed to create datasets bucket'
+      };
     }
     
-    // Set up RLS policies for the buckets
-    for (const bucketName of bucketsToCreate) {
-      await setupBucketPolicies(supabase, bucketName);
+    const existingBuckets = buckets?.map(bucket => bucket.name) || [];
+    console.log("Existing buckets:", existingBuckets);
+    
+    if (existingBuckets.includes('datasets')) {
+      return {
+        success: true,
+        message: "Datasets bucket already exists",
+        buckets: existingBuckets
+      };
     }
     
-    return { 
-      success: true, 
-      created: results,
-      existing: existingBuckets
+    // Create the datasets bucket since it doesn't exist
+    const { data, error } = await supabase.storage.createBucket('datasets', {
+      public: false,
+      fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
+    });
+    
+    if (error) {
+      console.error("Error creating datasets bucket:", error);
+      
+      // Try alternative approach via RPC
+      try {
+        await supabase.rpc('create_storage_bucket', { 
+          bucket_name: 'datasets',
+          public_bucket: false
+        });
+        
+        return { 
+          success: true,
+          message: 'Successfully created datasets bucket via RPC'
+        };
+      } catch (rpcError) {
+        console.error("RPC error:", rpcError);
+        return { 
+          success: false, 
+          message: `Failed to create bucket: ${error.message}`,
+          rpcError: rpcError.message
+        };
+      }
+    }
+    
+    return {
+      success: true,
+      message: "Successfully created datasets bucket",
+      bucket: data
     };
   } catch (error) {
     console.error("Failed to setup storage buckets:", error);
@@ -117,28 +152,12 @@ async function setupStorageBuckets(supabase) {
   }
 }
 
-async function setupBucketPolicies(supabase, bucketName) {
-  // This sets up policies via SQL since the JS client doesn't support policy management
-  const { error } = await supabase.rpc('setup_bucket_policies', { bucket_name: bucketName });
-  
-  if (error) {
-    console.error(`Failed to set up policies for bucket ${bucketName}:`, error);
-  }
-  
-  return { success: !error };
-}
-
 async function addSampleFiles(supabase) {
   try {
     const adminId = '00000000-0000-0000-0000-000000000000';
-    const results = [];
     
-    // Add sample files to both buckets
-    const buckets = ['datasets', 'cold_storage'];
-    
-    for (const bucket of buckets) {
-      // Create a small sample CSV file
-      const sampleCsvContent = 
+    // Create a small sample CSV file
+    const sampleCsvContent = 
 `id,name,age,city,income
 1,John Doe,32,New York,75000
 2,Jane Smith,28,Los Angeles,82000
@@ -146,59 +165,58 @@ async function addSampleFiles(supabase) {
 4,Alice Brown,36,Houston,90000
 5,Charlie Wilson,29,Phoenix,72000`;
 
-      const sampleFile = new Blob([sampleCsvContent], { type: 'text/csv' });
-      const filePath = `${adminId}/sample-data-${bucket}.csv`;
-      
-      // Upload the file
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(filePath, sampleFile, {
-          cacheControl: '3600',
-          upsert: true
-        });
-      
-      results.push({
-        bucket,
-        filePath,
-        success: !error,
-        error: error?.message,
-        url: error ? null : data?.Key
+    const sampleFile = new Blob([sampleCsvContent], { type: 'text/csv' });
+    const filePath = `${adminId}/sample-data.csv`;
+    
+    // Upload the file
+    const { data, error } = await supabase.storage
+      .from('datasets')
+      .upload(filePath, sampleFile, {
+        cacheControl: '3600',
+        upsert: true
       });
-      
-      // If upload was successful, add metadata to the dataset table
-      if (!error) {
-        const { error: dbError } = await supabase.from('datasets').insert({
-          name: `Sample Dataset (${bucket})`,
-          description: `A sample dataset for demonstration purposes in the ${bucket} bucket`,
-          user_id: adminId,
-          file_name: `sample-data-${bucket}.csv`,
-          file_size: sampleCsvContent.length,
-          row_count: 5,
-          column_schema: {
-            id: 'integer',
-            name: 'string',
-            age: 'integer',
-            city: 'string',
-            income: 'integer'
-          },
-          storage_type: 'supabase',
-          storage_path: filePath,
-          storage_bucket: bucket
-        });
-        
-        if (dbError) {
-          console.error(`Error adding sample dataset metadata for ${bucket}:`, dbError);
-          results[results.length - 1].metadataSuccess = false;
-          results[results.length - 1].metadataError = dbError.message;
-        } else {
-          results[results.length - 1].metadataSuccess = true;
-        }
-      }
+    
+    if (error) {
+      console.error("Error uploading sample file:", error);
+      return { 
+        success: false, 
+        message: `Failed to upload sample: ${error.message}`
+      };
+    }
+    
+    // If upload was successful, add metadata to the dataset table
+    const { error: dbError } = await supabase.from('datasets').insert({
+      name: 'Sample Dataset',
+      description: 'A sample dataset for demonstration purposes',
+      user_id: adminId,
+      file_name: 'sample-data.csv',
+      file_size: sampleCsvContent.length,
+      row_count: 5,
+      column_schema: {
+        id: 'integer',
+        name: 'string',
+        age: 'integer',
+        city: 'string',
+        income: 'integer'
+      },
+      storage_type: 'supabase',
+      storage_path: filePath,
+      storage_bucket: 'datasets'
+    }).select().maybeSingle();
+    
+    if (dbError) {
+      console.error("Error adding sample dataset metadata:", dbError);
+      return {
+        success: true,
+        upload: "success",
+        metadata: "failed",
+        message: `Sample file uploaded but metadata creation failed: ${dbError.message}`
+      };
     }
     
     return { 
-      success: results.every(r => r.success), 
-      results 
+      success: true,
+      message: "Sample dataset added successfully"
     };
   } catch (error) {
     console.error("Error adding sample files:", error);
