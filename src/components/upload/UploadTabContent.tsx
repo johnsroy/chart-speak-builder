@@ -5,12 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
-import { Upload, Database, FileType, BarChart2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Upload, Database, FileType, BarChart2, AlertTriangle, Loader2, ExternalLink, Download } from 'lucide-react';
 import FileUploadArea from './FileUploadArea';
 import CloudStoragePanel from './CloudStoragePanel';
 import VisualizeDatasetPanel from './VisualizeDatasetPanel';
 import DatasetVisualizationCard from './DatasetVisualizationCard';
 import RedirectDialog from './RedirectDialog';
+import UserDatasetLibrary from './UserDatasetLibrary';
 
 interface UploadTabContentProps {
   activeTab: string;

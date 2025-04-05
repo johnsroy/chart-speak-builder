@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, Database, Library, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,7 +18,7 @@ const UploadArea = () => {
   const [selectedStorage, setSelectedStorage] = useState<string | null>(null);
   const [showStorageDialog, setShowStorageDialog] = useState(false);
   const [bucketsVerified, setBucketsVerified] = useState<boolean | null>(null);
-  const [showRedirectDialog, setShowRedirectDialog] = useState(false);
+  // Removed the duplicate state declaration for showRedirectDialog
   
   const navigate = useNavigate();
   const { isAuthenticated, user, session, adminLogin } = useAuth();
@@ -33,10 +34,11 @@ const UploadArea = () => {
     schemaPreview,
     uploadedDatasetId,
     showVisualizeAfterUpload,
+    showRedirectDialog, // Use this variable from the hook
     setDatasetName,
     setDatasetDescription,
     setShowVisualizeAfterUpload,
-    setShowRedirectDialog,
+    setShowRedirectDialog, // Use this setter from the hook
     handleDrag,
     handleDrop,
     handleFileInput,
