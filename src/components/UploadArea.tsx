@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, Database, Library, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -51,56 +50,66 @@ const UploadArea = () => {
     loadDatasets
   } = useDatasets();
 
-  // Ensure we have a valid user session and storage buckets on component mount
   useEffect(() => {
     const initialize = async () => {
       try {
-        // Verify storage buckets exist
-        const hasValidBuckets = await verifyStorageBuckets();
-        console.log("Storage buckets verification result:", hasValidBuckets);
-        setBucketsVerified(hasValidBuckets);
-        
-        if (!hasValidBuckets) {
-          toast({
-            title: "Storage configuration issue",
-            description: "The required storage buckets are not available. Attempting to create them...",
-            variant: "warning"
-          });
-          
-          // Try to set up buckets
-          const setupResult = await setupStorageBuckets();
-          if (setupResult.success) {
-            setBucketsVerified(true);
-            toast({
-              title: "Storage setup complete",
-              description: "Storage buckets were successfully created.",
-              variant: "success"
-            });
-          } else {
-            toast({
-              title: "Storage setup failed",
-              description: setupResult.message || "Could not create required storage buckets. File uploads may fail.",
-              variant: "destructive"
-            });
-          }
-        }
-        
-        // Check if we already have a valid session
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        
-        if (!currentSession) {
+        if (!isAuthenticated && !user) {
           console.log("No active session found, performing admin login");
           await adminLogin();
           
-          // Verify login was successful
           const { data: { session: verifySession } } = await supabase.auth.getSession();
           if (verifySession) {
             console.log("Admin login successful, session established");
           } else {
             console.error("Admin login didn't create a session");
           }
-        } else {
-          console.log("Existing session found:", currentSession.user.id);
+        }
+        
+        let retries = 0;
+        let hasValidBuckets = false;
+        
+        while (!hasValidBuckets && retries < 3) {
+          hasValidBuckets = await verifyStorageBuckets();
+          console.log(`Storage buckets verification attempt ${retries + 1}:`, hasValidBuckets);
+          
+          if (!hasValidBuckets) {
+            const message = retries === 0 ? 
+              "The required storage buckets are not available. Attempting to create them..." :
+              `Retry ${retries + 1}/3: Attempting to create storage buckets...`;
+              
+            toast({
+              title: "Storage configuration",
+              description: message,
+              variant: retries === 0 ? "warning" : "default"
+            });
+            
+            const setupResult = await setupStorageBuckets();
+            if (setupResult.success) {
+              hasValidBuckets = true;
+              setBucketsVerified(true);
+              toast({
+                title: "Storage setup complete",
+                description: "Storage buckets were successfully created.",
+                variant: "success"
+              });
+              break;
+            } else {
+              retries++;
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          } else {
+            setBucketsVerified(true);
+            break;
+          }
+        }
+        
+        if (!hasValidBuckets) {
+          setBucketsVerified(false);
+          toast({
+            title: "Storage setup failed",
+            description: "Could not create required storage buckets after multiple attempts. File uploads may fail.",
+            variant: "destructive"
+          });
         }
       } catch (err) {
         console.error("Initialization error:", err);
@@ -112,8 +121,8 @@ const UploadArea = () => {
 
   const handleUploadClick = async () => {
     try {
-      // Make sure storage is configured
       if (bucketsVerified === false) {
+        console.log("Buckets not verified, attempting setup...");
         const setupResult = await setupStorageBuckets();
         if (!setupResult.success) {
           toast({
@@ -126,12 +135,10 @@ const UploadArea = () => {
         }
       }
       
-      // Always ensure we're authenticated before upload
       if (!user?.id) {
         console.log("No user ID found, authenticating before upload");
         await adminLogin();
         
-        // Get the session after login
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         
         if (!currentSession?.user?.id) {
@@ -152,7 +159,6 @@ const UploadArea = () => {
           });
         }
         
-        // Pass the actual UUID from the session
         await handleUpload(true, currentSession.user.id);
       } else {
         console.log("Using existing user ID for upload:", user.id);
@@ -167,8 +173,8 @@ const UploadArea = () => {
 
   const handleRetryUpload = async () => {
     try {
-      // Make sure storage is configured
       if (bucketsVerified === false) {
+        console.log("Buckets not verified, attempting setup...");
         const setupResult = await setupStorageBuckets();
         if (!setupResult.success) {
           toast({
@@ -181,7 +187,6 @@ const UploadArea = () => {
         }
       }
       
-      // Ensure authentication before retry
       if (!user?.id) {
         await adminLogin();
         const { data: { session: currentSession } } = await supabase.auth.getSession();

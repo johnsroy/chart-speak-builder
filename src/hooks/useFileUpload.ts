@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -135,6 +136,43 @@ export const useFileUpload = () => {
     return await verifyStorageBuckets();
   };
 
+  const createStorageBucketIfNeeded = async () => {
+    try {
+      // Call the edge function to set up buckets
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.error("No active session when creating storage buckets");
+        return false;
+      }
+      
+      console.log("Creating storage buckets via edge function");
+      const functionUrl = `${process.env.SUPABASE_URL || 'https://rehadpogugijylybwmoe.supabase.co'}/functions/v1/storage-manager/setup`;
+      
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({})
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to create buckets:", errorText);
+        return false;
+      }
+      
+      const result = await response.json();
+      console.log("Storage bucket creation result:", result);
+      return result.success;
+    } catch (error) {
+      console.error("Error creating storage buckets:", error);
+      return false;
+    }
+  };
+
   const handleUpload = async (isAuthenticated: boolean, userId: string) => {
     if (!selectedFile) {
       toast({
@@ -178,24 +216,27 @@ export const useFileUpload = () => {
       }
     }
     
-    // Verify storage buckets before uploading
-    const bucketsVerified = await verifyStorageBuckets();
-    
-    if (!bucketsVerified) {
-      toast({
-        title: "Storage configuration issue",
-        description: "The storage system is not properly configured. Please set up storage buckets first.",
-        variant: "destructive"
-      });
-      return;
-    }
-    
     setIsUploading(true);
     setUploadError(null);
     const progressInterval = simulateProgress();
 
     try {
       console.log("Starting upload for user:", userId);
+      
+      // Explicitly create buckets before proceeding with upload
+      console.log("Verifying storage buckets exist...");
+      const bucketsVerified = await verifyStorageBuckets();
+      
+      if (!bucketsVerified) {
+        console.log("Buckets not verified, attempting to create them...");
+        const bucketsCreated = await createStorageBucketIfNeeded();
+        if (!bucketsCreated) {
+          throw new Error("Failed to create required storage buckets. Please try again or contact support.");
+        }
+        console.log("Buckets created successfully");
+      } else {
+        console.log("Buckets verification successful");
+      }
       
       try {
         // Test if we have write permission
@@ -252,7 +293,9 @@ export const useFileUpload = () => {
       }
       
       if (errorMessage.includes('Bucket not found')) {
-        errorMessage = "Storage configuration issue. The required storage bucket doesn't exist.";
+        errorMessage = "Storage configuration issue. The required storage bucket doesn't exist. Attempting to create it now...";
+        // Try one more time to create buckets
+        await createStorageBucketIfNeeded();
       }
       
       setUploadError(errorMessage);
@@ -293,6 +336,7 @@ export const useFileUpload = () => {
     handleFileInput,
     handleUpload,
     retryUpload,
-    verifyStorageBucket
+    verifyStorageBucket,
+    createStorageBucketIfNeeded
   };
 };
