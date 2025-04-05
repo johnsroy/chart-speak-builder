@@ -13,7 +13,7 @@ import { verifyStorageBuckets, createStorageBuckets, testBucketPermission } from
 export const simulateProgress = (
   initialProgress: number,
   fileSize: number,
-  setProgress: (value: number) => void
+  setProgress: React.Dispatch<React.SetStateAction<number>>
 ): NodeJS.Timeout => {
   setProgress(initialProgress);
   
@@ -22,16 +22,16 @@ export const simulateProgress = (
   const maxProgress = 70; // Leave 30% for backend processing 
   
   const progressInterval = setInterval(() => {
-    setProgress(prev => {
+    setProgress((prev) => {
       // Slow down progress as it gets closer to maxProgress
       if (prev >= maxProgress - 10) {
-        return prev + 0.5;
+        return Math.min(maxProgress, prev + 0.5);
       }
       if (prev >= maxProgress - 20) {
-        return prev + 1;
+        return Math.min(maxProgress, prev + 1);
       }
       
-      return prev + (fileSize > 10 * 1024 * 1024 ? 2 : 5);
+      return Math.min(maxProgress, prev + (fileSize > 10 * 1024 * 1024 ? 2 : 5));
     });
   }, interval);
   
