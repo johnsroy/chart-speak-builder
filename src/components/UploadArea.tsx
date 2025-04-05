@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, Database, Library, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -18,8 +17,7 @@ const UploadArea = () => {
   const [selectedStorage, setSelectedStorage] = useState<string | null>(null);
   const [showStorageDialog, setShowStorageDialog] = useState(false);
   const [bucketsVerified, setBucketsVerified] = useState<boolean | null>(null);
-  // Removed the duplicate state declaration for showRedirectDialog
-  
+
   const navigate = useNavigate();
   const { isAuthenticated, user, session, adminLogin } = useAuth();
   
@@ -34,11 +32,11 @@ const UploadArea = () => {
     schemaPreview,
     uploadedDatasetId,
     showVisualizeAfterUpload,
-    showRedirectDialog, // Use this variable from the hook
+    showRedirectDialog,
     setDatasetName,
     setDatasetDescription,
     setShowVisualizeAfterUpload,
-    setShowRedirectDialog, // Use this setter from the hook
+    setShowRedirectDialog,
     handleDrag,
     handleDrop,
     handleFileInput,
@@ -129,7 +127,6 @@ const UploadArea = () => {
       console.log("Ensuring admin login before upload");
       const loginResult = await adminLogin();
       
-      // Always proceed with upload regardless of login status
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       
       if (!currentSession?.user?.id) {
@@ -139,7 +136,6 @@ const UploadArea = () => {
           variant: "default"
         });
         
-        // Try admin login again but don't block if it fails
         try {
           await adminLogin();
         } catch (loginErr) {
@@ -148,7 +144,7 @@ const UploadArea = () => {
       }
       
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000"; // Use admin ID as fallback
+      const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000";
       
       console.log("Using user ID for upload:", userIdForUpload);
       
@@ -159,13 +155,11 @@ const UploadArea = () => {
         });
       }
       
-      // Always try to proceed with upload - error handling is now in performUpload
       try {
         await handleUpload(true, userIdForUpload);
         loadDatasets();
       } catch (uploadErr) {
         console.error("Upload attempt failed:", uploadErr);
-        // We'll show the error toast from the useFileUpload hook
       }
     } catch (error) {
       console.error("Upload process failed:", error);
@@ -179,7 +173,6 @@ const UploadArea = () => {
 
   const handleRetryUpload = async () => {
     try {
-      // Try admin login but don't block on failure
       try {
         await adminLogin();
       } catch (loginErr) {
@@ -187,7 +180,7 @@ const UploadArea = () => {
       }
       
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000"; // Use admin ID as fallback
+      const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000";
       
       console.log("Using user ID for retry:", userIdForUpload);
       retryUpload(true, userIdForUpload);

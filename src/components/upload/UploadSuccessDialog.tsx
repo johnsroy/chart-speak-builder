@@ -37,6 +37,9 @@ const UploadSuccessDialog: React.FC<UploadSuccessDialogProps> = ({
       }, 1000);
       
       return () => clearInterval(timer);
+    } else {
+      // Reset countdown when dialog closes
+      setCountdown(3);
     }
   }, [open, navigate]);
   

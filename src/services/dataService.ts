@@ -36,6 +36,135 @@ export interface Visualization {
   created_at: string;
 }
 
+// Delete dataset function - moving it up to be properly hoisted and exported
+export const deleteDataset = async (datasetId: string): Promise<boolean> => {
+  try {
+    console.log(`Deleting dataset with ID: ${datasetId}`);
+    
+    // First get the dataset to retrieve its storage path
+    const { data: dataset, error: fetchError } = await supabase
+      .from('datasets')
+      .select('*')
+      .eq('id', datasetId)
+      .single();
+    
+    if (fetchError) {
+      console.error('Error fetching dataset for deletion:', fetchError);
+      throw new Error(`Failed to find dataset: ${fetchError.message}`);
+    }
+    
+    // Try to delete from storage first if we have a storage path
+    if (dataset?.storage_path) {
+      try {
+        // Delete the file from storage
+        const { error: storageError } = await supabase
+          .storage
+          .from(dataset.storage_type === 'local' ? 'datasets' : dataset.storage_type)
+          .remove([dataset.storage_path]);
+        
+        if (storageError) {
+          console.warn('Error deleting dataset from storage:', storageError);
+          // Continue even if storage delete fails
+        } else {
+          console.log(`Successfully deleted file from storage: ${dataset.storage_path}`);
+        }
+      } catch (storageError) {
+        console.warn('Exception during storage deletion:', storageError);
+        // Continue even if storage delete fails
+      }
+    }
+    
+    // Delete the dataset record from the database
+    const { error: deleteError } = await supabase
+      .from('datasets')
+      .delete()
+      .eq('id', datasetId);
+    
+    if (deleteError) {
+      console.error('Error deleting dataset record:', deleteError);
+      throw new Error(`Failed to delete dataset: ${deleteError.message}`);
+    }
+    
+    // Also delete any related queries and visualizations
+    try {
+      await supabase.from('queries').delete().eq('dataset_id', datasetId);
+      await supabase.from('visualizations').delete().eq('dataset_id', datasetId);
+    } catch (relatedError) {
+      console.warn('Error cleaning up related records:', relatedError);
+      // Non-critical
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in deleteDataset:', error);
+    throw error;
+  }
+};
+
+// Generate fallback sample data for visualization when actual data loading fails
+const generateSampleData = (datasetName: string) => {
+  const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
+  const years = [2020, 2021, 2022, 2023, 2024];
+  const data = [];
+  
+  for (const category of categories) {
+    for (const year of years) {
+      data.push({
+        Category: category,
+        Year: year,
+        Value: Math.floor(Math.random() * 1000),
+        Revenue: Math.floor(Math.random() * 10000) / 100,
+        Count: Math.floor(Math.random() * 100)
+      });
+    }
+  }
+  
+  console.log('Generated sample fallback data:', data.length, 'rows');
+  return data;
+};
+
+// Storage statistics utility function that was missing
+export const getStorageStats = async (userId: string) => {
+  try {
+    const { data: datasets, error } = await supabase
+      .from('datasets')
+      .select('file_size, storage_type')
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    const totalSize = datasets ? datasets.reduce((sum, dataset) => sum + (dataset.file_size || 0), 0) : 0;
+    const datasetCount = datasets ? datasets.length : 0;
+    const storageTypes = datasets ? [...new Set(datasets.map(d => d.storage_type))] : [];
+    
+    return {
+      totalSize,
+      datasetCount,
+      storageTypes,
+      formattedSize: formatFileSize(totalSize)
+    };
+  } catch (error) {
+    console.error("Error getting storage stats:", error);
+    return {
+      totalSize: 0,
+      datasetCount: 0,
+      storageTypes: [],
+      formattedSize: '0 B'
+    };
+  }
+};
+
+// Helper function for formatting file sizes
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
 export const dataService = {
   /**
    * Uploads a dataset to Supabase storage and creates a corresponding record in the database.
@@ -519,98 +648,12 @@ export const dataService = {
       console.error("Error saving visualization:", error);
       throw error;
     }
-  }
-};
-
-// Implement deletion functionality
-export const deleteDataset = async (datasetId: string) => {
-  try {
-    console.log(`Deleting dataset with ID: ${datasetId}`);
-    
-    // First get the dataset to retrieve its storage path
-    const { data: dataset, error: fetchError } = await supabase
-      .from('datasets')
-      .select('*')
-      .eq('id', datasetId)
-      .single();
-    
-    if (fetchError) {
-      console.error('Error fetching dataset for deletion:', fetchError);
-      throw new Error(`Failed to find dataset: ${fetchError.message}`);
-    }
-    
-    // Try to delete from storage first if we have a storage path
-    if (dataset?.storage_path) {
-      try {
-        // Delete the file from storage
-        const { error: storageError } = await supabase
-          .storage
-          .from(dataset.storage_type === 'local' ? 'datasets' : dataset.storage_type)
-          .remove([dataset.storage_path]);
-        
-        if (storageError) {
-          console.warn('Error deleting dataset from storage:', storageError);
-          // Continue even if storage delete fails
-        } else {
-          console.log(`Successfully deleted file from storage: ${dataset.storage_path}`);
-        }
-      } catch (storageError) {
-        console.warn('Exception during storage deletion:', storageError);
-        // Continue even if storage delete fails
-      }
-    }
-    
-    // Delete the dataset record from the database
-    const { error: deleteError } = await supabase
-      .from('datasets')
-      .delete()
-      .eq('id', datasetId);
-    
-    if (deleteError) {
-      console.error('Error deleting dataset record:', deleteError);
-      throw new Error(`Failed to delete dataset: ${deleteError.message}`);
-    }
-    
-    // Also delete any related queries and visualizations
-    try {
-      await supabase.from('queries').delete().eq('dataset_id', datasetId);
-      await supabase.from('visualizations').delete().eq('dataset_id', datasetId);
-    } catch (relatedError) {
-      console.warn('Error cleaning up related records:', relatedError);
-      // Non-critical
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Error in deleteDataset:', error);
-    throw error;
-  }
-};
-
-// Generate fallback sample data for visualization when actual data loading fails
-const generateSampleData = (datasetName: string) => {
-  const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
-  const years = [2020, 2021, 2022, 2023, 2024];
-  const data = [];
+  },
   
-  for (const category of categories) {
-    for (const year of years) {
-      data.push({
-        Category: category,
-        Year: year,
-        Value: Math.floor(Math.random() * 1000),
-        Revenue: Math.floor(Math.random() * 10000) / 100,
-        Count: Math.floor(Math.random() * 100)
-      });
-    }
-  }
-  
-  console.log('Generated sample fallback data:', data.length, 'rows');
-  return data;
+  // Properly add the deleteDataset and getStorageStats functions to the exported dataService object
+  deleteDataset,
+  getStorageStats
 };
 
 const supabaseUrl = 'https://rehadpogugijylybwmoe.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaGFkcG9ndWdpanlseWJ3bW9lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4MzcyOTEsImV4cCI6MjA1OTQxMzI5MX0.jMgvzUUum46NpLp4ZKfXI06M1nIvu82L9bmAuxqYYZw';
-
-// Add to the exported functions
-dataService.deleteDataset = deleteDataset;
