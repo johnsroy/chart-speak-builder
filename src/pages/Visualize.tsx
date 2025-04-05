@@ -1,24 +1,10 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { 
-  Loader2, 
-  ChevronLeft, 
-  Database, 
-  BarChart,
-  LineChart,
-  PieChart,
-  Table as TableIcon,
-  Download,
-  Share2,
-  BrainCircuit,
-  MessageSquare,
-  Home
-} from 'lucide-react';
+import { Loader2, ChevronLeft, Database, BarChart, LineChart, PieChart, Table as TableIcon, Download, Share2, BrainCircuit, MessageSquare, Home } from 'lucide-react';
 import { toast } from "sonner";
 import AIQueryPanel from '@/components/AIQueryPanel';
 import EnhancedVisualization from '@/components/EnhancedVisualization';
@@ -27,17 +13,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import DatasetChatInterface from '@/components/DatasetChatInterface';
-
 const Visualize = () => {
-  const { datasetId } = useParams<{ datasetId: string }>();
+  const {
+    datasetId
+  } = useParams<{
+    datasetId: string;
+  }>();
   const [dataset, setDataset] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>('chat');
   const [exampleQuery, setExampleQuery] = useState('');
-  const { user, isAuthenticated } = useAuth();
+  const {
+    user,
+    isAuthenticated
+  } = useAuth();
   const navigate = useNavigate();
-
   useEffect(() => {
     const loadDataset = async () => {
       if (!datasetId) {
@@ -45,7 +36,6 @@ const Visualize = () => {
         navigate('/dashboard');
         return;
       }
-
       setIsLoading(true);
       try {
         const datasetData = await dataService.getDataset(datasetId);
@@ -58,47 +48,32 @@ const Visualize = () => {
         setIsLoading(false);
       }
     };
-
     loadDataset();
   }, [datasetId, navigate]);
-
   const handleQueryResult = (result: QueryResult) => {
     setQueryResult(result);
   };
-
   const handleDownload = () => {
     toast.success("Download started");
     // In a real app, this would initiate a download of the visualization or data
   };
-
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
     toast.success("Visualization link copied to clipboard");
   };
-
   const setQuery = (query: string) => {
     setExampleQuery(query);
     toast.info(`Selected example query: "${query}"`);
   };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
+  return <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
       <div className="container mx-auto py-8">
         <div className="flex items-center gap-4 mb-6">
-          <Button 
-            variant="ghost" 
-            className="flex items-center text-gray-300 hover:text-white"
-            onClick={() => navigate('/dashboard')}
-          >
+          <Button variant="ghost" className="flex items-center text-gray-300 hover:text-white" onClick={() => navigate('/dashboard')}>
             <ChevronLeft className="mr-2 h-4 w-4" />
             Back to Dashboard
           </Button>
           
-          <Button 
-            variant="ghost" 
-            className="flex items-center text-gray-300 hover:text-white"
-            asChild
-          >
+          <Button variant="ghost" className="flex items-center text-gray-300 hover:text-white" asChild>
             <Link to="/upload">
               <Home className="mr-2 h-4 w-4" />
               Home
@@ -106,12 +81,9 @@ const Visualize = () => {
           </Button>
         </div>
         
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
+        {isLoading ? <div className="flex justify-center items-center h-64">
             <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
-          </div>
-        ) : dataset ? (
-          <div className="space-y-6">
+          </div> : dataset ? <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-gradient">{dataset.name}</h1>
@@ -124,18 +96,18 @@ const Visualize = () => {
               </div>
               
               <div className="flex gap-2 mt-4 md:mt-0">
-                <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={handleDownload}>
+                <Button variant="outline" size="sm" onClick={handleDownload} className="flex items-center gap-2 bg-violet-900 hover:bg-violet-800">
                   <Download className="h-4 w-4" />
                   Download
                 </Button>
-                <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={handleShare}>
+                <Button variant="outline" size="sm" onClick={handleShare} className="flex items-center gap-2 bg-violet-800 hover:bg-violet-700">
                   <Share2 className="h-4 w-4" />
                   Share
                 </Button>
               </div>
             </div>
             
-            <Tabs defaultValue={activeTab} onValueChange={(value) => setActiveTab(value as 'chat' | 'query' | 'explore')} className="space-y-4">
+            <Tabs defaultValue={activeTab} onValueChange={value => setActiveTab(value as 'chat' | 'query' | 'explore')} className="space-y-4">
               <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
                 <TabsTrigger value="chat" className="flex items-center justify-center gap-2">
                   <MessageSquare className="h-4 w-4" />
@@ -156,15 +128,9 @@ const Visualize = () => {
               </TabsContent>
               
               <TabsContent value="query" className="space-y-6">
-                <AIQueryPanel 
-                  datasetId={datasetId!} 
-                  onQueryResult={handleQueryResult} 
-                />
+                <AIQueryPanel datasetId={datasetId!} onQueryResult={handleQueryResult} />
                 
-                {queryResult ? (
-                  <EnhancedVisualization result={queryResult} />
-                ) : (
-                  <Card className="glass-card p-8 text-center">
+                {queryResult ? <EnhancedVisualization result={queryResult} /> : <Card className="glass-card p-8 text-center">
                     <CardContent className="pt-8">
                       <BrainCircuit className="h-16 w-16 mx-auto mb-4 text-indigo-400" />
                       <h3 className="text-xl font-medium mb-2">Ask AI About Your Data</h3>
@@ -172,32 +138,27 @@ const Visualize = () => {
                         Use natural language queries to explore insights from your dataset. Here are some examples:
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
-                        <Button variant="outline" size="sm" className="justify-start" 
-                          onClick={() => setQuery("Show me a breakdown of sales by category as a bar chart")}>
+                        <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Show me a breakdown of sales by category as a bar chart")}>
                           "Show me a breakdown of sales by category"
                         </Button>
-                        <Button variant="outline" size="sm" className="justify-start"
-                          onClick={() => setQuery("What's the trend of revenue over time?")}>
+                        <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("What's the trend of revenue over time?")}>
                           "What's the trend of revenue over time?"
                         </Button>
-                        <Button variant="outline" size="sm" className="justify-start"
-                          onClick={() => setQuery("Compare the distribution of values across regions")}>
+                        <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Compare the distribution of values across regions")}>
                           "Compare the distribution across regions"
                         </Button>
-                        <Button variant="outline" size="sm" className="justify-start"
-                          onClick={() => setQuery("Show the correlation between price and quantity")}>
+                        <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Show the correlation between price and quantity")}>
                           "Show correlation between price and quantity"
                         </Button>
                       </div>
                     </CardContent>
-                  </Card>
-                )}
+                  </Card>}
               </TabsContent>
               
               <TabsContent value="explore">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-orange-300">
                       <CardTitle className="text-sm font-medium">Bar Chart</CardTitle>
                       <BarChart className="h-4 w-4 text-purple-400" />
                     </CardHeader>
@@ -207,7 +168,7 @@ const Visualize = () => {
                   </Card>
                   
                   <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-indigo-400">
                       <CardTitle className="text-sm font-medium">Line Chart</CardTitle>
                       <LineChart className="h-4 w-4 text-blue-400" />
                     </CardHeader>
@@ -217,7 +178,7 @@ const Visualize = () => {
                   </Card>
                   
                   <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-red-300">
                       <CardTitle className="text-sm font-medium">Pie Chart</CardTitle>
                       <PieChart className="h-4 w-4 text-green-400" />
                     </CardHeader>
@@ -227,7 +188,7 @@ const Visualize = () => {
                   </Card>
                   
                   <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-lime-300">
                       <CardTitle className="text-sm font-medium">Data Table</CardTitle>
                       <TableIcon className="h-4 w-4 text-orange-400" />
                     </CardHeader>
@@ -242,20 +203,15 @@ const Visualize = () => {
                 </div>
               </TabsContent>
             </Tabs>
-          </div>
-        ) : (
-          <div className="glass-card p-12 text-center">
+          </div> : <div className="glass-card p-12 text-center">
             <Database className="h-16 w-16 mx-auto mb-4 text-gray-400" />
             <h2 className="text-2xl font-medium mb-2">Dataset Not Found</h2>
             <p className="text-gray-400 mb-6">The dataset you're looking for doesn't exist or you don't have permission to view it.</p>
             <Button onClick={() => navigate('/dashboard')}>
               Return to Dashboard
             </Button>
-          </div>
-        )}
+          </div>}
       </div>
-    </div>
-  );
+    </div>;
 };
-
 export default Visualize;
