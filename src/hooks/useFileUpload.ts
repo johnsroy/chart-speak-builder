@@ -167,13 +167,29 @@ export const useFileUpload = () => {
       return;
     }
 
-    if (!userId || typeof userId !== 'string' || userId.length < 10) {
+    if (!userId) {
       toast({
         title: "Authentication issue",
         description: "Unable to identify the user. Please try logging in again.",
         variant: "destructive"
       });
       return;
+    }
+    
+    // Special handling for admin user to ensure valid UUID format
+    if (userId === 'test-admin-id') {
+      userId = '00000000-0000-0000-0000-000000000000';
+    } else {
+      // Validate the UUID format for other users
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId)) {
+        toast({
+          title: "Invalid user ID format",
+          description: "Please try logging in again.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     setIsUploading(true);
@@ -206,16 +222,15 @@ export const useFileUpload = () => {
         // Continue anyway, the main upload might still work
       }
 
-      // Get a fresh session to ensure we have the latest auth state
       const { data: { session: currentSession } } = await supabase.auth.getSession();
-      
+
       const dataset = await dataService.uploadDataset(
         selectedFile, 
         datasetName, 
         datasetDescription || undefined,
-        null, // Don't pass user object, it's not needed since we're passing userId
-        currentSession, // Pass fresh session
-        userId // The valid UUID from the user
+        null, // Don't pass user object
+        null, // Use fresh session from dataService 
+        userId // Pass the validated UUID
       );
       
       // Set progress to 100% when complete
