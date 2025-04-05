@@ -164,7 +164,8 @@ const UploadArea = () => {
       });
     }, 500);
     
-    return () => clearInterval(interval);
+    // Return the interval ID instead of a function
+    return interval;
   };
 
   const handleUpload = async () => {
@@ -198,7 +199,7 @@ const UploadArea = () => {
 
     setIsUploading(true);
     setUploadError(null);
-    const stopProgressSimulation = simulateProgress();
+    const progressInterval = simulateProgress();
     
     try {
       const dataset = await dataService.uploadDataset(selectedFile, datasetName, datasetDescription || undefined);
@@ -231,7 +232,7 @@ const UploadArea = () => {
         variant: "destructive"
       });
     } finally {
-      clearInterval(stopProgressSimulation);
+      clearInterval(progressInterval);
       setIsUploading(false);
     }
   };
