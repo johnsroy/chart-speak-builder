@@ -43,8 +43,8 @@ const toastVariants = cva(
   }
 )
 
-// Export the ToastProps type without redefining it
-type ToastProps = React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> &
+// Define the base ToastProps type that will be used across the project
+export type ToastProps = React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> &
   VariantProps<typeof toastVariants>
 
 const Toast = React.forwardRef<
@@ -121,7 +121,6 @@ ToastDescription.displayName = ToastPrimitives.Description.displayName
 type ToastActionElement = React.ReactElement<typeof ToastAction>
 
 export {
-  type ToastProps,
   type ToastActionElement,
   ToastProvider,
   ToastViewport,
