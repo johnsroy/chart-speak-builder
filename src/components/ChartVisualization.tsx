@@ -18,6 +18,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
+import { Loader2 } from 'lucide-react';
 
 interface ChartVisualizationProps {
   datasetId: string;
@@ -34,40 +35,72 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
   const [xAxisField, setXAxisField] = useState<string>('');
   const [yAxisField, setYAxisField] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     const loadData = async () => {
+      if (!datasetId) return;
+      
       setLoading(true);
+      setError(null);
+      
       try {
+        // First get the dataset metadata to understand its schema
+        const dataset = await dataService.getDataset(datasetId);
+        
+        if (!dataset) {
+          setError("Dataset not found");
+          setLoading(false);
+          return;
+        }
+        
+        const schema = dataset.column_schema;
+        
+        // Then get the preview data
         const previewData = await dataService.previewDataset(datasetId);
-        if (previewData && previewData.length > 0) {
-          setData(previewData);
-          const cols = Object.keys(previewData[0]);
-          setColumns(cols);
-          
-          // Auto-select first string/date column for X axis and first number column for Y axis
-          const dataset = await dataService.getDataset(datasetId);
-          const schema = dataset.column_schema;
-          
-          // Find suitable X axis (categorical data)
-          const stringColumn = cols.find(col => schema[col] === 'string' || schema[col] === 'date');
-          if (stringColumn) {
-            setXAxisField(stringColumn);
-          } else {
-            setXAxisField(cols[0]);
-          }
-          
-          // Find suitable Y axis (numerical data)
-          const numberColumn = cols.find(col => schema[col] === 'number' || schema[col] === 'integer');
-          if (numberColumn) {
-            setYAxisField(numberColumn);
-          } else {
-            setYAxisField(cols[1] || cols[0]);
-          }
+        
+        if (!previewData || previewData.length === 0) {
+          setError("No data available in dataset");
+          setLoading(false);
+          return;
+        }
+        
+        console.log("Dataset preview data loaded:", previewData.length, "rows");
+        setData(previewData);
+        
+        const cols = Object.keys(previewData[0]);
+        setColumns(cols);
+        
+        // Auto-select first string/date column for X axis and first number column for Y axis
+        // Find suitable X axis (categorical data)
+        const stringColumn = cols.find(col => 
+          schema[col] === 'string' || 
+          schema[col] === 'date' || 
+          typeof previewData[0][col] === 'string'
+        );
+        
+        if (stringColumn) {
+          setXAxisField(stringColumn);
+        } else {
+          setXAxisField(cols[0]);
+        }
+        
+        // Find suitable Y axis (numerical data)
+        const numberColumn = cols.find(col => 
+          schema[col] === 'number' || 
+          schema[col] === 'integer' || 
+          typeof previewData[0][col] === 'number'
+        );
+        
+        if (numberColumn) {
+          setYAxisField(numberColumn);
+        } else {
+          setYAxisField(cols[1] || cols[0]);
         }
       } catch (error) {
         console.error('Error loading dataset preview:', error);
+        setError(error instanceof Error ? error.message : 'Failed to load dataset preview');
         toast({
           title: 'Error loading data',
           description: error instanceof Error ? error.message : 'Failed to load dataset preview',
@@ -78,9 +111,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
       }
     };
     
-    if (datasetId) {
-      loadData();
-    }
+    loadData();
   }, [datasetId, toast]);
 
   // Helper function to determine if a field contains numerical data
@@ -91,10 +122,27 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
   };
 
   const renderChart = () => {
-    if (loading || !data.length || !xAxisField || !yAxisField) {
+    if (loading) {
       return (
         <div className="flex justify-center items-center h-[400px]">
-          {loading ? 'Loading chart data...' : 'Select fields to visualize'}
+          <Loader2 className="h-10 w-10 animate-spin text-primary mr-2" />
+          <span>Loading chart data...</span>
+        </div>
+      );
+    }
+    
+    if (error) {
+      return (
+        <div className="flex justify-center items-center h-[400px] text-red-400">
+          <p>Error: {error}</p>
+        </div>
+      );
+    }
+
+    if (!data.length || !xAxisField || !yAxisField) {
+      return (
+        <div className="flex justify-center items-center h-[400px]">
+          {!data.length ? 'No data available' : 'Select fields to visualize'}
         </div>
       );
     }
@@ -105,20 +153,20 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
       [yAxisField]: isNumericField(yAxisField) ? Number(item[yAxisField]) : 0
     }));
 
-    const chartConfig = {
-      data: chartData.slice(0, 20), // Limit to 20 items for better visualization
-      xAxis: xAxisField,
-      yAxis: yAxisField
-    };
+    // Limit data for better visualization
+    const limitedData = chartData.slice(0, 20);
 
     if (chartType === 'bar') {
       return (
         <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={chartConfig.data}>
+          <BarChart data={limitedData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#444" />
             <XAxis 
-              dataKey={chartConfig.xAxis} 
+              dataKey={xAxisField} 
               tick={{ fill: '#ddd' }}
+              height={60}
+              angle={-45}
+              textAnchor="end"
             />
             <YAxis 
               tick={{ fill: '#ddd' }}
@@ -128,7 +176,11 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
               labelStyle={{ color: '#ddd' }}
             />
             <Legend wrapperStyle={{ color: '#ddd' }} />
-            <Bar dataKey={chartConfig.yAxis} fill="#8884d8" name={chartConfig.yAxis} />
+            <Bar dataKey={yAxisField} fill="#8884d8" name={yAxisField}>
+              {limitedData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       );
@@ -137,11 +189,14 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     if (chartType === 'line') {
       return (
         <ResponsiveContainer width="100%" height={400}>
-          <LineChart data={chartConfig.data}>
+          <LineChart data={limitedData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#444" />
             <XAxis 
-              dataKey={chartConfig.xAxis} 
+              dataKey={xAxisField} 
               tick={{ fill: '#ddd' }}
+              height={60}
+              angle={-45}
+              textAnchor="end"
             />
             <YAxis 
               tick={{ fill: '#ddd' }}
@@ -153,11 +208,16 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
             <Legend wrapperStyle={{ color: '#ddd' }} />
             <Line 
               type="monotone" 
-              dataKey={chartConfig.yAxis} 
+              dataKey={yAxisField} 
               stroke="#8884d8" 
               activeDot={{ r: 8 }} 
-              name={chartConfig.yAxis}
-            />
+              name={yAxisField}
+              strokeWidth={2}
+            >
+              {limitedData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Line>
           </LineChart>
         </ResponsiveContainer>
       );
@@ -165,15 +225,15 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
 
     if (chartType === 'pie') {
       // For pie charts, we need to limit the data even more
-      const pieData = chartConfig.data.slice(0, 8);
+      const pieData = limitedData.slice(0, 8);
       
       return (
         <ResponsiveContainer width="100%" height={400}>
           <PieChart>
             <Pie
               data={pieData}
-              dataKey={chartConfig.yAxis}
-              nameKey={chartConfig.xAxis}
+              dataKey={yAxisField}
+              nameKey={xAxisField}
               cx="50%"
               cy="50%"
               outerRadius={150}
@@ -205,7 +265,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">Chart Type</p>
           <Select value={chartType} onValueChange={(value: ChartType) => setChartType(value)}>
-            <SelectTrigger>
+            <SelectTrigger className="bg-black border-gray-700">
               <SelectValue placeholder="Select chart type" />
             </SelectTrigger>
             <SelectContent>
@@ -219,7 +279,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">X-Axis Field</p>
           <Select value={xAxisField} onValueChange={setXAxisField}>
-            <SelectTrigger>
+            <SelectTrigger className="bg-black border-gray-700">
               <SelectValue placeholder="Select X-axis field" />
             </SelectTrigger>
             <SelectContent>
@@ -233,7 +293,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">Y-Axis Field</p>
           <Select value={yAxisField} onValueChange={setYAxisField}>
-            <SelectTrigger>
+            <SelectTrigger className="bg-black border-gray-700">
               <SelectValue placeholder="Select Y-axis field" />
             </SelectTrigger>
             <SelectContent>
@@ -245,7 +305,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         </div>
       </div>
       
-      <div className="glass-card p-4">
+      <div className="glass-card p-6 rounded-lg">
         {renderChart()}
       </div>
     </div>

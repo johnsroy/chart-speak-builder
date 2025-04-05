@@ -1,21 +1,39 @@
+
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { dataService } from '@/services/dataService';
 import { Button } from '@/components/ui/button';
-import { Loader2, FileText, Database, HardDrive } from 'lucide-react';
+import { Loader2, FileText, Database, HardDrive, Calendar, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { toast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
+
 interface StorageStats {
   totalFiles: number;
   totalSize: number;
   coldStorageFiles: number;
   coldStorageSize: number;
 }
+
+interface Dataset {
+  id: string;
+  name: string;
+  file_size: number;
+  row_count: number;
+  column_schema: Record<string, string>;
+  created_at: string;
+  storage_bucket?: string;
+}
+
 const UserDatasetLibrary = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [datasets, setDatasets] = useState<any[]>([]);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [recentDataset, setRecentDataset] = useState<Dataset | null>(null);
+  const [pastDatasets, setPastDatasets] = useState<Dataset[]>([]);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
+  const navigate = useNavigate();
+  
   const {
     user,
     isAuthenticated
@@ -29,20 +47,38 @@ const UserDatasetLibrary = () => {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
+  
   useEffect(() => {
     const loadData = async () => {
       if (!isAuthenticated || !user) {
         setIsLoading(false);
         return;
       }
+      
       try {
         // Load datasets
-        const datasets = await dataService.getDatasets();
-        setDatasets(datasets);
+        const allDatasets = await dataService.getDatasets();
+        setDatasets(allDatasets);
+        
+        // Separate the most recent dataset from past datasets
+        if (allDatasets.length > 0) {
+          // Sort datasets by creation date (newest first)
+          const sortedDatasets = [...allDatasets].sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          
+          setRecentDataset(sortedDatasets[0]);
+          setPastDatasets(sortedDatasets.slice(1));
+        }
 
         // Load storage statistics
-        const stats = await dataService.getStorageStats(user.id);
-        setStorageStats(stats);
+        try {
+          const stats = await dataService.getStorageStats(user.id);
+          setStorageStats(stats);
+        } catch (error) {
+          console.error('Error getting storage stats:', error);
+          // Continue without storage stats
+        }
       } catch (error) {
         console.error('Error loading user datasets:', error);
         toast({
@@ -54,20 +90,65 @@ const UserDatasetLibrary = () => {
         setIsLoading(false);
       }
     };
+    
     loadData();
   }, [isAuthenticated, user]);
+  
+  const handleVisualizeDataset = (datasetId: string) => {
+    navigate(`/visualize/${datasetId}`);
+  };
+  
   if (!isAuthenticated) {
     return <div className="text-center p-10">
         <p>You need to be logged in to view your datasets.</p>
       </div>;
   }
+  
   if (isLoading) {
     return <div className="flex flex-col items-center justify-center p-10">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
         <p>Loading your datasets...</p>
       </div>;
   }
-  return <div className="glass-card p-6">
+  
+  const renderDatasetCard = (dataset: Dataset) => (
+    <div key={dataset.id} className="glass-card p-4 mb-4 border border-white/10 rounded-lg hover:border-purple-500/40 transition-colors">
+      <div className="flex justify-between items-start">
+        <div>
+          <h3 className="font-medium text-lg">{dataset.name}</h3>
+          <div className="text-sm text-white/60">
+            <p className="flex items-center mt-1">
+              <FileText className="h-4 w-4 mr-1" />
+              {formatBytes(dataset.file_size)} • {dataset.row_count} rows • {Object.keys(dataset.column_schema).length} columns
+            </p>
+            <p className="flex items-center mt-1">
+              <Clock className="h-4 w-4 mr-1" />
+              Uploaded {formatDistanceToNow(new Date(dataset.created_at), { addSuffix: true })}
+            </p>
+            {dataset.storage_bucket && (
+              <p className="flex items-center mt-1 text-xs">
+                <HardDrive className="h-3 w-3 mr-1" />
+                <span className={dataset.storage_bucket === 'cold_storage' ? 'text-blue-300' : 'text-green-300'}>
+                  {dataset.storage_bucket === 'cold_storage' ? 'Cold Storage' : 'Active Storage'}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+        <div>
+          <Button
+            size="sm"
+            onClick={() => handleVisualizeDataset(dataset.id)}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            Visualize
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+  
+  return <div className="space-y-8">
       <h2 className="text-2xl font-bold mb-6">Your Dataset Library</h2>
       
       {storageStats && <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -106,32 +187,35 @@ const UserDatasetLibrary = () => {
           </div>
         </div>}
       
-      <div className="divide-y divide-white/10">
-        {datasets.length === 0 ? <div className="py-8 text-center">
-            <FileText className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-            <h3 className="text-lg font-medium mb-2">No datasets found</h3>
-            <p className="text-white/60 mb-4">You haven't uploaded any datasets yet.</p>
-            <Button onClick={() => window.location.href = '/upload'}>Upload Your First Dataset</Button>
-          </div> : datasets.map(dataset => <div key={dataset.id} className="py-4 flex justify-between items-center">
-              <div>
-                <h3 className="font-medium">{dataset.name}</h3>
-                <div className="text-sm text-white/60">
-                  <p>{formatBytes(dataset.file_size)} • {dataset.row_count} rows • {Object.keys(dataset.column_schema).length} columns</p>
-                  <p>Uploaded {formatDistanceToNow(new Date(dataset.created_at), {
-                addSuffix: true
-              })}</p>
-                  <p className="text-xs mt-1">
-                    Storage: <span className={dataset.storage_bucket === 'cold_storage' ? 'text-blue-300' : 'text-green-300'}>
-                      {dataset.storage_bucket === 'cold_storage' ? 'Cold Storage' : 'Active Storage'}
-                    </span>
-                  </p>
-                </div>
+      {datasets.length === 0 ? (
+        <div className="py-8 text-center glass-card">
+          <FileText className="mx-auto h-12 w-12 text-gray-400 mb-3" />
+          <h3 className="text-lg font-medium mb-2">No datasets found</h3>
+          <p className="text-white/60 mb-4">You haven't uploaded any datasets yet.</p>
+          <Button onClick={() => navigate('/upload')}>Upload Your First Dataset</Button>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {recentDataset && (
+            <div>
+              <h3 className="text-xl font-medium mb-4 flex items-center">
+                <Calendar className="mr-2 h-5 w-5" /> Recent Upload
+              </h3>
+              {renderDatasetCard(recentDataset)}
+            </div>
+          )}
+          
+          {pastDatasets.length > 0 && (
+            <div>
+              <h3 className="text-xl font-medium mb-4">Previous Uploads</h3>
+              <div className="space-y-4">
+                {pastDatasets.map(dataset => renderDatasetCard(dataset))}
               </div>
-              <div className="flex space-x-2">
-                <Button size="sm" variant="outline" onClick={() => window.location.href = `/visualize/${dataset.id}`} className="text-violet-900">Visualize</Button>
-              </div>
-            </div>)}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>;
 };
+
 export default UserDatasetLibrary;

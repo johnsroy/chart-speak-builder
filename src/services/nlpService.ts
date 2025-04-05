@@ -2,7 +2,6 @@
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 import { Dataset } from './dataService';
-import { useToast } from '@/hooks/use-toast';
 
 export interface QueryResult {
   data: any[];
