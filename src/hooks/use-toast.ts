@@ -3,23 +3,29 @@ import * as React from "react"
 
 import type {
   ToastActionElement,
-  ToastProps,
 } from "@/components/ui/toast"
 
+// Define the toast variant options
+type ToastVariant = "default" | "destructive" | "success" | "warning"
+
+// Extend the module declaration in a file separate from the component definition
 declare module "@/components/ui/toast" {
   interface ToastProps {
-    variant?: "default" | "destructive" | "success" | "warning"
+    variant?: ToastVariant
   }
 }
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
 
-type ToasterToast = ToastProps & {
+type ToasterToast = {
   id: string
   title?: React.ReactNode
   description?: React.ReactNode
   action?: ToastActionElement
+  variant?: ToastVariant
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 const actionTypes = {
@@ -144,6 +150,7 @@ function dispatch(action: Action) {
   })
 }
 
+// Define the toast function input type
 type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
