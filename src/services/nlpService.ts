@@ -37,7 +37,7 @@ export const nlpService = {
 
       if (error) {
         console.error('Error from AI query function:', error);
-        console.warning('Edge function error, using fallback processing:', new Error(`AI query failed: ${error.message}`));
+        console.warn('Edge function error, using fallback processing:', new Error(`AI query failed: ${error.message}`));
         
         // If the Edge Function fails, fall back to local processing
         return this._processQueryLocally(query, datasetId);
@@ -74,7 +74,7 @@ export const nlpService = {
         const result = this._analyzeData(query, previewData, dataset);
         return result;
       } catch (error) {
-        console.warning('Error getting dataset preview:', error);
+        console.warn('Error getting dataset preview:', error);
         
         // Return dummy data if we can't process
         return {
@@ -197,7 +197,7 @@ export const nlpService = {
         [categoryColumn]: category,
         [valueColumn]: value
       }))
-      .sort((a, b) => b[valueColumn] - a[valueColumn])
+      .sort((a, b) => Number(b[valueColumn]) - Number(a[valueColumn]))
       .slice(0, 10); // Limit to top 10 for better visualization
     
     // Generate explanation
