@@ -1,9 +1,16 @@
+
 import * as React from "react"
 
 import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+
+declare module "@/components/ui/toast" {
+  interface ToastProps {
+    variant?: "default" | "destructive" | "success" | "warning"
+  }
+}
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
