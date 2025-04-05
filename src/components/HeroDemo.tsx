@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Send, Sparkles } from 'lucide-react';
+import { BarChart3, Send, Sparkles, LineChart, PieChart } from 'lucide-react';
 
 const HeroDemo = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [showGraph, setShowGraph] = useState(false);
+  const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie'>('bar');
   
   // Demo conversation flow
   const conversation = [
@@ -64,14 +65,23 @@ const HeroDemo = () => {
           
           {/* Chart Type Selector */}
           <div className="flex gap-2 mb-4">
-            <button className="bg-primary/20 text-primary px-3 py-1 rounded-full text-xs flex items-center gap-1 backdrop-blur-sm">
+            <button 
+              className={`${activeChartType === 'bar' ? 'bg-primary/20 text-primary' : 'text-gray-300 hover:bg-white/10'} px-3 py-1 rounded-full text-xs flex items-center gap-1 backdrop-blur-sm transition-colors`}
+              onClick={() => setActiveChartType('bar')}
+            >
               <BarChart3 className="h-3 w-3" /> Bar
             </button>
-            <button className="text-gray-300 px-3 py-1 rounded-full text-xs flex items-center gap-1 hover:bg-white/10">
-              Line
+            <button 
+              className={`${activeChartType === 'line' ? 'bg-primary/20 text-primary' : 'text-gray-300 hover:bg-white/10'} px-3 py-1 rounded-full text-xs flex items-center gap-1 backdrop-blur-sm transition-colors`}
+              onClick={() => setActiveChartType('line')}
+            >
+              <LineChart className="h-3 w-3" /> Line
             </button>
-            <button className="text-gray-300 px-3 py-1 rounded-full text-xs flex items-center gap-1 hover:bg-white/10">
-              Pie
+            <button 
+              className={`${activeChartType === 'pie' ? 'bg-primary/20 text-primary' : 'text-gray-300 hover:bg-white/10'} px-3 py-1 rounded-full text-xs flex items-center gap-1 backdrop-blur-sm transition-colors`}
+              onClick={() => setActiveChartType('pie')}
+            >
+              <PieChart className="h-3 w-3" /> Pie
             </button>
           </div>
           
@@ -83,20 +93,97 @@ const HeroDemo = () => {
                 Electronics
               </span>
             </div>
-            <div className="h-40 flex items-end gap-1">
-              {[35, 20, 30, 40, 35, 45, 50, 45, 40, 55, 60, 50].map((value, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center">
-                  <div
-                    className="w-full bg-gradient-to-t from-purple-500/80 to-purple-400/80 rounded-t backdrop-blur-sm"
-                    style={{ 
-                      height: `${value * 2}px`,
-                      animationDelay: `${i * 0.1}s`,
-                    }}
-                  ></div>
-                  <span className="text-[10px] mt-1 text-gray-300">{['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i]}</span>
+
+            {activeChartType === 'bar' && (
+              <div className="h-40 flex items-end gap-1">
+                {[35, 20, 30, 40, 35, 45, 50, 45, 40, 55, 60, 50].map((value, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center">
+                    <div
+                      className="w-full bg-gradient-to-t from-purple-500/80 to-purple-400/80 rounded-t backdrop-blur-sm"
+                      style={{ 
+                        height: `${value * 2}px`,
+                        animationDelay: `${i * 0.1}s`,
+                      }}
+                    ></div>
+                    <span className="text-[10px] mt-1 text-gray-300">{['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i]}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeChartType === 'line' && (
+              <div className="h-40 relative">
+                <svg className="w-full h-full" viewBox="0 0 400 150" preserveAspectRatio="none">
+                  {/* Grid lines */}
+                  <line x1="0" y1="0" x2="400" y2="0" stroke="rgba(255,255,255,0.1)" />
+                  <line x1="0" y1="50" x2="400" y2="50" stroke="rgba(255,255,255,0.1)" />
+                  <line x1="0" y1="100" x2="400" y2="100" stroke="rgba(255,255,255,0.1)" />
+                  <line x1="0" y1="150" x2="400" y2="150" stroke="rgba(255,255,255,0.1)" />
+                  
+                  {/* Line chart path */}
+                  <path 
+                    d="M0,75 L33,105 L66,85 L100,65 L133,70 L166,55 L200,40 L233,55 L266,65 L300,30 L333,20 L400,45" 
+                    fill="none" 
+                    stroke="rgb(168, 85, 247)" 
+                    strokeWidth="3" 
+                    strokeLinecap="round"
+                  />
+                  
+                  {/* Data points */}
+                  <circle cx="0" cy="75" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="33" cy="105" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="66" cy="85" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="100" cy="65" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="133" cy="70" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="166" cy="55" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="200" cy="40" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="233" cy="55" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="266" cy="65" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="300" cy="30" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="333" cy="20" r="4" fill="rgb(168, 85, 247)" />
+                  <circle cx="400" cy="45" r="4" fill="rgb(168, 85, 247)" />
+                </svg>
+                
+                <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2">
+                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, i) => (
+                    <span key={i} className="text-[10px] text-gray-300">{month}</span>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {activeChartType === 'pie' && (
+              <div className="h-40 flex justify-center items-center">
+                <div className="relative w-32 h-32">
+                  {/* Pie chart segments */}
+                  <svg viewBox="0 0 100 100" className="w-full h-full">
+                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(168, 85, 247, 0.8)" strokeWidth="40" strokeDasharray="75 100" transform="rotate(-90 50 50)" />
+                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(124, 58, 237, 0.8)" strokeWidth="40" strokeDasharray="15 100" strokeDashoffset="-25" transform="rotate(-90 50 50)" />
+                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(139, 92, 246, 0.8)" strokeWidth="40" strokeDasharray="10 100" strokeDashoffset="-40" transform="rotate(-90 50 50)" />
+                  </svg>
+                  
+                  {/* Center white circle for donut effect */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-white/10 backdrop-blur-sm h-16 w-16 rounded-full"></div>
+                  </div>
+                </div>
+                
+                <div className="ml-4">
+                  <div className="flex items-center mb-2">
+                    <span className="h-3 w-3 bg-purple-500 rounded-full mr-2"></span>
+                    <span className="text-[10px] text-gray-300">Electronics (75%)</span>
+                  </div>
+                  <div className="flex items-center mb-2">
+                    <span className="h-3 w-3 bg-purple-700 rounded-full mr-2"></span>
+                    <span className="text-[10px] text-gray-300">Clothing (15%)</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="h-3 w-3 bg-purple-600 rounded-full mr-2"></span>
+                    <span className="text-[10px] text-gray-300">Other (10%)</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
