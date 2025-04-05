@@ -1,63 +1,83 @@
 
 import { supabase } from '@/lib/supabase';
+import { dataService } from './dataService';
 
 export interface QueryResult {
   data: any[];
-  chartType: 'bar' | 'line' | 'pie' | 'scatter' | 'table';
+  chartType: string;
   explanation: string;
   chartConfig: {
     title: string;
+    subtitle?: string;
     xAxisTitle?: string;
     yAxisTitle?: string;
-    [key: string]: any;
+    xAxis?: string;
+    yAxis?: string;
   };
-}
-
-export interface ChartRecommendation {
-  title: string;
-  description: string;
-  query: string;
 }
 
 export const nlpService = {
   /**
-   * Processes a natural language query about a dataset using AI.
-   * @param datasetId The ID of the dataset to query.
-   * @param query The natural language query string.
-   * @param modelType The AI model to use: 'openai' or 'anthropic'.
-   * @returns A promise that resolves with the query result.
+   * Process a natural language query against a dataset
+   * @param datasetId The ID of the dataset to query
+   * @param query The natural language query
+   * @param modelType The model to use for processing (openai or anthropic)
+   * @returns A query result containing visualization data
    */
   processNaturalLanguageQuery: async (
-    datasetId: string, 
+    datasetId: string,
     query: string,
     modelType: 'openai' | 'anthropic' = 'openai'
   ): Promise<QueryResult> => {
     try {
-      console.log(`Processing NL query for dataset ${datasetId}:`, query);
+      console.log(`Processing NL query for dataset ${datasetId} with model ${modelType}`);
       
-      // Call the AI Query edge function
       const { data, error } = await supabase.functions.invoke('ai-query', {
-        body: { datasetId, query, modelType }
+        body: { 
+          datasetId,
+          query,
+          modelType 
+        }
       });
       
       if (error) {
-        console.error('Error processing query:', error);
+        console.error('Edge function error:', error);
         throw new Error(`Failed to process query: ${error.message}`);
       }
       
-      console.log('Query processed successfully:', data);
-      
-      // Ensure the response has the expected structure
-      if (!data || !data.data || !data.chartType) {
-        console.error('Invalid response format:', data);
-        throw new Error('The AI returned an invalid response format');
+      if (!data) {
+        throw new Error('Empty response from AI service');
       }
       
-      // Validate the data format
+      console.log('NLP service received response:', data);
+      
+      // Validate and ensure all required fields are present
+      if (!data.data || !Array.isArray(data.data) || !data.chartType) {
+        console.error('Invalid response format from AI service:', data);
+        throw new Error('Invalid response format from AI service');
+      }
+      
+      // Ensure numeric values are properly parsed
+      if (data.data.length > 0) {
+        data.data = data.data.map(item => {
+          const newItem: Record<string, any> = {};
+          
+          for (const [key, value] of Object.entries(item)) {
+            if (typeof value === 'string' && !isNaN(Number(value))) {
+              newItem[key] = Number(value);
+            } else {
+              newItem[key] = value;
+            }
+          }
+          
+          return newItem;
+        });
+      }
+      
       return {
         data: data.data,
         chartType: data.chartType,
-        explanation: data.explanation || 'No explanation provided',
+        explanation: data.explanation || '',
         chartConfig: data.chartConfig || {
           title: 'Data Visualization',
           xAxisTitle: '',
@@ -66,18 +86,7 @@ export const nlpService = {
       };
     } catch (error) {
       console.error('Error in processNaturalLanguageQuery:', error);
-      
-      // Return a fallback response with an error message
-      return {
-        data: [],
-        chartType: 'bar',
-        explanation: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`,
-        chartConfig: {
-          title: 'Error Visualizing Data',
-          xAxisTitle: '',
-          yAxisTitle: ''
-        }
-      };
+      throw error;
     }
   },
   
@@ -93,49 +102,134 @@ export const nlpService = {
   },
   
   /**
-   * Generates chart recommendations based on a dataset.
-   * @param datasetId The ID of the dataset.
-   * @returns A promise that resolves with an array of chart recommendations.
+   * Get chart recommendations for a dataset
+   * @param datasetId The ID of the dataset
+   * @returns An array of chart recommendations with query, title, and description
    */
-  getChartRecommendations: async (datasetId: string): Promise<ChartRecommendation[]> => {
+  getChartRecommendations: async (datasetId: string): Promise<Array<{
+    query: string;
+    title: string;
+    description: string;
+    chartType: string;
+  }>> => {
     try {
-      // Get dataset details
-      const { data: dataset, error: datasetError } = await supabase
-        .from('datasets')
-        .select('*')
-        .eq('id', datasetId)
-        .single();
+      // Get dataset info first to make informed suggestions
+      const dataset = await dataService.getDataset(datasetId);
       
-      if (datasetError) {
-        throw new Error(`Failed to get dataset: ${datasetError.message}`);
+      if (!dataset || !dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
+        // Default recommendations for unknown schema
+        return [
+          {
+            query: "Show me a summary of the data",
+            title: "Data Summary",
+            description: "Overview of key data points",
+            chartType: "bar"
+          },
+          {
+            query: "What are the main categories in the dataset?",
+            title: "Category Breakdown",
+            description: "Distribution across categories",
+            chartType: "pie"
+          },
+          {
+            query: "Show trends over time if there is time data",
+            title: "Time Trends",
+            description: "Changes over time periods",
+            chartType: "line"
+          },
+          {
+            query: "Show the distribution of numeric values",
+            title: "Value Distribution",
+            description: "Range and frequency of values",
+            chartType: "bar"
+          },
+          {
+            query: "Show the top 5 highest values",
+            title: "Top Values",
+            description: "Highest ranking items",
+            chartType: "bar"
+          }
+        ];
       }
       
-      // If the dataset has a schema, use it to generate recommendations
-      if (dataset.column_schema && Object.keys(dataset.column_schema).length > 0) {
-        return generateRecommendationsFromSchema(dataset);
+      // Generate dataset-specific recommendations based on schema
+      // This would be more sophisticated in a real implementation
+      const columns = Object.keys(dataset.column_schema);
+      const numericColumns = columns.filter(col => 
+        dataset.column_schema[col] === 'number' || 
+        dataset.column_schema[col] === 'integer'
+      );
+      const categoricalColumns = columns.filter(col => 
+        dataset.column_schema[col] === 'string'
+      );
+      const dateColumns = columns.filter(col => 
+        dataset.column_schema[col] === 'date' || 
+        dataset.column_schema[col] === 'timestamp'
+      );
+      
+      const recommendations = [];
+      
+      if (categoricalColumns.length > 0 && numericColumns.length > 0) {
+        recommendations.push({
+          query: `Show a breakdown of ${numericColumns[0]} by ${categoricalColumns[0]}`,
+          title: `${numericColumns[0]} by ${categoricalColumns[0]}`,
+          description: `Compare ${numericColumns[0]} across different ${categoricalColumns[0]} categories`,
+          chartType: "bar"
+        });
       }
       
-      // Otherwise return generic recommendations
-      return generateGenericRecommendations(dataset.name);
+      if (dateColumns.length > 0 && numericColumns.length > 0) {
+        recommendations.push({
+          query: `Show the trend of ${numericColumns[0]} over time`,
+          title: `${numericColumns[0]} Trend`,
+          description: `Changes in ${numericColumns[0]} across time periods`,
+          chartType: "line"
+        });
+      }
+      
+      if (categoricalColumns.length > 0) {
+        recommendations.push({
+          query: `Show the distribution of ${categoricalColumns[0]}`,
+          title: `${categoricalColumns[0]} Distribution`,
+          description: `Breakdown of ${categoricalColumns[0]} categories`,
+          chartType: "pie"
+        });
+      }
+      
+      if (numericColumns.length > 0) {
+        recommendations.push({
+          query: `Show the top 5 highest ${numericColumns[0]} values`,
+          title: `Top ${numericColumns[0]} Values`,
+          description: `Highest ranking items by ${numericColumns[0]}`,
+          chartType: "bar"
+        });
+      }
+      
+      // Add a general analysis recommendation
+      recommendations.push({
+        query: `What are the key insights from this dataset?`,
+        title: `Key Insights`,
+        description: `Important patterns and findings in the data`,
+        chartType: "bar"
+      });
+      
+      return recommendations;
     } catch (error) {
-      console.error('Error generating recommendations:', error);
+      console.error('Error getting chart recommendations:', error);
       
-      // Return some generic recommendations as fallback
+      // Return default recommendations on error
       return [
         {
-          title: 'General Overview',
-          description: 'Show a summary of the key metrics in the dataset',
-          query: 'Give me an overview of the main trends in this dataset'
+          query: "Summarize this dataset",
+          title: "Data Summary",
+          description: "Overview of the dataset",
+          chartType: "bar"
         },
         {
-          title: 'Data Distribution',
-          description: 'Visualize how values are distributed',
-          query: 'Show me how the values are distributed in this dataset'
-        },
-        {
-          title: 'Top Values',
-          description: 'Find the highest values in the dataset',
-          query: 'What are the top 5 highest values in this dataset?'
+          query: "Show me the main trends",
+          title: "Key Trends",
+          description: "Important patterns in the data",
+          chartType: "line"
         }
       ];
     }
@@ -209,150 +303,3 @@ export const nlpService = {
     return recommendations.slice(0, 5);
   }
 };
-
-/**
- * Generates chart recommendations based on the dataset schema.
- */
-function generateRecommendationsFromSchema(dataset: any): ChartRecommendation[] {
-  const recommendations: ChartRecommendation[] = [];
-  const schema = dataset.column_schema;
-  
-  // Find numeric columns
-  const numericColumns = Object.entries(schema)
-    .filter(([_, type]) => type === 'number' || type === 'integer')
-    .map(([name]) => name);
-  
-  // Find categorical columns
-  const categoricalColumns = Object.entries(schema)
-    .filter(([_, type]) => type === 'string')
-    .map(([name]) => name);
-  
-  // Find date columns
-  const dateColumns = Object.entries(schema)
-    .filter(([_, type]) => type === 'date')
-    .map(([name]) => name);
-  
-  // If we have numeric and categorical columns, suggest bar charts
-  if (numericColumns.length > 0 && categoricalColumns.length > 0) {
-    const numericCol = numericColumns[0];
-    const categoricalCol = categoricalColumns[0];
-    
-    recommendations.push({
-      title: `${categoricalCol} by ${numericCol}`,
-      description: `Compare ${numericCol} across different ${categoricalCol} categories`,
-      query: `Show me a bar chart of ${numericCol} by ${categoricalCol}`
-    });
-    
-    if (numericColumns.length > 1) {
-      recommendations.push({
-        title: `${categoricalCol} by multiple metrics`,
-        description: `Compare multiple metrics across ${categoricalCol} categories`,
-        query: `Create a comparison of ${numericColumns.slice(0, 3).join(', ')} across ${categoricalCol}`
-      });
-    }
-  }
-  
-  // If we have date columns, suggest trend analysis
-  if (dateColumns.length > 0 && numericColumns.length > 0) {
-    const dateCol = dateColumns[0];
-    const numericCol = numericColumns[0];
-    
-    recommendations.push({
-      title: `${numericCol} trends over time`,
-      description: `Analyze how ${numericCol} changes over time`,
-      query: `Show me a line chart of ${numericCol} over ${dateCol}`
-    });
-  }
-  
-  // If we have multiple numeric columns, suggest correlation
-  if (numericColumns.length > 1) {
-    recommendations.push({
-      title: `Correlation analysis`,
-      description: `Explore the relationship between ${numericColumns[0]} and ${numericColumns[1]}`,
-      query: `Is there a correlation between ${numericColumns[0]} and ${numericColumns[1]}?`
-    });
-  }
-  
-  // If we have categorical columns, suggest distribution
-  if (categoricalColumns.length > 0) {
-    recommendations.push({
-      title: `${categoricalColumns[0]} distribution`,
-      description: `See the distribution of ${categoricalColumns[0]} values`,
-      query: `Show me the distribution of ${categoricalColumns[0]} as a pie chart`
-    });
-  }
-  
-  // Add a generic "top values" recommendation
-  if (numericColumns.length > 0 && categoricalColumns.length > 0) {
-    recommendations.push({
-      title: `Top ${categoricalColumns[0]} by ${numericColumns[0]}`,
-      description: `Find the highest ${categoricalColumns[0]} in terms of ${numericColumns[0]}`,
-      query: `What are the top 5 ${categoricalColumns[0]} by ${numericColumns[0]}?`
-    });
-  }
-  
-  // Add a full dataset recommendation
-  recommendations.push({
-    title: 'Complete analysis',
-    description: 'Get a comprehensive analysis of the entire dataset',
-    query: `Analyze this ${dataset.name} dataset and show the most interesting insights`
-  });
-  
-  return recommendations.slice(0, 5); // Limit to 5 recommendations
-}
-
-/**
- * Generates generic chart recommendations when no schema is available.
- */
-function generateGenericRecommendations(datasetName: string): ChartRecommendation[] {
-  return [
-    {
-      title: 'General Overview',
-      description: `Get a summary of the key metrics in the ${datasetName} dataset`,
-      query: `Give me an overview of the main trends in this ${datasetName} dataset`
-    },
-    {
-      title: 'Top Categories',
-      description: 'Find the most significant categories in the dataset',
-      query: 'What are the top categories in this dataset?'
-    },
-    {
-      title: 'Time Series Analysis',
-      description: 'Analyze how values change over time',
-      query: 'Show me a trend analysis over time from this dataset'
-    },
-    {
-      title: 'Value Distribution',
-      description: 'See how values are distributed across the dataset',
-      query: 'Create a distribution chart of the main values in this dataset'
-    },
-    {
-      title: 'Comparative Analysis',
-      description: 'Compare different metrics or categories',
-      query: 'Compare the main categories in this dataset'
-    }
-  ];
-}
-
-/**
- * Processes a value for chart data - ensuring proper numeric conversion when needed
- */
-export function processChartValue(value: any): number {
-  if (typeof value === 'number') {
-    return value;
-  }
-  
-  if (typeof value === 'string') {
-    const numValue = parseFloat(value);
-    return isNaN(numValue) ? 0 : numValue;
-  }
-  
-  return 0;
-}
-
-/**
- * Format percent values for display in charts
- */
-export function formatPercentValue(percent: number): string {
-  return `${(percent * 100).toFixed(0)}%`;
-}

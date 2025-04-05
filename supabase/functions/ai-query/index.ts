@@ -26,11 +26,22 @@ serve(async (req) => {
     // Parse request body
     const { datasetId, query, modelType = 'openai' } = await req.json();
     
+    console.log(`Processing query for dataset: ${datasetId}, query: "${query}", model: ${modelType}`);
+    
     // Validate inputs
     if (!datasetId || !query) {
       return new Response(
         JSON.stringify({ error: 'Missing required parameters: datasetId or query' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    // Check if API keys are available based on model type
+    if ((modelType === 'openai' && !openaiKey) || (modelType === 'anthropic' && !anthropicKey)) {
+      const missingKeyType = modelType === 'openai' ? 'OpenAI' : 'Anthropic';
+      return new Response(
+        JSON.stringify({ error: `Missing ${missingKeyType} API key in environment variables` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
@@ -42,20 +53,56 @@ serve(async (req) => {
       .single();
       
     if (datasetError) {
+      console.error('Dataset error:', datasetError);
       return new Response(
         JSON.stringify({ error: `Failed to get dataset: ${datasetError.message}` }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
+    console.log('Dataset info retrieved:', dataset.name);
+
     // Get a preview of the data for analysis
-    const { data: fileData, error: storageError } = await supabase.storage
-      .from(dataset.storage_type || 'datasets')
-      .download(dataset.storage_path);
+    let fileData; 
+    try {
+      const { data, error: storageError } = await supabase.storage
+        .from(dataset.storage_type || 'datasets')
+        .download(dataset.storage_path);
+        
+      if (storageError) {
+        throw storageError;
+      }
       
-    if (storageError) {
+      fileData = data;
+      console.log('File data downloaded successfully');
+    } catch (storageError) {
+      console.error('Storage error:', storageError);
+      
+      // Try fallback storage bucket
+      try {
+        console.log('Trying fallback storage bucket...');
+        const { data, error: fallbackError } = await supabase.storage
+          .from('fallback')
+          .download(dataset.storage_path);
+          
+        if (fallbackError) {
+          throw fallbackError;
+        }
+        
+        fileData = data;
+        console.log('File data downloaded successfully from fallback bucket');
+      } catch (fallbackError) {
+        console.error('Fallback storage error:', fallbackError);
+        return new Response(
+          JSON.stringify({ error: `Failed to download dataset: ${storageError.message}` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+    }
+
+    if (!fileData) {
       return new Response(
-        JSON.stringify({ error: `Failed to download dataset: ${storageError.message}` }),
+        JSON.stringify({ error: 'Failed to retrieve dataset content' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -64,6 +111,7 @@ serve(async (req) => {
     let result;
     
     if (modelType === 'anthropic' && anthropicKey) {
+      console.log('Processing with Anthropic');
       result = await processWithAnthropic(
         query, 
         dataset, 
@@ -72,6 +120,7 @@ serve(async (req) => {
       );
     } else {
       // Default to OpenAI if anthropic not specified or key not available
+      console.log('Processing with OpenAI');
       result = await processWithOpenAI(
         query, 
         dataset, 
@@ -79,6 +128,8 @@ serve(async (req) => {
         openaiKey || ''
       );
     }
+    
+    console.log('Processing complete, returning result');
     
     // Return the result
     return new Response(
@@ -101,6 +152,36 @@ async function processWithOpenAI(query: string, dataset: any, fileData: any, api
     const fileText = await fileData.text();
     const filePreview = fileText.split('\n').slice(0, 100).join('\n');
     
+    console.log('Preparing OpenAI request with dataset schema:', dataset.column_schema);
+    console.log('File preview first line:', filePreview.split('\n')[0]);
+    
+    // Generate schema if not available
+    let schemaInfo = dataset.column_schema;
+    if (!schemaInfo || Object.keys(schemaInfo).length === 0) {
+      console.log('No schema available, inferring from first line');
+      const lines = fileText.split('\n');
+      if (lines.length > 1) {
+        const headers = lines[0].split(',').map(h => h.trim());
+        const firstDataRow = lines[1].split(',').map(d => d.trim());
+        
+        schemaInfo = {};
+        headers.forEach((header, index) => {
+          const value = firstDataRow[index];
+          const valueAsNumber = Number(value);
+          
+          if (!isNaN(valueAsNumber)) {
+            schemaInfo[header] = 'number';
+          } else if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
+            schemaInfo[header] = 'date';
+          } else {
+            schemaInfo[header] = 'string';
+          }
+        });
+        
+        console.log('Inferred schema:', schemaInfo);
+      }
+    }
+    
     // Prepare the system message based on dataset metadata
     let systemMessage = `You are an AI data analysis assistant. You'll help analyze a dataset and generate appropriate visualizations based on user queries.
 
@@ -108,7 +189,7 @@ Dataset Information:
 - Name: ${dataset.name}
 - Description: ${dataset.description || 'No description provided'}
 - File: ${dataset.file_name}
-- Columns: ${JSON.stringify(dataset.column_schema)}
+- Columns: ${JSON.stringify(schemaInfo || {})}
 
 When responding, I need you to:
 1. Analyze the data sample I'll provide
@@ -138,6 +219,8 @@ ${filePreview}
 
 Respond with ONLY the requested JSON structure. Do not include any other explanations outside the JSON.`;
 
+    console.log('Sending request to OpenAI');
+    
     // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -159,6 +242,7 @@ Respond with ONLY the requested JSON structure. Do not include any other explana
     
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`OpenAI API error (${response.status}):`, errorText);
       throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
     }
     
@@ -168,6 +252,8 @@ Respond with ONLY the requested JSON structure. Do not include any other explana
     if (!content) {
       throw new Error('Empty response from OpenAI');
     }
+    
+    console.log('Received response from OpenAI');
     
     // Parse the JSON response
     try {

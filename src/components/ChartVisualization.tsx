@@ -21,6 +21,7 @@ import {
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { getFieldOptions, isNumericField, isCategoricalField, processChartData, generateChartColors } from '@/utils/chartUtils';
+import Papa from 'papaparse';
 
 interface ChartVisualizationProps {
   datasetId: string;
@@ -70,95 +71,107 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         let errorMessage = '';
         
         try {
-          console.log("Trying data-processor edge function...");
-          const { data, error } = await supabase.functions.invoke('data-processor', {
-            body: { action: 'preview', dataset_id: datasetId }
+          console.log("Trying to download file directly from storage...");
+          const { data, error } = await supabase.storage
+            .from(dataset.storage_type || 'datasets')
+            .download(dataset.storage_path);
+            
+          if (error) throw error;
+          
+          // Process CSV data
+          const text = await data.text();
+          const parsedData = Papa.parse(text, {
+            header: true,
+            skipEmptyLines: true,
+            dynamicTyping: true // Auto-convert numeric values
           });
           
-          if (error) throw new Error(error.message || 'Edge function error');
-          if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
-            console.log("Got dataset from data-processor:", data.data.length, "rows");
-            previewData = data.data;
+          if (parsedData.data && Array.isArray(parsedData.data) && parsedData.data.length > 0) {
+            previewData = parsedData.data.slice(0, 100); // Limit to 100 rows for performance
+            console.log("Parsed CSV data:", previewData.length, "rows");
             
-            // Update the column schema if it was returned and not already present
-            if (data.schema && (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0)) {
-              console.log("Updating dataset schema from preview data");
-              dataset.column_schema = data.schema;
+            // Update schema if not already present
+            if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
+              const inferredSchema = inferSchemaFromData(previewData[0]);
+              console.log("Inferred schema:", inferredSchema);
+              dataset.column_schema = inferredSchema;
             }
-          } else {
-            throw new Error('Edge function returned empty or invalid data');
           }
-        } catch (edgeFnError) {
-          console.warn('Edge function error:', edgeFnError);
-          errorMessage = `Edge function: ${edgeFnError instanceof Error ? edgeFnError.message : String(edgeFnError)}`;
+        } catch (storageError) {
+          console.warn('Direct storage access error:', storageError);
+          errorMessage = `Storage: ${storageError instanceof Error ? storageError.message : String(storageError)}`;
           
           try {
-            console.log("Trying standard preview...");
-            const data = await dataService.previewDataset(datasetId);
-            if (Array.isArray(data) && data.length > 0) {
-              console.log("Got dataset from preview API:", data.length, "rows");
-              previewData = data;
+            console.log("Trying fallback storage...");
+            const { data, error } = await supabase.storage
+              .from('fallback')
+              .download(dataset.storage_path);
               
-              // Infer schema from data if not already available
+            if (error) throw error;
+            
+            // Process CSV data
+            const text = await data.text();
+            const parsedData = Papa.parse(text, {
+              header: true,
+              skipEmptyLines: true,
+              dynamicTyping: true
+            });
+            
+            if (parsedData.data && Array.isArray(parsedData.data) && parsedData.data.length > 0) {
+              previewData = parsedData.data.slice(0, 100);
+              console.log("Parsed CSV data from fallback:", previewData.length, "rows");
+              
               if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
-                const inferredSchema = inferSchemaFromData(data[0]);
+                const inferredSchema = inferSchemaFromData(previewData[0]);
+                console.log("Inferred schema from fallback:", inferredSchema);
                 dataset.column_schema = inferredSchema;
               }
-            } else {
-              throw new Error('Preview API returned empty data');
             }
-          } catch (previewError) {
-            console.warn('Preview API error:', previewError);
-            errorMessage = `${errorMessage}\nPreview API: ${previewError instanceof Error ? previewError.message : String(previewError)}`;
+          } catch (fallbackError) {
+            console.warn('Fallback storage error:', fallbackError);
+            errorMessage += `\nFallback: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`;
             
             try {
-              console.log("Trying direct storage access...");
-              const data = await dataService.getDatasetDirectFromStorage(datasetId);
-              if (Array.isArray(data) && data.length > 0) {
-                console.log("Got dataset from direct storage:", data.length, "rows");
-                previewData = data;
+              console.log("Trying data-processor edge function...");
+              const { data, error } = await supabase.functions.invoke('data-processor', {
+                body: { action: 'preview', dataset_id: datasetId }
+              });
+              
+              if (error) throw error;
+              
+              if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
+                previewData = data.data;
+                console.log("Got data from data-processor:", previewData.length, "rows");
                 
-                // Infer schema from data if not already available
-                if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
-                  const inferredSchema = inferSchemaFromData(data[0]);
-                  dataset.column_schema = inferredSchema;
+                if (data.schema && (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0)) {
+                  console.log("Using schema from data-processor:", data.schema);
+                  dataset.column_schema = data.schema;
                 }
-              } else {
-                throw new Error('Direct storage returned empty data');
               }
-            } catch (storageError) {
-              console.warn('Direct storage error:', storageError);
-              errorMessage = `${errorMessage}\nDirect Storage: ${storageError instanceof Error ? storageError.message : String(storageError)}`;
+            } catch (processorError) {
+              console.warn('Data processor error:', processorError);
+              errorMessage += `\nProcessor: ${processorError instanceof Error ? processorError.message : String(processorError)}`;
               
+              // Generate sample data as a last resort
               console.log("Using sample data as fallback");
-              previewData = generateSampleData(dataset.name);
+              previewData = generateSampleDataFromSchema(dataset);
               console.log("Generated sample data:", previewData.length, "rows");
-              
-              // Create a sample schema
-              if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
-                dataset.column_schema = {
-                  'Category': 'string',
-                  'Year': 'number',
-                  'Value': 'number',
-                  'Revenue': 'number',
-                  'Count': 'number'
-                };
-              }
             }
           }
         }
         
         if (!previewData || previewData.length === 0) {
-          throw new Error("Could not load any data using available methods");
+          throw new Error(`Could not load dataset data: ${errorMessage}`);
         }
         
+        // Set data and update column selection
         setData(previewData);
         
         // Get columns from the actual data
         const cols = Object.keys(previewData[0] || {});
         setColumns(cols);
         
-        // Auto select visualization fields using the dataset schema
+        // Auto select visualization fields
         autoSelectVisualizationFields(previewData, cols, dataset);
       } catch (error) {
         console.error('Error loading dataset:', error);
@@ -197,52 +210,124 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     return schema;
   };
 
-  const generateSampleData = (datasetName: string) => {
-    const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
-    const years = [2020, 2021, 2022, 2023, 2024];
-    const data = [];
+  const generateSampleDataFromSchema = (dataset: any) => {
+    let sampleColumns = [];
     
-    for (const category of categories) {
-      for (const year of years) {
-        data.push({
-          Category: category,
-          Year: year,
-          Value: Math.floor(Math.random() * 1000),
-          Revenue: Math.floor(Math.random() * 10000) / 100,
-          Count: Math.floor(Math.random() * 100)
-        });
+    // First, use existing schema if available
+    if (dataset.column_schema && Object.keys(dataset.column_schema).length > 0) {
+      sampleColumns = Object.keys(dataset.column_schema);
+    } 
+    // For a CSV file, try to guess columns from the filename
+    else if (dataset.file_name && dataset.file_name.toLowerCase().endsWith('.csv')) {
+      // Try to get a hint about the dataset from its name
+      const name = dataset.name || dataset.file_name;
+      
+      if (name.toLowerCase().includes('electric') || name.toLowerCase().includes('vehicle')) {
+        sampleColumns = ['Make', 'Model', 'Year', 'Battery', 'Range', 'Price'];
+      } else if (name.toLowerCase().includes('sale') || name.toLowerCase().includes('revenue')) {
+        sampleColumns = ['Date', 'Product', 'Category', 'Quantity', 'Price', 'Revenue'];
+      } else {
+        sampleColumns = ['Category', 'Value', 'Count', 'Region', 'Year'];
       }
+    } else {
+      // Default columns
+      sampleColumns = ['Category', 'Value', 'Count', 'Year'];
     }
     
-    return data;
+    // Generate sample data
+    const sampleData = [];
+    const categories = ['Type A', 'Type B', 'Type C', 'Type D', 'Type E'];
+    const years = [2020, 2021, 2022, 2023, 2024];
+    
+    for (let i = 0; i < 20; i++) {
+      const row: any = {};
+      
+      sampleColumns.forEach(col => {
+        if (col.toLowerCase().includes('year')) {
+          row[col] = years[i % years.length];
+        } else if (col.toLowerCase().includes('category') || 
+                 col.toLowerCase().includes('type') || 
+                 col.toLowerCase().includes('make') ||
+                 col.toLowerCase().includes('model')) {
+          row[col] = categories[i % categories.length];
+        } else if (col.toLowerCase().includes('price') || 
+                  col.toLowerCase().includes('revenue') || 
+                  col.toLowerCase().includes('value')) {
+          row[col] = Math.floor(Math.random() * 10000) / 100;
+        } else if (col.toLowerCase().includes('count') || 
+                  col.toLowerCase().includes('quantity') || 
+                  col.toLowerCase().includes('number')) {
+          row[col] = Math.floor(Math.random() * 100);
+        } else {
+          // Generic value
+          row[col] = `Value ${i + 1}`;
+        }
+      });
+      
+      sampleData.push(row);
+    }
+    
+    return sampleData;
   };
 
   const autoSelectVisualizationFields = (data: any[], columns: string[], dataset: any) => {
     // If no data or columns, return early
     if (!columns.length || !data.length) return;
     
-    // Get field options based on the dataset schema
-    const { categoryFields, numericFields } = getFieldOptions(dataset);
+    // First, check schema for guidance
+    let xFieldCandidates: string[] = [];
+    let yFieldCandidates: string[] = [];
     
-    // If there are categorical fields, use the first one for x-axis
-    if (categoryFields.length > 0) {
-      setXAxisField(categoryFields[0]);
-    } else if (columns.length > 0) {
-      // Fallback to the first column
-      setXAxisField(columns[0]);
+    if (dataset.column_schema && Object.keys(dataset.column_schema).length > 0) {
+      // Get categorical fields for x-axis
+      xFieldCandidates = columns.filter(col => 
+        dataset.column_schema[col] === 'string' || 
+        dataset.column_schema[col] === 'date'
+      );
+      
+      // Get numeric fields for y-axis
+      yFieldCandidates = columns.filter(col => 
+        dataset.column_schema[col] === 'number' || 
+        dataset.column_schema[col] === 'integer'
+      );
     }
     
-    // If there are numeric fields, use the first one for y-axis
-    if (numericFields.length > 0) {
-      // Skip the x-axis field if it's also in numeric fields
-      const yField = numericFields.find(field => field !== xAxisField) || numericFields[0];
+    // If schema didn't help, infer from data
+    if (xFieldCandidates.length === 0 || yFieldCandidates.length === 0) {
+      // Check actual data types
+      xFieldCandidates = columns.filter(col => {
+        const firstVal = data[0][col];
+        return typeof firstVal === 'string' || 
+              (typeof firstVal === 'string' && !isNaN(Date.parse(firstVal)));
+      });
+      
+      yFieldCandidates = columns.filter(col => {
+        const firstVal = data[0][col];
+        return typeof firstVal === 'number' || 
+              (typeof firstVal === 'string' && !isNaN(Number(firstVal)));
+      });
+    }
+    
+    // Still no good candidates? Use positional fallbacks
+    if (xFieldCandidates.length === 0 && columns.length > 0) {
+      xFieldCandidates = [columns[0]];
+    }
+    
+    if (yFieldCandidates.length === 0 && columns.length > 1) {
+      yFieldCandidates = [columns[1]];
+    } else if (yFieldCandidates.length === 0 && columns.length > 0 && columns[0] !== xFieldCandidates[0]) {
+      yFieldCandidates = [columns[0]];
+    }
+    
+    // Set fields
+    if (xFieldCandidates.length > 0) {
+      setXAxisField(xFieldCandidates[0]);
+    }
+    
+    if (yFieldCandidates.length > 0) {
+      // Prefer a different field than x-axis
+      const yField = yFieldCandidates.find(field => field !== xFieldCandidates[0]) || yFieldCandidates[0];
       setYAxisField(yField);
-    } else if (columns.length > 1) {
-      // Fallback to the second column
-      setYAxisField(columns[1]);
-    } else if (columns.length > 0 && columns[0] !== xAxisField) {
-      // Last resort: use the first column if it's not used for x-axis
-      setYAxisField(columns[0]);
     }
   };
 
