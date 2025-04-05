@@ -39,7 +39,8 @@ const UploadArea = () => {
     handleDrop,
     handleFileInput,
     handleUpload,
-    retryUpload
+    retryUpload,
+    verifyStorageBucket
   } = useFileUpload();
 
   const {
@@ -50,11 +51,23 @@ const UploadArea = () => {
     loadDatasets
   } = useDatasets();
 
-  // Ensure we have a valid user session on component mount
+  // Ensure we have a valid user session and storage buckets on component mount
   useEffect(() => {
-    const ensureAuthentication = async () => {
+    const initialize = async () => {
       try {
-        // First check if we already have a valid session
+        // First verify storage buckets
+        const bucketsOk = await verifyStorageBucket();
+        console.log("Storage buckets verified:", bucketsOk);
+        
+        if (!bucketsOk) {
+          toast({
+            title: "Storage configuration issue",
+            description: "The required storage buckets are not available. File uploads may fail.",
+            variant: "destructive"
+          });
+        }
+        
+        // Check if we already have a valid session
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         
         if (!currentSession) {
@@ -72,11 +85,11 @@ const UploadArea = () => {
           console.log("Existing session found:", currentSession.user.id);
         }
       } catch (err) {
-        console.error("Authentication error:", err);
+        console.error("Initialization error:", err);
       }
     };
     
-    ensureAuthentication();
+    initialize();
   }, []);
 
   const handleUploadClick = async () => {

@@ -15,11 +15,37 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-// Initialize admin user on app startup but only once
-const initializeAdmin = async () => {
+// Initialize storage and admin user on app startup
+const initializeApp = async () => {
   try {
     // Check if we're in a browser environment
     if (typeof window !== 'undefined') {
+      // First verify storage buckets exist
+      console.log("Verifying storage buckets...");
+      
+      const { data: buckets, error } = await supabase.storage.listBuckets();
+      if (error) {
+        console.error("Failed to list storage buckets:", error);
+      } else {
+        console.log("Storage buckets found:", buckets?.map(b => b.name).join(", ") || "None");
+        
+        // If datasets bucket doesn't exist, try to create it
+        if (!buckets?.some(b => b.name === 'datasets')) {
+          console.log("Creating 'datasets' bucket");
+          const { error: createError } = await supabase.storage.createBucket('datasets', {
+            public: false,
+            fileSizeLimit: 100 * 1024 * 1024 // 100MB
+          });
+          
+          if (createError) {
+            console.error("Failed to create 'datasets' bucket:", createError);
+          } else {
+            console.log("Successfully created 'datasets' bucket");
+          }
+        }
+      }
+      
+      // Initialize admin user
       const { authService } = await import('@/services/authService');
       await authService.setupAdminUser();
       
@@ -28,11 +54,11 @@ const initializeAdmin = async () => {
       console.log("Current session after setup:", session ? "Present" : "Not present");
     }
   } catch (error) {
-    console.error("Failed to initialize admin user:", error);
+    console.error("Failed to initialize app:", error);
   }
 };
 
 // Only run in browser environment and only once
 if (typeof window !== 'undefined') {
-  initializeAdmin();
+  initializeApp();
 }

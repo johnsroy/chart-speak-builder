@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -109,28 +110,55 @@ export const useFileUpload = () => {
     setUploadProgress(0);
     
     const fileSize = selectedFile?.size || 0;
-    const isLargeFile = fileSize > 5 * 1024 * 1024; // 5MB threshold
     
-    const interval = isLargeFile ? 2000 : 500; // slower for large files
-    
-    const maxProgress = isLargeFile ? 75 : 90; // leave more room for backend processing
+    // More conservative progress simulation for large files
+    const interval = fileSize > 10 * 1024 * 1024 ? 2500 : 1000; 
+    const maxProgress = 70; // Leave 30% for backend processing 
     
     const progressInterval = setInterval(() => {
       setUploadProgress(prev => {
-        if (prev >= maxProgress) {
-          clearInterval(progressInterval);
-          return maxProgress;
+        // Slow down progress as it gets closer to maxProgress
+        if (prev >= maxProgress - 10) {
+          return prev + 0.5;
+        }
+        if (prev >= maxProgress - 20) {
+          return prev + 1;
         }
         
-        if (isLargeFile && prev > 50) {
-          return prev + 2;
-        }
-        
-        return prev + (isLargeFile ? 5 : 10);
+        return prev + (fileSize > 10 * 1024 * 1024 ? 2 : 5);
       });
     }, interval);
     
     return progressInterval;
+  };
+
+  const verifyStorageBucket = async () => {
+    try {
+      console.log("Checking storage buckets...");
+      const { data: buckets, error } = await supabase.storage.listBuckets();
+      
+      if (error) {
+        console.error("Failed to list buckets:", error);
+        return false;
+      }
+      
+      if (!buckets || buckets.length === 0) {
+        console.error("No storage buckets found");
+        return false;
+      }
+      
+      const datasetsBucket = buckets.find(b => b.name === 'datasets');
+      if (!datasetsBucket) {
+        console.error("Required 'datasets' bucket not found");
+        return false;
+      }
+      
+      console.log("Storage buckets verified:", buckets.map(b => b.name).join(", "));
+      return true;
+    } catch (err) {
+      console.error("Storage bucket verification failed:", err);
+      return false;
+    }
   };
 
   const handleUpload = async (isAuthenticated: boolean, userId: string) => {
@@ -161,6 +189,7 @@ export const useFileUpload = () => {
       return;
     }
     
+    // Validate user ID format
     if (userId === 'test-admin-id') {
       userId = '00000000-0000-0000-0000-000000000000';
     } else {
@@ -173,6 +202,18 @@ export const useFileUpload = () => {
         });
         return;
       }
+    }
+    
+    // Verify storage buckets before uploading
+    const bucketsVerified = await verifyStorageBucket();
+    
+    if (!bucketsVerified) {
+      toast({
+        title: "Storage configuration issue",
+        description: "The storage system is not properly configured. Please contact support.",
+        variant: "destructive"
+      });
+      return;
     }
     
     setIsUploading(true);
@@ -235,6 +276,10 @@ export const useFileUpload = () => {
         errorMessage = "Upload failed due to storage permissions. Please try logging out and back in.";
       }
       
+      if (errorMessage.includes('Bucket not found')) {
+        errorMessage = "Storage configuration issue. The required storage bucket doesn't exist.";
+      }
+      
       setUploadError(errorMessage);
       toast({
         title: "Upload failed",
@@ -272,6 +317,7 @@ export const useFileUpload = () => {
     handleDrop,
     handleFileInput,
     handleUpload,
-    retryUpload
+    retryUpload,
+    verifyStorageBucket
   };
 };

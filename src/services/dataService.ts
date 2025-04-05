@@ -18,8 +18,8 @@ export interface Dataset {
   storage_path: string;
 }
 
-// Maximum chunk size for uploads (2MB)
-const CHUNK_SIZE = 2 * 1024 * 1024;
+// Increased chunk size for better upload performance (5MB)
+const CHUNK_SIZE = 5 * 1024 * 1024;
 
 export const dataService = {
   // Preview schema inference without uploading
@@ -122,15 +122,30 @@ export const dataService = {
       const fileExt = file.name.split('.').pop() || '';
       const uniqueFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
       
-      // Determine if this is for active or cold storage based on file size
-      // Files larger than 50MB go to cold storage
-      const isLargeFile = file.size > 50 * 1024 * 1024;
-      const bucketName = isLargeFile ? 'cold_storage' : 'datasets';
+      // Use only one bucket - 'datasets' for all files regardless of size
+      const bucketName = 'datasets';
       
       // Store the file in Supabase storage with retry logic
       const filePath = `${userId}/${uniqueFileName}`;
       
       console.log(`Attempting to upload ${file.name} (${file.size} bytes) to ${bucketName}/${filePath}`);
+
+      // Verify bucket exists before uploading
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      
+      if (bucketsError) {
+        console.error("Error listing buckets:", bucketsError);
+        throw new Error(`Failed to verify storage buckets: ${bucketsError.message}`);
+      }
+      
+      const bucketExists = buckets?.some(bucket => bucket.name === bucketName);
+      
+      if (!bucketExists) {
+        console.error(`Bucket '${bucketName}' does not exist`);
+        throw new Error(`Storage bucket '${bucketName}' does not exist. Please contact support.`);
+      }
+      
+      console.log(`Confirmed bucket '${bucketName}' exists`);
 
       // For large files, use chunked upload
       let uploadResult;
@@ -198,7 +213,7 @@ export const dataService = {
         
         let chunkUploaded = false;
         let attempts = 0;
-        const maxRetries = 3;
+        const maxRetries = 5;  // Increased from 3 to 5
         
         while (!chunkUploaded && attempts < maxRetries) {
           try {
@@ -208,6 +223,9 @@ export const dataService = {
               if (!session) {
                 throw new Error("Authentication session expired during chunked upload");
               }
+              
+              // Wait a bit longer between retries
+              await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempts)));
             }
             
             const { data, error } = await supabase.storage
@@ -220,15 +238,19 @@ export const dataService = {
             if (error) {
               console.error(`Chunk ${i}/${totalChunks} upload attempt ${attempts + 1} failed:`, error);
               
-              if (error.message && error.message.includes('row-level security policy')) {
-                throw new Error(`Failed to upload chunk ${i} due to RLS policy: ${error.message}`);
+              if (error.message) {
+                if (error.message.includes('row-level security policy')) {
+                  throw new Error(`Failed to upload chunk ${i} due to RLS policy: ${error.message}`);
+                } else if (error.message.includes('Bucket not found')) {
+                  throw new Error(`Storage bucket '${bucketName}' not found. Please verify bucket exists.`);
+                }
               }
               
               attempts++;
               
               // Wait before retrying (exponential backoff)
               if (attempts < maxRetries) {
-                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempts)));
+                await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempts)));
               } else {
                 return { 
                   success: false, 
@@ -250,7 +272,7 @@ export const dataService = {
             
             // Wait before retrying
             if (attempts < maxRetries) {
-              await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempts)));
+              await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempts)));
             } else {
               return { 
                 success: false, 
@@ -296,6 +318,9 @@ export const dataService = {
           if (!session) {
             throw new Error("Authentication session expired during upload");
           }
+          
+          // Wait before retrying (exponential backoff)
+          await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempts)));
         }
         
         const { data, error } = await supabase.storage
@@ -308,11 +333,17 @@ export const dataService = {
         if (error) {
           console.error(`Upload attempt ${attempts + 1} failed:`, error);
           
-          if (error.message && error.message.includes('row-level security policy')) {
-            throw new Error(`Upload failed due to RLS policy: ${error.message}`);
+          if (error.message) {
+            if (error.message.includes('row-level security policy')) {
+              throw new Error(`Upload failed due to RLS policy: ${error.message}`);
+            } else if (error.message.includes('Bucket not found')) {
+              throw new Error(`Storage bucket '${bucketName}' not found. Please verify bucket exists.`);
+            }
           }
           
-          if (attempts === maxRetries - 1) {
+          attempts++;
+          
+          if (attempts === maxRetries) {
             return { success: false, error: error.message };
           }
         } else {
@@ -322,17 +353,18 @@ export const dataService = {
       } catch (uploadError) {
         console.error(`Upload attempt ${attempts + 1} error:`, uploadError);
         
-        if (attempts === maxRetries - 1) {
+        attempts++;
+        
+        if (attempts === maxRetries) {
           return { 
             success: false, 
             error: uploadError instanceof Error ? uploadError.message : String(uploadError)
           };
         }
+        
+        // Exponential backoff
+        await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempts)));
       }
-      
-      attempts++;
-      // Exponential backoff
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempts)));
     }
     
     return { success: false, error: 'Exceeded maximum retry attempts' };
