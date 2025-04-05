@@ -20,3 +20,4 @@ enabled = true
 [functions]
 [functions.storage-manager]
 verify_jwt = false
+
