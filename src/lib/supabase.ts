@@ -10,5 +10,24 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     storage: localStorage,
     autoRefreshToken: true,
     persistSession: true,
+    detectSessionInUrl: true
   }
 });
+
+// Initialize admin user on app startup
+const initializeAdmin = async () => {
+  try {
+    // Check if we're in a browser environment
+    if (typeof window !== 'undefined') {
+      const { authService } = await import('@/services/authService');
+      await authService.setupAdminUser();
+    }
+  } catch (error) {
+    console.error("Failed to initialize admin user:", error);
+  }
+};
+
+// Only run in browser environment
+if (typeof window !== 'undefined') {
+  initializeAdmin();
+}

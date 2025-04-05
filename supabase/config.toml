@@ -3,3 +3,6 @@ project_id = "rehadpogugijylybwmoe"
 
 [functions.transform]
 verify_jwt = true
+
+[functions.admin-setup]
+verify_jwt = false

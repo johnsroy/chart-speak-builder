@@ -5,12 +5,16 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import Logo from '@/components/Logo';
+import { supabase } from '@/lib/supabase';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { login, register, adminLogin, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -24,6 +28,8 @@ const Login = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
+    
     try {
       if (isRegistering) {
         await register(email, password, name);
@@ -45,11 +51,20 @@ const Login = () => {
         description: error instanceof Error ? error.message : 'Failed to authenticate',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleAdminLogin = async () => {
+    setIsLoading(true);
+    
     try {
+      // First try to set up the admin user via edge function
+      const setupResponse = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup');
+      console.log('Admin setup response:', await setupResponse.json());
+      
+      // Then attempt to login
       await adminLogin();
       toast({
         title: 'Admin access granted',
@@ -57,11 +72,14 @@ const Login = () => {
       });
       navigate('/upload');
     } catch (error) {
+      console.error('Admin login error:', error);
       toast({
         title: 'Admin login failed',
         description: error instanceof Error ? error.message : 'Failed to login as admin',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -79,44 +97,54 @@ const Login = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           {isRegistering && (
             <div>
-              <label className="block text-sm font-medium mb-1">Full Name</label>
-              <input
+              <Label htmlFor="name" className="text-white">Full Name</Label>
+              <Input
+                id="name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border bg-white/10 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full px-3 py-2 rounded-md bg-white/10 backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 text-white"
                 placeholder="Enter your name"
                 required={isRegistering}
+                disabled={isLoading}
               />
             </div>
           )}
           
           <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
-            <input
+            <Label htmlFor="email" className="text-white">Email</Label>
+            <Input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border bg-white/10 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-3 py-2 rounded-md bg-white/10 backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 text-white"
               placeholder="Enter your email"
               required
+              disabled={isLoading}
             />
           </div>
           
           <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
-            <input
+            <Label htmlFor="password" className="text-white">Password</Label>
+            <Input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border bg-white/10 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-3 py-2 rounded-md bg-white/10 backdrop-blur-sm border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500 text-white"
               placeholder="Enter your password"
               required
+              disabled={isLoading}
             />
           </div>
           
-          <Button type="submit" className="w-full purple-gradient">
-            {isRegistering ? 'Create Account' : 'Sign In'}
+          <Button 
+            type="submit" 
+            className="w-full purple-gradient"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Processing...' : isRegistering ? 'Create Account' : 'Sign In'}
           </Button>
         </form>
         
@@ -126,6 +154,7 @@ const Login = () => {
             <button
               onClick={() => setIsRegistering(!isRegistering)}
               className="text-purple-300 hover:text-white underline"
+              disabled={isLoading}
             >
               {isRegistering ? 'Sign In' : 'Sign Up'}
             </button>
@@ -136,8 +165,9 @@ const Login = () => {
               variant="ghost"
               className="text-purple-300 hover:text-white"
               onClick={handleAdminLogin}
+              disabled={isLoading}
             >
-              Login as Admin (Testing Only)
+              {isLoading ? 'Processing...' : 'Login as Admin (Testing Only)'}
             </Button>
           </div>
         </div>
