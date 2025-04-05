@@ -9,6 +9,7 @@ import Upload from "./pages/Upload";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import Visualize from "./pages/Visualize";
 import { AuthProvider } from "./hooks/useAuth";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -33,6 +34,11 @@ const App = () => (
             <Route path="/upload" element={
               <ProtectedRoute>
                 <Upload />
+              </ProtectedRoute>
+            } />
+            <Route path="/visualize/:datasetId" element={
+              <ProtectedRoute>
+                <Visualize />
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

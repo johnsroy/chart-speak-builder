@@ -57,7 +57,7 @@ const Dashboard = () => {
     };
     
     checkAuth();
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, adminLogin]);
 
   const { isLoading, error, data: datasets, refetch } = useQuery({
     queryKey: ['datasets'],
@@ -71,6 +71,10 @@ const Dashboard = () => {
 
   const handleQueryResult = (result: QueryResult) => {
     setQueryResult(result);
+  };
+
+  const handleExploreDataset = (datasetId: string) => {
+    navigate(`/visualize/${datasetId}`);
   };
 
   const filteredDatasets = datasets ? datasets.filter(dataset =>
@@ -191,6 +195,11 @@ const Dashboard = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem 
+                              onClick={() => handleExploreDataset(dataset.id)}
+                            >
+                              Explore Dataset <ChevronRight className="ml-auto h-4 w-4" />
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => {
                               navigator.clipboard.writeText(dataset.id);
                               toast({
@@ -251,6 +260,12 @@ const Dashboard = () => {
                     <p className="text-gray-400 mb-4">
                       Enter a question above to generate insights from your data.
                     </p>
+                    <Button 
+                      onClick={() => handleExploreDataset(selectedDataset.id)}
+                      className="purple-gradient"
+                    >
+                      Explore Full Visualization
+                    </Button>
                   </div>
                 )}
               </>
