@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   BarChart, PieChart, LineChart, 
@@ -32,23 +33,15 @@ import {
 import { MoreVertical, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from "@/components/ui/separator"
-import { nlpService } from '@/services/nlpService';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import ReactECharts from 'echarts-for-react';
+import { nlpService, QueryResult } from '@/services/nlpService';
 import { useAuth } from '@/hooks/useAuth';
+import AIQueryPanel from '@/components/AIQueryPanel';
+import EnhancedVisualization from '@/components/EnhancedVisualization';
 
 const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
-  const [queryResult, setQueryResult] = useState<any>(null);
-  const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('');
+  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -59,170 +52,11 @@ const Dashboard = () => {
 
   const handleDatasetSelect = (dataset: Dataset) => {
     setSelectedDataset(dataset);
+    setQueryResult(null); // Clear previous results when selecting a new dataset
   };
 
-  const handleQuerySubmit = async () => {
-    if (!selectedDataset) {
-      toast({
-        title: "No dataset selected",
-        description: "Please select a dataset to query.",
-      });
-      return;
-    }
-
-    if (!naturalLanguageQuery) {
-      toast({
-        title: "No query entered",
-        description: "Please enter a query to run.",
-      });
-      return;
-    }
-
-    try {
-      const result = await nlpService.processQuery(naturalLanguageQuery, selectedDataset.id);
-      setQueryResult(result);
-    } catch (err: any) {
-      toast({
-        title: "Error running query",
-        description: err.message,
-      });
-    }
-  };
-
-  const handleCopySQL = () => {
-    if (queryResult?.sql) {
-      navigator.clipboard.writeText(queryResult.sql);
-      toast({
-        title: "SQL copied",
-        description: "SQL query copied to clipboard.",
-      });
-    } else {
-      toast({
-        title: "No SQL to copy",
-        description: "No SQL query available to copy.",
-      });
-    }
-  };
-
-  const getEchartsOption = () => {
-    if (!queryResult) return {};
-
-    const { chartType, chartConfig, data } = queryResult;
-
-    if (chartType === 'line') {
-      return {
-        xAxis: {
-          type: 'category',
-          data: data.map((item: any) => item[chartConfig.xAxis]),
-        },
-        yAxis: {
-          type: 'value'
-        },
-        series: [{
-          data: data.map((item: any) => item[chartConfig.yAxis]),
-          type: 'line'
-        }],
-        title: {
-          text: chartConfig.title
-        },
-        tooltip: {
-          trigger: 'axis'
-        },
-        toolbox: {
-          feature: {
-            saveAsImage: {}
-          }
-        }
-      };
-    } else if (chartType === 'bar') {
-      return {
-        xAxis: {
-          type: 'category',
-          data: data.map((item: any) => item[chartConfig.xAxis]),
-        },
-        yAxis: {
-          type: 'value'
-        },
-        series: [{
-          data: data.map((item: any) => item[chartConfig.yAxis]),
-          type: 'bar'
-        }],
-        title: {
-          text: chartConfig.title
-        },
-        tooltip: {
-          trigger: 'axis'
-        },
-        toolbox: {
-          feature: {
-            saveAsImage: {}
-          }
-        }
-      };
-    } else if (chartType === 'pie') {
-      return {
-        title: {
-          text: chartConfig.title,
-          left: 'center'
-        },
-        tooltip: {
-          trigger: 'item'
-        },
-        legend: {
-          orient: 'vertical',
-          left: 'left',
-        },
-        series: [
-          {
-            name: chartConfig.title,
-            type: 'pie',
-            radius: '50%',
-            data: data.map((item: any) => ({
-              value: item[chartConfig.yAxis],
-              name: item[chartConfig.xAxis]
-            })),
-            emphasis: {
-              itemStyle: {
-                shadowBlur: 10,
-                shadowOffsetX: 0,
-                shadowColor: 'rgba(0, 0, 0, 0.5)'
-              }
-            }
-          }
-        ],
-        toolbox: {
-          feature: {
-            saveAsImage: {}
-          }
-        }
-      };
-    } else if (chartType === 'scatter') {
-      return {
-        xAxis: {
-          type: 'value'
-        },
-        yAxis: {
-          type: 'value'
-        },
-        series: [{
-          data: data.map((item: any) => [item.x, item.y]),
-          type: 'scatter'
-        }],
-        title: {
-          text: chartConfig.title
-        },
-        tooltip: {
-          trigger: 'item'
-        },
-        toolbox: {
-          feature: {
-            saveAsImage: {}
-          }
-        }
-      };
-    } else {
-      return {};
-    }
+  const handleQueryResult = (result: QueryResult) => {
+    setQueryResult(result);
   };
 
   const filteredDatasets = datasets ? datasets.filter(dataset =>
@@ -252,7 +86,7 @@ const Dashboard = () => {
                   <Skeleton className="h-4 w-5/6" />
                 </div>
               ) : error ? (
-                <p className="text-red-500">Error: {error.message}</p>
+                <p className="text-red-500">Error: {(error as Error).message}</p>
               ) : filteredDatasets.length > 0 ? (
                 <div className="max-h-64 overflow-y-auto">
                   {filteredDatasets.map((dataset) => (
@@ -313,79 +147,41 @@ const Dashboard = () => {
           </div>
 
           <div className="md:col-span-2">
-            <div className="glass-card p-4">
-              <h2 className="text-xl font-medium mb-4">Natural Language Query</h2>
-              <div className="mb-4">
-                <Input
-                  type="text"
-                  placeholder="Enter your query here..."
-                  value={naturalLanguageQuery}
-                  onChange={(e) => setNaturalLanguageQuery(e.target.value)}
+            {selectedDataset ? (
+              <>
+                <AIQueryPanel 
+                  datasetId={selectedDataset.id} 
+                  onQueryResult={handleQueryResult} 
                 />
+                
+                {queryResult ? (
+                  <div className="mt-6">
+                    <EnhancedVisualization result={queryResult} />
+                  </div>
+                ) : (
+                  <div className="glass-card p-6 mt-6 text-center">
+                    <Activity className="h-12 w-12 mx-auto mb-4 text-indigo-400" />
+                    <h3 className="text-xl font-medium mb-2">Ready to Analyze</h3>
+                    <p className="text-gray-400 mb-4">
+                      Enter a question above to generate insights from your data.
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="glass-card p-8 text-center">
+                <FileSpreadsheet className="h-16 w-16 mx-auto mb-4 text-indigo-400" />
+                <h3 className="text-xl font-medium mb-2">No Dataset Selected</h3>
+                <p className="text-gray-400 mb-6">
+                  Select a dataset from the left panel or upload a new one to get started.
+                </p>
+                <Button asChild>
+                  <Link to="/upload">
+                    <Plus className="h-4 w-4 mr-2" /> Upload Dataset
+                  </Link>
+                </Button>
               </div>
-              <Button className="purple-gradient" onClick={handleQuerySubmit}>
-                Run Query <Search className="h-4 w-4 ml-2" />
-              </Button>
-
-              {selectedDataset && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-medium mb-2">Dataset Preview: {selectedDataset.name}</h3>
-                  {queryResult?.chartType === 'table' ? (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableCaption>Preview of the selected dataset.</TableCaption>
-                        <TableHeader>
-                          {selectedDataset.column_schema && Object.keys(selectedDataset.column_schema).map((key) => (
-                            <TableHead key={key}>{key}</TableHead>
-                          ))}
-                        </TableHeader>
-                        <TableBody>
-                          {queryResult?.data.map((row: any, index: number) => (
-                            <TableRow key={index}>
-                              {Object.keys(selectedDataset.column_schema).map((key) => (
-                                <TableCell key={key}>{row[key]}</TableCell>
-                              ))}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : queryResult?.data && queryResult?.data.length > 0 ? (
-                    <div className="h-[400px]">
-                      <ReactECharts option={getEchartsOption()} />
-                    </div>
-                  ) : (
-                    <p className="text-gray-500">No data to display.</p>
-                  )}
-                </div>
-              )}
-
-              {queryResult?.explanation && (
-                <Card className="mt-6">
-                  <CardHeader>
-                    <CardTitle>Explanation</CardTitle>
-                    <CardDescription>Understanding the query result.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p>{queryResult.explanation}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {queryResult?.sql && (
-                <div className="mt-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-medium mb-2">Generated SQL</h3>
-                    <Button variant="secondary" size="sm" onClick={handleCopySQL}>
-                      Copy SQL <Copy className="h-4 w-4 ml-2" />
-                    </Button>
-                  </div>
-                  <div className="bg-white/10 p-3 rounded-md font-mono text-sm overflow-x-auto">
-                    {queryResult.sql}
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>

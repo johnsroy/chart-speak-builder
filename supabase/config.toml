@@ -12,20 +12,16 @@ port = 54322
 [studio]
 enabled = true
 port = 54323
+api_url = "http://localhost"
 
 [inbucket]
 enabled = true
 port = 54324
 
-[storage]
-enabled = true
-
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
+port = 9999
 
-[realtime]
-enabled = true
-
-[functions.admin-setup]
-verify_jwt = false
+[functions]
+[functions.ai-query]
+verify_jwt = true
