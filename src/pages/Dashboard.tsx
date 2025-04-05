@@ -4,7 +4,7 @@ import {
   BarChart, PieChart, LineChart, 
   Activity, FileSpreadsheet, Plus, 
   Search, Settings, Download, Database,
-  LayoutDashboard, Users, ChevronRight
+  LayoutDashboard, Users, ChevronRight, Upload
 } from 'lucide-react';
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
