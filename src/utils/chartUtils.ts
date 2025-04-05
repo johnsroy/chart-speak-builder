@@ -5,6 +5,7 @@ import { Dataset } from '@/services/dataService';
  * Determines if a field is suitable for a numeric axis
  */
 export const isNumericField = (fieldName: string, dataset: Dataset): boolean => {
+  if (!dataset || !dataset.column_schema) return false;
   const fieldType = dataset.column_schema[fieldName];
   return fieldType === 'number' || fieldType === 'integer';
 };
@@ -13,6 +14,7 @@ export const isNumericField = (fieldName: string, dataset: Dataset): boolean => 
  * Determines if a field is suitable for a categorical axis
  */
 export const isCategoricalField = (fieldName: string, dataset: Dataset): boolean => {
+  if (!dataset || !dataset.column_schema) return false;
   const fieldType = dataset.column_schema[fieldName];
   return fieldType === 'string' || fieldType === 'date';
 };
@@ -20,7 +22,7 @@ export const isCategoricalField = (fieldName: string, dataset: Dataset): boolean
 /**
  * Gets suitable field options for chart axes based on the dataset schema
  */
-export const getFieldOptions = (dataset: Dataset) => {
+export const getFieldOptions = (dataset: any) => {
   if (!dataset || !dataset.column_schema) {
     return {
       categoryFields: [],
@@ -154,4 +156,44 @@ export const createGradientColors = (baseColor: string, count: number = 5) => {
   }
   
   return colors;
+};
+
+/**
+ * Extracts a dataset name from file name
+ */
+export const extractDatasetNameFromFileName = (fileName: string): string => {
+  // Remove file extension
+  const withoutExtension = fileName.replace(/\.[^/.]+$/, "");
+  // Replace underscores with spaces
+  return withoutExtension.replace(/_/g, " ");
+};
+
+/**
+ * Gets a date field from a dataset if available
+ */
+export const findDateField = (dataset: any): string | null => {
+  if (!dataset?.column_schema) return null;
+  
+  // Look for fields with 'date' in the name
+  const dateNameFields = Object.keys(dataset.column_schema).filter(
+    field => /date|time/i.test(field)
+  );
+  
+  if (dateNameFields.length > 0) return dateNameFields[0];
+  
+  // Look for fields with date type
+  const dateTypeFields = Object.entries(dataset.column_schema)
+    .filter(([_, type]) => type === 'date')
+    .map(([field]) => field);
+    
+  if (dateTypeFields.length > 0) return dateTypeFields[0];
+  
+  return null;
+};
+
+/**
+ * Determines if dataset contains time series data
+ */
+export const isTimeSeriesData = (dataset: any): boolean => {
+  return !!findDateField(dataset);
 };

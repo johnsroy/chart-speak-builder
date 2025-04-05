@@ -121,9 +121,15 @@ When responding, I need you to:
   "chartConfig": {
     "title": "Chart title",
     "xAxisTitle": "X-axis label",
-    "yAxisTitle": "Y-axis label"
+    "yAxisTitle": "Y-axis label",
+    "xAxis": "The data field to use for x-axis",
+    "yAxis": "The data field to use for y-axis"
   }
 }
+
+The data should be properly formatted for visualization - numeric values should be numbers, not strings.
+For pie charts, make sure the data is aggregated and represents percentages of a whole.
+Choose appropriate fields for the visualization based on the query and data types.
 
 Here's a sample of the data:
 \`\`\`
@@ -166,6 +172,24 @@ Respond with ONLY the requested JSON structure. Do not include any other explana
     // Parse the JSON response
     try {
       const parsedResult = JSON.parse(content);
+      
+      // Ensure all numeric values are actually numbers
+      if (parsedResult.data && Array.isArray(parsedResult.data)) {
+        parsedResult.data = parsedResult.data.map(item => {
+          const processedItem: Record<string, any> = {};
+          
+          for (const [key, value] of Object.entries(item)) {
+            if (typeof value === 'string' && !isNaN(Number(value))) {
+              processedItem[key] = Number(value);
+            } else {
+              processedItem[key] = value;
+            }
+          }
+          
+          return processedItem;
+        });
+      }
+      
       return parsedResult;
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
@@ -205,9 +229,15 @@ When responding, I need you to:
   "chartConfig": {
     "title": "Chart title",
     "xAxisTitle": "X-axis label",
-    "yAxisTitle": "Y-axis label"
+    "yAxisTitle": "Y-axis label",
+    "xAxis": "The data field to use for x-axis",
+    "yAxis": "The data field to use for y-axis"
   }
 }
+
+The data should be properly formatted for visualization - numeric values should be numbers, not strings.
+For pie charts, make sure the data is aggregated and represents percentages of a whole.
+Choose appropriate fields for the visualization based on the query and data types.
 
 You must return ONLY the requested JSON structure with no markdown formatting or other text.`;
 
@@ -255,6 +285,24 @@ Respond with ONLY the requested JSON structure. No other text or explanations.`
       // Strip any markdown code block formatting that Claude might add
       const jsonContent = content.replace(/```json\s*|\s*```/g, '').trim();
       const parsedResult = JSON.parse(jsonContent);
+      
+      // Ensure all numeric values are actually numbers
+      if (parsedResult.data && Array.isArray(parsedResult.data)) {
+        parsedResult.data = parsedResult.data.map(item => {
+          const processedItem: Record<string, any> = {};
+          
+          for (const [key, value] of Object.entries(item)) {
+            if (typeof value === 'string' && !isNaN(Number(value))) {
+              processedItem[key] = Number(value);
+            } else {
+              processedItem[key] = value;
+            }
+          }
+          
+          return processedItem;
+        });
+      }
+      
       return parsedResult;
     } catch (parseError) {
       console.error('Failed to parse Anthropic response:', parseError);

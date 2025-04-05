@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { dataService } from '@/services/dataService';
 import { useToast } from '@/hooks/use-toast';
@@ -19,6 +20,7 @@ import {
 } from 'recharts';
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { getFieldOptions, isNumericField, isCategoricalField, processChartData, generateChartColors } from '@/utils/chartUtils';
 
 interface ChartVisualizationProps {
   datasetId: string;
@@ -65,7 +67,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         setDatasetInfo(dataset);
         
         let previewData;
-        let errorMessage;
+        let errorMessage = '';
         
         try {
           console.log("Trying data-processor edge function...");
@@ -77,12 +79,18 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
           if (data && data.data && Array.isArray(data.data) && data.data.length > 0) {
             console.log("Got dataset from data-processor:", data.data.length, "rows");
             previewData = data.data;
+            
+            // Update the column schema if it was returned and not already present
+            if (data.schema && (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0)) {
+              console.log("Updating dataset schema from preview data");
+              dataset.column_schema = data.schema;
+            }
           } else {
             throw new Error('Edge function returned empty or invalid data');
           }
         } catch (edgeFnError) {
           console.warn('Edge function error:', edgeFnError);
-          errorMessage = `Edge function: ${edgeFnError.message}`;
+          errorMessage = `Edge function: ${edgeFnError instanceof Error ? edgeFnError.message : String(edgeFnError)}`;
           
           try {
             console.log("Trying standard preview...");
@@ -90,12 +98,18 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
             if (Array.isArray(data) && data.length > 0) {
               console.log("Got dataset from preview API:", data.length, "rows");
               previewData = data;
+              
+              // Infer schema from data if not already available
+              if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
+                const inferredSchema = inferSchemaFromData(data[0]);
+                dataset.column_schema = inferredSchema;
+              }
             } else {
               throw new Error('Preview API returned empty data');
             }
           } catch (previewError) {
             console.warn('Preview API error:', previewError);
-            errorMessage = `${errorMessage}\nPreview API: ${previewError.message}`;
+            errorMessage = `${errorMessage}\nPreview API: ${previewError instanceof Error ? previewError.message : String(previewError)}`;
             
             try {
               console.log("Trying direct storage access...");
@@ -103,16 +117,33 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
               if (Array.isArray(data) && data.length > 0) {
                 console.log("Got dataset from direct storage:", data.length, "rows");
                 previewData = data;
+                
+                // Infer schema from data if not already available
+                if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
+                  const inferredSchema = inferSchemaFromData(data[0]);
+                  dataset.column_schema = inferredSchema;
+                }
               } else {
                 throw new Error('Direct storage returned empty data');
               }
             } catch (storageError) {
               console.warn('Direct storage error:', storageError);
-              errorMessage = `${errorMessage}\nDirect Storage: ${storageError.message}`;
+              errorMessage = `${errorMessage}\nDirect Storage: ${storageError instanceof Error ? storageError.message : String(storageError)}`;
               
               console.log("Using sample data as fallback");
               previewData = generateSampleData(dataset.name);
               console.log("Generated sample data:", previewData.length, "rows");
+              
+              // Create a sample schema
+              if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
+                dataset.column_schema = {
+                  'Category': 'string',
+                  'Year': 'number',
+                  'Value': 'number',
+                  'Revenue': 'number',
+                  'Count': 'number'
+                };
+              }
             }
           }
         }
@@ -122,10 +153,13 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         }
         
         setData(previewData);
-        const cols = Object.keys(previewData[0]);
+        
+        // Get columns from the actual data
+        const cols = Object.keys(previewData[0] || {});
         setColumns(cols);
         
-        autoSelectVisualizationFields(previewData, cols);
+        // Auto select visualization fields using the dataset schema
+        autoSelectVisualizationFields(previewData, cols, dataset);
       } catch (error) {
         console.error('Error loading dataset:', error);
         setError(`Failed to load dataset: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -136,6 +170,32 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     
     loadData();
   }, [datasetId, toast]);
+
+  // Helper function to infer schema from data
+  const inferSchemaFromData = (sampleRow: Record<string, any>) => {
+    const schema: Record<string, string> = {};
+    
+    for (const [key, value] of Object.entries(sampleRow)) {
+      if (typeof value === 'number') {
+        schema[key] = 'number';
+      } else if (typeof value === 'boolean') {
+        schema[key] = 'boolean';
+      } else if (typeof value === 'string') {
+        // Check if it's a date
+        if (!isNaN(Date.parse(String(value))) && String(value).match(/^\d{4}-\d{2}-\d{2}/)) {
+          schema[key] = 'date';
+        } else {
+          schema[key] = 'string';
+        }
+      } else if (value === null) {
+        schema[key] = 'unknown';
+      } else {
+        schema[key] = 'object';
+      }
+    }
+    
+    return schema;
+  };
 
   const generateSampleData = (datasetName: string) => {
     const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
@@ -157,37 +217,46 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     return data;
   };
 
-  const autoSelectVisualizationFields = (data: any[], columns: string[]) => {
-    let foundStringColumn = false;
-    const stringColumn = columns.find(col => {
-      const isString = typeof data[0][col] === 'string';
-      const isDate = String(data[0][col]).match(/^\d{4}-\d{2}-\d{2}/);
-      return isString || isDate;
-    });
+  const autoSelectVisualizationFields = (data: any[], columns: string[], dataset: any) => {
+    // If no data or columns, return early
+    if (!columns.length || !data.length) return;
     
-    if (stringColumn) {
-      setXAxisField(stringColumn);
-      foundStringColumn = true;
-    } else {
+    // Get field options based on the dataset schema
+    const { categoryFields, numericFields } = getFieldOptions(dataset);
+    
+    // If there are categorical fields, use the first one for x-axis
+    if (categoryFields.length > 0) {
+      setXAxisField(categoryFields[0]);
+    } else if (columns.length > 0) {
+      // Fallback to the first column
       setXAxisField(columns[0]);
     }
     
-    let foundNumberColumn = false;
-    const numberColumn = columns.find(col => {
-      const isNumber = typeof data[0][col] === 'number' || !isNaN(Number(data[0][col]));
-      return isNumber && (!foundStringColumn || col !== stringColumn);
-    });
-    
-    if (numberColumn) {
-      setYAxisField(numberColumn);
-      foundNumberColumn = true;
-    } else {
-      setYAxisField(columns[foundStringColumn ? 1 : 0] || columns[0]);
+    // If there are numeric fields, use the first one for y-axis
+    if (numericFields.length > 0) {
+      // Skip the x-axis field if it's also in numeric fields
+      const yField = numericFields.find(field => field !== xAxisField) || numericFields[0];
+      setYAxisField(yField);
+    } else if (columns.length > 1) {
+      // Fallback to the second column
+      setYAxisField(columns[1]);
+    } else if (columns.length > 0 && columns[0] !== xAxisField) {
+      // Last resort: use the first column if it's not used for x-axis
+      setYAxisField(columns[0]);
     }
   };
 
-  const isNumericField = (field: string) => {
+  // Check if a field is numeric based on actual data
+  const isFieldNumeric = (field: string) => {
     if (!data.length) return false;
+    
+    // First check schema if available
+    if (datasetInfo?.column_schema && datasetInfo.column_schema[field]) {
+      const fieldType = datasetInfo.column_schema[field];
+      return fieldType === 'number' || fieldType === 'integer';
+    }
+    
+    // Fallback to checking data
     const sample = data[0][field];
     return typeof sample === 'number' || !isNaN(Number(sample));
   };
@@ -213,6 +282,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
             className="mt-4"
             onClick={() => window.location.reload()}
           >
+            <RefreshCw className="h-4 w-4 mr-2" />
             Retry
           </Button>
         </div>
@@ -221,18 +291,25 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
 
     if (!data.length || !xAxisField || !yAxisField) {
       return (
-        <div className="flex justify-center items-center h-[400px]">
-          {!data.length ? 'No data available for this dataset' : 'Select fields to visualize'}
+        <div className="flex justify-center items-center h-[400px] text-muted-foreground">
+          {!data.length 
+            ? 'No data available for this dataset' 
+            : !xAxisField || !yAxisField 
+              ? 'Select fields to visualize' 
+              : 'Ready to visualize'}
         </div>
       );
     }
 
+    // Process data, ensuring numeric values for y-axis
     const chartData = data.map(item => ({
       ...item,
-      [yAxisField]: isNumericField(yAxisField) ? Number(item[yAxisField]) : 0
+      [yAxisField]: isFieldNumeric(yAxisField) ? Number(item[yAxisField]) || 0 : 0
     }));
 
+    // Limit data points to avoid overcrowded charts
     const limitedData = chartData.slice(0, 20);
+    const chartColors = generateChartColors(limitedData.length);
 
     if (chartType === 'bar') {
       return (
@@ -256,7 +333,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
             <Legend wrapperStyle={{ color: '#ddd' }} />
             <Bar dataKey={yAxisField} fill="#8884d8" name={yAxisField}>
               {limitedData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
               ))}
             </Bar>
           </BarChart>
@@ -293,7 +370,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
               strokeWidth={2}
             >
               {limitedData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
               ))}
             </Line>
           </LineChart>
@@ -302,6 +379,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     }
 
     if (chartType === 'pie') {
+      // For pie charts, limit to fewer slices for readability
       const pieData = limitedData.slice(0, 8);
       
       return (
@@ -315,10 +393,12 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
               cy="50%"
               outerRadius={150}
               fill="#8884d8"
-              label={({ name, percent }) => `${name}: ${(Number(percent) * 100).toFixed(0)}%`}
+              label={({ name, percent }) => 
+                `${name}: ${(Number(percent) * 100).toFixed(0)}%`
+              }
             >
               {pieData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
               ))}
             </Pie>
             <Tooltip 
