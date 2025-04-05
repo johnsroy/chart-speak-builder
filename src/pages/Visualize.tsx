@@ -133,8 +133,8 @@ const Visualize = () => {
                 {queryResult ? <EnhancedVisualization result={queryResult} /> : <Card className="glass-card p-8 text-center">
                     <CardContent className="pt-8">
                       <BrainCircuit className="h-16 w-16 mx-auto mb-4 text-indigo-400" />
-                      <h3 className="text-xl font-medium mb-2">Ask AI About Your Data</h3>
-                      <p className="text-gray-400 max-w-md mx-auto mb-4">
+                      <h3 className="text-xl font-medium mb-2 text-red-300">Ask AI About Your Data</h3>
+                      <p className="max-w-md mx-auto mb-4 text-gray-50">
                         Use natural language queries to explore insights from your dataset. Here are some examples:
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
