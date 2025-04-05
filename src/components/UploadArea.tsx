@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, Database, Library, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -123,7 +124,7 @@ const UploadArea = () => {
   const handleUploadClick = async () => {
     try {
       console.log("Ensuring admin login before upload");
-      await adminLogin();
+      const loginResult = await adminLogin();
       
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       
@@ -135,7 +136,7 @@ const UploadArea = () => {
         });
         
         const loginResult = await adminLogin();
-        if (!loginResult?.user?.id) {
+        if (loginResult && !loginResult.user?.id) {
           toast({
             title: "Authentication failed",
             description: "Using anonymous upload instead",
@@ -170,7 +171,7 @@ const UploadArea = () => {
 
   const handleRetryUpload = async () => {
     try {
-      await adminLogin();
+      const loginResult = await adminLogin();
       
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000"; // Use admin ID as fallback
