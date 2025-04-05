@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Upload, Download, Database, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { AlertTriangle } from 'lucide-react';
@@ -9,6 +10,7 @@ import StorageConnectionDialog from './upload/StorageConnectionDialog';
 import UploadTabContent from './upload/UploadTabContent';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useDatasets } from '@/hooks/useDatasets';
+import { toast } from '@/hooks/use-toast';
 
 const UploadArea = () => {
   const [activeTab, setActiveTab] = useState('upload');
@@ -47,13 +49,39 @@ const UploadArea = () => {
     loadDatasets
   } = useDatasets();
 
+  // Attempt admin login on initial load to ensure we're authenticated
+  useEffect(() => {
+    if (!isAuthenticated && !user) {
+      const performAdminLogin = async () => {
+        try {
+          await adminLogin();
+          console.log("Admin login completed on component mount");
+        } catch (err) {
+          console.error("Failed to perform auto admin login:", err);
+        }
+      };
+      
+      performAdminLogin();
+    }
+  }, []);
+
   const handleUploadClick = async () => {
     try {
-      let authResult;
+      // Always ensure we have admin authentication before upload
+      if (!isAuthenticated || !user) {
+        console.log("Performing admin login before upload");
+        const authResult = await adminLogin();
+        console.log("Admin login result before upload:", authResult);
+        
+        // Give a moment for auth state to update
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       
-      if (!isAuthenticated) {
-        authResult = await adminLogin();
-        console.log("Admin login result:", authResult);
+      if (selectedFile && selectedFile.size > 50 * 1024 * 1024) {
+        toast({
+          title: "Large file detected",
+          description: "Uploading large files may take some time. Please be patient.",
+        });
       }
       
       await handleUpload(true);
@@ -64,8 +92,13 @@ const UploadArea = () => {
   };
 
   const handleRetryUpload = async () => {
-    if (!isAuthenticated) {
-      await adminLogin();
+    // Always ensure we have admin authentication before retry
+    if (!isAuthenticated || !user) {
+      const authResult = await adminLogin();
+      console.log("Admin login result before retry:", authResult);
+      
+      // Give a moment for auth state to update
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
     
     retryUpload(true);
@@ -80,7 +113,7 @@ const UploadArea = () => {
         </p>
       </div>
       
-      {!isAuthenticated && (
+      {!isAuthenticated && !user && (
         <div className="bg-yellow-500/20 border border-yellow-500/50 p-4 rounded-lg mb-8 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-yellow-500" />
           <div>

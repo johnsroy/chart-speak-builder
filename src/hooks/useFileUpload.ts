@@ -58,7 +58,11 @@ export const useFileUpload = () => {
       'application/json'
     ];
     
-    if (!validFileTypes.includes(file.type)) {
+    // Special handling for CSV files without correct MIME type
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    const isCSVByExtension = fileExtension === 'csv';
+    
+    if (!validFileTypes.includes(file.type) && !isCSVByExtension) {
       toast({
         title: "Invalid file type",
         description: "Please upload a CSV, Excel or JSON file",
@@ -83,6 +87,9 @@ export const useFileUpload = () => {
     const fileName = file.name;
     setDatasetName(fileName.substring(0, fileName.lastIndexOf('.')) || fileName);
     
+    // Reset any previous errors
+    setUploadError(null);
+    
     // Preview schema inference
     previewSchemaInference(file);
     
@@ -95,7 +102,8 @@ export const useFileUpload = () => {
   const previewSchemaInference = async (file: File) => {
     try {
       // Only preview for CSV files
-      if (file.type === 'text/csv') {
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      if (file.type === 'text/csv' || fileExtension === 'csv') {
         const schemaSample = await dataService.previewSchemaInference(file);
         setSchemaPreview(schemaSample);
       } else {
@@ -109,21 +117,38 @@ export const useFileUpload = () => {
 
   const simulateProgress = () => {
     setUploadProgress(0);
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(interval);
-          return 90;
-        }
-        return prev + 10;
-      });
-    }, 500);
     
-    return interval;
+    // For large files, use a slower progress simulation
+    const fileSize = selectedFile?.size || 0;
+    const isLargeFile = fileSize > 5 * 1024 * 1024; // 5MB threshold
+    
+    // Calculate appropriate interval based on file size
+    const interval = isLargeFile ? 2000 : 500; // slower for large files
+    
+    // Calculate max progress before completion
+    const maxProgress = isLargeFile ? 75 : 90; // leave more room for backend processing
+    
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= maxProgress) {
+          clearInterval(progressInterval);
+          return maxProgress;
+        }
+        
+        // For large files, increment more slowly as progress increases
+        if (isLargeFile && prev > 50) {
+          return prev + 2;
+        }
+        
+        return prev + (isLargeFile ? 5 : 10);
+      });
+    }, interval);
+    
+    return progressInterval;
   };
 
   const handleUpload = async (isAuthenticated: boolean) => {
-    // Check both the isAuthenticated flag and the user state to determine auth status
+    // Ensure we have authentication
     if (!isAuthenticated && !user) {
       toast({
         title: "Authentication required",
@@ -157,6 +182,8 @@ export const useFileUpload = () => {
     const progressInterval = simulateProgress();
     
     try {
+      console.log("Starting upload with auth status:", isAuthenticated, "User:", user?.id);
+      
       // Explicitly pass the current user and session to ensure authentication is recognized
       const dataset = await dataService.uploadDataset(
         selectedFile, 
