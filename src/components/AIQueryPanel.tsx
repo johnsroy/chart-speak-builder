@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, MessageSquare, Brain, BrainCircuit } from "lucide-react";
 import { nlpService, QueryResult } from '@/services/nlpService';
 import { useToast } from '@/hooks/use-toast';
+import { dataService } from '@/services/dataService';
 
 interface AIQueryPanelProps {
   datasetId: string;
@@ -18,7 +19,23 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({ datasetId, onQueryResult })
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeModel, setActiveModel] = useState<'openai' | 'anthropic'>('openai');
+  const [datasetSchema, setDatasetSchema] = useState<any>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const loadDatasetInfo = async () => {
+      try {
+        const dataset = await dataService.getDataset(datasetId);
+        if (dataset && dataset.column_schema) {
+          setDatasetSchema(dataset.column_schema);
+        }
+      } catch (error) {
+        console.error('Error loading dataset schema:', error);
+      }
+    };
+
+    loadDatasetInfo();
+  }, [datasetId]);
 
   const handleQuerySubmit = async () => {
     if (!query.trim()) {
@@ -32,6 +49,7 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({ datasetId, onQueryResult })
 
     setIsLoading(true);
     try {
+      console.log(`Processing query for dataset: ${datasetId} using model: ${activeModel}`);
       const result = await nlpService.processQuery(query, datasetId, activeModel);
       onQueryResult(result);
       toast({
@@ -47,6 +65,47 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({ datasetId, onQueryResult })
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const generateSuggestedQuery = () => {
+    if (!datasetSchema) return "Tell me about this dataset";
+    
+    const columns = Object.keys(datasetSchema);
+    if (columns.length === 0) return "Analyze this dataset";
+    
+    // Check for common columns to generate more meaningful suggestions
+    const hasCategoricalColumn = columns.some(col => 
+      datasetSchema[col] === 'string' || 
+      col.toLowerCase().includes('category') || 
+      col.toLowerCase().includes('type')
+    );
+    
+    const hasDateColumn = columns.some(col => 
+      datasetSchema[col] === 'date' || 
+      col.toLowerCase().includes('date') || 
+      col.toLowerCase().includes('year')
+    );
+    
+    const hasNumericColumn = columns.some(col => 
+      datasetSchema[col] === 'number' || 
+      datasetSchema[col] === 'integer'
+    );
+    
+    // Generate relevant query based on schema
+    if (hasCategoricalColumn && hasNumericColumn) {
+      const categoryCol = columns.find(col => 
+        datasetSchema[col] === 'string' || 
+        col.toLowerCase().includes('category') || 
+        col.toLowerCase().includes('type')
+      );
+      return `Show me a breakdown by ${categoryCol || 'category'}`;
+    } else if (hasDateColumn && hasNumericColumn) {
+      return "Show me trends over time";
+    } else if (hasNumericColumn) {
+      return "What are the key statistics of this dataset?";
+    } else {
+      return "Summarize this dataset";
     }
   };
 
@@ -94,7 +153,7 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({ datasetId, onQueryResult })
           <div className="relative flex-grow">
             <Input
               type="text"
-              placeholder="Ask a question about your data..."
+              placeholder={generateSuggestedQuery()}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pr-10"

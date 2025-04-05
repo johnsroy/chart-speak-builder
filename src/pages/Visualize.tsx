@@ -15,7 +15,8 @@ import {
   Table as TableIcon,
   Download,
   Share2,
-  BrainCircuit
+  BrainCircuit,
+  MessageSquare
 } from 'lucide-react';
 import { toast } from "sonner";
 import AIQueryPanel from '@/components/AIQueryPanel';
@@ -24,13 +25,14 @@ import { QueryResult } from '@/services/nlpService';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import DatasetChatInterface from '@/components/DatasetChatInterface';
 
 const Visualize = () => {
   const { datasetId } = useParams<{ datasetId: string }>();
   const [dataset, setDataset] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'query' | 'explore'>('query');
+  const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>('chat');
   const [exampleQuery, setExampleQuery] = useState('');
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -75,8 +77,6 @@ const Visualize = () => {
 
   const setQuery = (query: string) => {
     setExampleQuery(query);
-    // In a real implementation, we would need to pass this to the AIQueryPanel
-    // This is a simplified example - in production, we would use refs or context
     toast.info(`Selected example query: "${query}"`);
   };
 
@@ -121,17 +121,25 @@ const Visualize = () => {
               </div>
             </div>
             
-            <Tabs defaultValue={activeTab} onValueChange={(value) => setActiveTab(value as 'query' | 'explore')} className="space-y-4">
-              <TabsList className="grid grid-cols-2 w-full max-w-md mx-auto">
+            <Tabs defaultValue={activeTab} onValueChange={(value) => setActiveTab(value as 'chat' | 'query' | 'explore')} className="space-y-4">
+              <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
+                <TabsTrigger value="chat" className="flex items-center justify-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Chat
+                </TabsTrigger>
                 <TabsTrigger value="query" className="flex items-center justify-center gap-2">
                   <BrainCircuit className="h-4 w-4" />
                   AI Query
                 </TabsTrigger>
                 <TabsTrigger value="explore" className="flex items-center justify-center gap-2">
                   <BarChart className="h-4 w-4" />
-                  Explore Data
+                  Explore
                 </TabsTrigger>
               </TabsList>
+              
+              <TabsContent value="chat" className="space-y-6">
+                <DatasetChatInterface datasetId={datasetId!} datasetName={dataset.name} />
+              </TabsContent>
               
               <TabsContent value="query" className="space-y-6">
                 <AIQueryPanel 
