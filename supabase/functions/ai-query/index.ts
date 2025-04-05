@@ -1,443 +1,357 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
-// CORS headers for browser requests
+// CORS headers for all responses
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Define interface for query result
+// Define our result interface
 interface QueryResult {
   data: any[];
-  chartType: 'bar' | 'line' | 'pie' | 'scatter' | 'table';
-  chartConfig: any;
-  sql?: string;
-  explanation?: string;
+  explanation: string;
+  chartType: string;
+  chartConfig: {
+    title: string;
+    xAxisTitle: string;
+    yAxisTitle: string;
+    colorScheme?: string[];
+  };
 }
+
+// Color schemes for visualizations
+const COLOR_SCHEMES = {
+  purple: ['#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', '#E5DEFF'],
+  gradient: ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'],
+  vibrant: ['#8B5CF6', '#D946EF', '#F97316', '#0EA5E9', '#22C55E'],
+  pastel: ['#FEC6A1', '#FEF7CD', '#F2FCE2', '#D3E4FD', '#FFDEE2'],
+  dark: ['#1A1F2C', '#403E43', '#221F26', '#333333', '#555555']
+};
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
-  
+
   try {
-    const { dataset_id, query_text, model_type = 'openai' } = await req.json();
-    
-    if (!dataset_id) {
-      throw new Error('Missing dataset_id parameter');
-    }
-    
-    if (!query_text) {
-      throw new Error('Missing query_text parameter');
-    }
-    
-    // Get environment variables
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    
-    // Get API keys for AI models
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
-    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
-    
-    // Check if we have the necessary API key
-    if ((model_type === "openai" && !openaiApiKey) || (model_type === "anthropic" && !anthropicApiKey)) {
-      throw new Error(`${model_type} API key is not configured`);
-    }
-    
-    // Create Supabase client with service role key for admin access
-    const supabase = createClient(supabaseUrl, supabaseServiceRole);
-    
-    // Get dataset metadata
+    // Create a Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") as string;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Parse request payload
+    const { datasetId, query, modelType = 'openai' } = await req.json();
+
+    // Get dataset information
     const { data: dataset, error: datasetError } = await supabase
       .from('datasets')
       .select('*')
-      .eq('id', dataset_id)
+      .eq('id', datasetId)
       .single();
-    
+
     if (datasetError) {
-      throw new Error(`Failed to get dataset: ${datasetError.message}`);
+      return new Response(
+        JSON.stringify({ error: `Dataset not found: ${datasetError.message}` }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-    
-    // Get dataset sample for AI processing
-    let datasetSample;
-    let sampleError = null;
-    
-    try {
-      // Get a preview of the dataset
-      const { data: previewData, error: previewError } = await supabase
-        .from('datasets')
-        .select('file_name, storage_path, storage_type, column_schema')
-        .eq('id', dataset_id)
-        .single();
-        
-      if (previewError) throw previewError;
-      
-      // If the dataset is stored in Supabase storage
-      if (previewData.storage_type === 'supabase') {
-        const { data, error: storageError } = await supabase
-          .storage
-          .from('datasets')
-          .download(previewData.storage_path);
-          
-        if (storageError) throw storageError;
-        
-        // Parse the CSV data (first 100 rows for sample)
-        const text = await data.text();
-        datasetSample = await parseCSV(text, 100, previewData.column_schema);
-      } else {
-        datasetSample = generateSampleData(dataset.column_schema || {});
-      }
-    } catch (error) {
-      console.error("Error getting dataset sample:", error);
-      sampleError = error;
-      // Generate sample data as fallback
-      datasetSample = generateSampleData(dataset.column_schema || {});
+
+    // Download the dataset file
+    const { data: fileData, error: fileError } = await supabase
+      .storage
+      .from('datasets')
+      .download(dataset.storage_path);
+
+    if (fileError) {
+      return new Response(
+        JSON.stringify({ error: `Failed to download dataset file: ${fileError.message}` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-    
-    // Process using AI depending on the requested model
-    let result: QueryResult;
-    
-    if (model_type === 'openai') {
-      result = await processWithOpenAI(query_text, dataset, datasetSample, openaiApiKey, sampleError);
-    } else {
-      result = await processWithAnthropic(query_text, dataset, datasetSample, anthropicApiKey, sampleError);
-    }
-    
-    // Log the query for future improvements
-    try {
-      await supabase.from('queries').insert({
-        user_id: dataset.user_id,
-        dataset_id: dataset_id,
-        query_type: 'natural_language',
-        query_text: query_text,
-        name: query_text.slice(0, 50) + (query_text.length > 50 ? '...' : ''),
-        query_config: {
-          model: model_type,
-          chart_type: result.chartType,
-        }
-      });
-    } catch (logError) {
-      // Non-critical error, just log and continue
-      console.error("Error logging query:", logError);
-    }
-    
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-    
+
+    // Parse CSV data
+    const text = await fileData.text();
+    const parsedData = await parseCSV(text);
+
+    // Determine the best visualization based on the query
+    const result = await processDataWithAI(parsedData, query, dataset, modelType);
+
+    return new Response(
+      JSON.stringify(result),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
   } catch (error) {
     console.error("Error processing AI query:", error);
     return new Response(
-      JSON.stringify({ 
-        error: error.message,
-        chartType: 'table',
-        data: [],
-        chartConfig: {
-          title: "Error Processing Query"
-        },
-        explanation: `Error: ${error.message}. Please try again with a different query.`
-      }),
-      { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500
-      }
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
 
-// Helper function to parse CSV data with schema-aware type conversion
-async function parseCSV(text: string, limit = 100, schema: Record<string, string> = {}) {
-  const lines = text.split('\n');
-  if (lines.length < 2) return [];
+// Parse CSV data with proper type conversion
+async function parseCSV(text: string) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
   
-  // Handle quotes in CSV
-  const parseCSVLine = (line: string) => {
-    const values = [];
-    let currentValue = "";
+  const data = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    
+    // Handle quoted values with commas inside them
+    const values: string[] = [];
+    let currentValue = '';
     let inQuotes = false;
     
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
+    for (let j = 0; j < lines[i].length; j++) {
+      const char = lines[i][j];
       
       if (char === '"') {
-        // Toggle quote state
         inQuotes = !inQuotes;
-        // Add the quote if we're inside quotes (preserve actual quotes in values)
-        if (inQuotes || (i > 0 && line[i-1] === '"')) {
-          currentValue += char;
-        }
-      }
-      else if (char === ',' && !inQuotes) {
-        // End of value
-        values.push(currentValue.trim());
-        currentValue = "";
-      }
-      else {
-        // Add character to current value
+      } else if (char === ',' && !inQuotes) {
+        values.push(currentValue);
+        currentValue = '';
+      } else {
         currentValue += char;
       }
     }
     
     // Add the last value
-    values.push(currentValue.trim());
+    values.push(currentValue);
     
-    return values;
-  };
-  
-  const headers = parseCSVLine(lines[0]).map(h => h.replace(/^"(.+)"$/, '$1').trim());
-  
-  const data = [];
-  for (let i = 1; i < Math.min(lines.length, limit + 1); i++) {
-    if (!lines[i].trim()) continue;
-    
-    const values = parseCSVLine(lines[i]);
     const row: Record<string, any> = {};
     
     headers.forEach((header, index) => {
-      // Remove quotes if present
-      let value = values[index] || '';
-      value = value.replace(/^"(.+)"$/, '$1');
+      const value = index < values.length ? values[index].trim() : '';
       
-      // Convert value based on schema if available
-      if (schema && schema[header]) {
-        const colType = schema[header];
-        
-        if (colType === 'number' || colType === 'integer') {
-          const numValue = Number(value);
-          row[header] = isNaN(numValue) ? value : numValue;
-        } 
-        else if (colType === 'date') {
-          const dateValue = new Date(value);
-          row[header] = isNaN(dateValue.getTime()) ? value : dateValue.toISOString().split('T')[0];
-        }
-        else {
-          row[header] = value;
-        }
-      }
-      else {
-        // Auto-detect number
-        const numValue = Number(value);
-        row[header] = isNaN(numValue) ? value : numValue;
-      }
-    });
-    
-    data.push(row);
-  }
-  
-  return data;
-}
-
-// Generate sample data for testing
-function generateSampleData(schema: Record<string, string> = {}) {
-  const columns = Object.keys(schema).length > 0 ? Object.keys(schema) : ["category", "value"];
-  const data = [];
-  
-  for (let i = 0; i < 5; i++) {
-    const row: Record<string, any> = {};
-    columns.forEach(col => {
-      const colType = schema[col] || "string";
-      
-      if (colType === "number" || colType === "integer") {
-        row[col] = Math.round(Math.random() * 100);
-      } else if (colType === "date") {
-        const date = new Date();
-        date.setDate(date.getDate() - i * 30);
-        row[col] = date.toISOString().split('T')[0];
+      // Try to intelligently convert types
+      if (value === '') {
+        row[header] = null;
+      } else if (value.toLowerCase() === 'true') {
+        row[header] = true;
+      } else if (value.toLowerCase() === 'false') {
+        row[header] = false;
+      } else if (!isNaN(Date.parse(value)) && 
+                 (value.includes('-') || value.includes('/')) && 
+                 value.length >= 8) {
+        // This looks like a date
+        row[header] = value;
+      } else if (!isNaN(Number(value))) {
+        row[header] = Number(value);
       } else {
-        row[col] = `Sample ${col} ${i + 1}`;
+        row[header] = value.replace(/^"|"$/g, ''); // Remove surrounding quotes
       }
     });
+    
     data.push(row);
   }
   
   return data;
 }
 
-// Process query with OpenAI
-async function processWithOpenAI(query: string, dataset: any, datasetSample: any[], apiKey: string, sampleError: Error | null): Promise<QueryResult> {
-  try {
-    const prompt = `
-      You are DataViz AI, a data analyst assistant helping to analyze a dataset.
-      
-      Dataset name: ${dataset.name}
-      Dataset file: ${dataset.file_name}
-      Dataset schema: ${JSON.stringify(dataset.column_schema || {})}
-      ${sampleError ? `Note: There was an error loading the full dataset: ${sampleError.message}` : ''}
-      
-      Here is a sample of the data (first ${datasetSample.length} rows):
-      ${JSON.stringify(datasetSample.slice(0, 5))}
-      
-      User query: "${query}"
-      
-      Analyze this dataset based on the user's query. Return a JSON with:
-      1. The most appropriate chart type ('bar', 'line', 'pie', 'scatter', or 'table')
-      2. A processed subset of data optimized for visualization
-      3. Chart configuration (title, axis labels, etc.)
-      4. A brief explanation of insights found
-
-      Guidelines:
-      - Use bar charts for comparing values across categories
-      - Use line charts for trends over time or sequences
-      - Use pie charts for proportions or distributions (limit to 8 categories)
-      - Use scatter plots for relationships between two variables
-      - Use tables for detailed data or when no clear visualization applies
-      - Limit to 15 data points for readability
-      - Provide insightful explanations about patterns in the data
-      
-      Return ONLY a valid JSON object with this structure:
-      {
-        "chartType": string,
-        "data": array,
-        "chartConfig": {
-          "title": string,
-          "xAxisTitle": string,
-          "yAxisTitle": string
-        },
-        "explanation": string
-      }
-    `;
-    
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system", 
-            content: "You are a data analyst AI that analyzes datasets and only replies with valid JSON."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.2,
-        response_format: { type: "json_object" }
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+// Simple AI-inspired data processing for visualization
+async function processDataWithAI(data: any[], query: string, dataset: any, modelType: string): Promise<QueryResult> {
+  // For MVP, we'll use a rules-based approach since we don't have a real AI model integration yet
+  const queryLower = query.toLowerCase();
+  const schema = dataset.column_schema;
+  
+  // Find numeric and categorical columns
+  const numericColumns: string[] = [];
+  const categoricalColumns: string[] = [];
+  const dateColumns: string[] = [];
+  
+  Object.entries(schema).forEach(([column, type]) => {
+    if (type === 'number' || type === 'integer') {
+      numericColumns.push(column);
+    } else if (type === 'date') {
+      dateColumns.push(column);
+      categoricalColumns.push(column);
+    } else {
+      categoricalColumns.push(column);
     }
-    
-    const responseData = await response.json();
-    if (!responseData.choices || !responseData.choices[0]) {
-      throw new Error("Invalid response from OpenAI");
-    }
-    
-    const aiResponse = JSON.parse(responseData.choices[0].message.content);
-    
-    // Validate and parse the response
-    return {
-      chartType: aiResponse.chartType || 'bar',
-      data: aiResponse.data || [],
-      chartConfig: aiResponse.chartConfig || { title: query },
-      explanation: aiResponse.explanation || "Analysis generated with OpenAI"
-    };
-  } catch (error) {
-    console.error("OpenAI processing error:", error);
-    throw new Error(`Failed to process with OpenAI: ${error.message}`);
+  });
+  
+  // Determine chart type from query
+  let chartType = 'bar'; // Default
+  if (queryLower.includes('distribution') || 
+      queryLower.includes('proportion') || 
+      queryLower.includes('percentage') || 
+      queryLower.includes('pie')) {
+    chartType = 'pie';
+  } else if (queryLower.includes('trend') || 
+             queryLower.includes('over time') ||
+             queryLower.includes('line') || 
+             dateColumns.some(col => queryLower.includes(col.toLowerCase()))) {
+    chartType = 'line';
+  } else if (queryLower.includes('scatter') || 
+             queryLower.includes('correlation') || 
+             queryLower.includes('relationship')) {
+    chartType = 'scatter';
   }
+  
+  // Try to find dimensions and measures from the query
+  let dimensionColumn: string | null = null;
+  let measureColumn: string | null = null;
+  
+  // Look for categorical columns mentioned in the query
+  for (const column of categoricalColumns) {
+    if (queryLower.includes(column.toLowerCase())) {
+      dimensionColumn = column;
+      break;
+    }
+  }
+  
+  // Look for numeric columns mentioned in the query
+  for (const column of numericColumns) {
+    if (queryLower.includes(column.toLowerCase())) {
+      measureColumn = column;
+      break;
+    }
+  }
+  
+  // If no dimension found, pick the most relevant one
+  if (!dimensionColumn) {
+    if (chartType === 'line' && dateColumns.length > 0) {
+      // For line charts, prefer date columns
+      dimensionColumn = dateColumns[0];
+    } else {
+      // Otherwise use the first categorical column
+      dimensionColumn = categoricalColumns[0];
+    }
+  }
+  
+  // If no measure found, pick the first numeric column
+  if (!measureColumn && numericColumns.length > 0) {
+    measureColumn = numericColumns[0];
+  }
+  
+  // If we have no measure but have dimension, use count as measure
+  if (!measureColumn && dimensionColumn) {
+    measureColumn = 'count';
+  }
+  
+  // Process data based on the selected dimension and measure
+  let processedData: any[] = [];
+  
+  if (dimensionColumn && measureColumn) {
+    if (measureColumn === 'count') {
+      // Count by dimension
+      const counts: Record<string, number> = {};
+      data.forEach(row => {
+        const dimValue = String(row[dimensionColumn!] || 'Unknown');
+        counts[dimValue] = (counts[dimValue] || 0) + 1;
+      });
+      
+      processedData = Object.entries(counts).map(([dimension, count]) => ({
+        [dimensionColumn!]: dimension,
+        count: count
+      }));
+      
+      measureColumn = 'count';
+    } else {
+      // Aggregate measure by dimension
+      const aggregates: Record<string, number[]> = {};
+      
+      data.forEach(row => {
+        const dimValue = String(row[dimensionColumn!] || 'Unknown');
+        const measure = Number(row[measureColumn!]) || 0;
+        
+        if (!aggregates[dimValue]) {
+          aggregates[dimValue] = [];
+        }
+        
+        aggregates[dimValue].push(measure);
+      });
+      
+      // Calculate averages and create data points
+      processedData = Object.entries(aggregates).map(([dimension, values]) => {
+        const sum = values.reduce((a, b) => a + b, 0);
+        const avg = sum / values.length;
+        
+        return {
+          [dimensionColumn!]: dimension,
+          [measureColumn!]: avg
+        };
+      });
+    }
+    
+    // Sort the data for better visualization
+    processedData.sort((a, b) => b[measureColumn!] - a[measureColumn!]);
+    
+    // Limit data points for better visualization
+    if (processedData.length > 15) {
+      processedData = processedData.slice(0, 15);
+    }
+  }
+  
+  // Generate explanation based on the data
+  let explanation = '';
+  if (chartType === 'pie') {
+    explanation = `Here's a pie chart showing the distribution of ${measureColumn} by ${dimensionColumn}.`;
+  } else if (chartType === 'line') {
+    explanation = `This line chart shows the trend of ${measureColumn} over ${dimensionColumn}.`;
+  } else if (chartType === 'scatter') {
+    explanation = `This scatter plot shows the relationship between ${dimensionColumn} and ${measureColumn}.`;
+  } else {
+    explanation = `Here's a bar chart comparing ${measureColumn} across different ${dimensionColumn} values.`;
+  }
+  
+  // Add information about data filtering if applicable
+  if (processedData.length === 15 && data.length > 15) {
+    explanation += ` Showing only the top 15 results out of ${data.length} total records for better visualization.`;
+  }
+  
+  // Choose appropriate color scheme based on the chart type
+  let colorScheme;
+  if (chartType === 'pie') {
+    colorScheme = COLOR_SCHEMES.vibrant;
+  } else if (chartType === 'line') {
+    colorScheme = COLOR_SCHEMES.gradient;
+  } else if (chartType === 'scatter') {
+    colorScheme = COLOR_SCHEMES.purple;
+  } else {
+    colorScheme = COLOR_SCHEMES.gradient;
+  }
+  
+  // Generate title
+  const title = generateTitle(query, measure, dimension);
+  
+  return {
+    data: processedData,
+    chartType,
+    explanation,
+    chartConfig: {
+      title,
+      xAxisTitle: dimensionColumn as string,
+      yAxisTitle: measureColumn as string,
+      colorScheme
+    }
+  };
 }
 
-// Process query with Anthropic
-async function processWithAnthropic(query: string, dataset: any, datasetSample: any[], apiKey: string, sampleError: Error | null): Promise<QueryResult> {
-  try {
-    const prompt = `
-      You are DataViz AI, a data analyst assistant helping to analyze a dataset.
-      
-      Dataset name: ${dataset.name}
-      Dataset file: ${dataset.file_name}
-      Dataset schema: ${JSON.stringify(dataset.column_schema || {})}
-      ${sampleError ? `Note: There was an error loading the full dataset: ${sampleError.message}` : ''}
-      
-      Here is a sample of the data (first ${datasetSample.length} rows):
-      ${JSON.stringify(datasetSample.slice(0, 5))}
-      
-      User query: "${query}"
-      
-      Analyze this dataset based on the user's query. Return a JSON with:
-      1. The most appropriate chart type ('bar', 'line', 'pie', 'scatter', or 'table')
-      2. A processed subset of data optimized for visualization
-      3. Chart configuration (title, axis labels, etc.)
-      4. A brief explanation of insights found
-
-      Guidelines:
-      - Use bar charts for comparing values across categories
-      - Use line charts for trends over time or sequences
-      - Use pie charts for proportions or distributions (limit to 8 categories)
-      - Use scatter plots for relationships between two variables
-      - Use tables for detailed data or when no clear visualization applies
-      - Limit to 15 data points for readability
-      - Provide insightful explanations about patterns in the data
-      
-      Return ONLY a valid JSON object with this structure:
-      {
-        "chartType": string,
-        "data": array,
-        "chartConfig": {
-          "title": string,
-          "xAxisTitle": string,
-          "yAxisTitle": string
-        },
-        "explanation": string
-      }
-    `;
-    
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "claude-3-sonnet-20240229",
-        max_tokens: 2000,
-        system: "You are a data analyst AI that analyzes datasets and only replies with valid JSON.",
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ]
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
-    }
-    
-    const responseData = await response.json();
-    
-    if (!responseData.content || !responseData.content[0] || !responseData.content[0].text) {
-      throw new Error("Invalid response from Anthropic");
-    }
-    
-    const contentText = responseData.content[0].text;
-    // Extract JSON from the response (Claude might include markdown code fences)
-    const jsonMatch = contentText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || [null, contentText];
-    const jsonString = jsonMatch[1].trim();
-    
-    const aiResponse = JSON.parse(jsonString);
-    
-    // Validate and parse the response
-    return {
-      chartType: aiResponse.chartType || 'bar',
-      data: aiResponse.data || [],
-      chartConfig: aiResponse.chartConfig || { title: query },
-      explanation: aiResponse.explanation || "Analysis generated with Claude AI"
-    };
-  } catch (error) {
-    console.error("Anthropic processing error:", error);
-    throw new Error(`Failed to process with Anthropic: ${error.message}`);
+// Generate a descriptive title for the chart
+function generateTitle(query: string, measure: string | null, dimension: string | null): string {
+  const queryLower = query.toLowerCase();
+  
+  if (!measure || !dimension) return 'Data Visualization';
+  
+  if (queryLower.includes('how many') || queryLower.includes('count')) {
+    return `Count of ${dimension}`;
+  } else if (queryLower.includes('average') || queryLower.includes('avg') || queryLower.includes('mean')) {
+    return `Average ${measure} by ${dimension}`;
+  } else if (queryLower.includes('total') || queryLower.includes('sum')) {
+    return `Total ${measure} by ${dimension}`;
+  } else if (queryLower.includes('distribution') || queryLower.includes('breakdown')) {
+    return `Distribution of ${measure} across ${dimension}`;
+  } else if (queryLower.includes('compare') || queryLower.includes('comparison')) {
+    return `Comparison of ${measure} by ${dimension}`;
+  } else if (queryLower.includes('trend') || queryLower.includes('over time')) {
+    return `${measure} Trend Over ${dimension}`;
+  } else {
+    return `${measure} by ${dimension}`;
   }
 }

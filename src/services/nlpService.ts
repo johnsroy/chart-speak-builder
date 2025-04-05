@@ -1,465 +1,241 @@
 
 import { supabase } from '@/lib/supabase';
-import { dataService } from './dataService';
-import { toast } from "sonner";
+import Papa from 'papaparse';
+import { Dataset } from './dataService';
+import { useToast } from '@/hooks/use-toast';
 
 export interface QueryResult {
   data: any[];
-  chartType: 'bar' | 'line' | 'pie' | 'scatter' | 'table';
-  chartConfig: any;
-  sql?: string;
   explanation?: string;
+  chartType: string;
+  chartConfig?: {
+    title?: string;
+    xAxisTitle?: string;
+    yAxisTitle?: string;
+    colorScheme?: string[];
+  };
 }
 
+// Default color schemes for beautiful visualizations
+const COLOR_SCHEMES = {
+  purple: ['#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', '#E5DEFF'],
+  gradient: ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'],
+  vibrant: ['#8B5CF6', '#D946EF', '#F97316', '#0EA5E9', '#22C55E'],
+  pastel: ['#FEC6A1', '#FEF7CD', '#F2FCE2', '#D3E4FD', '#FFDEE2'],
+  dark: ['#1A1F2C', '#403E43', '#221F26', '#333333', '#555555']
+};
+
 export const nlpService = {
-  // Process a natural language query
   async processQuery(query: string, datasetId: string, modelType: 'openai' | 'anthropic' = 'openai'): Promise<QueryResult> {
     try {
-      // Get dataset information
-      const dataset = await dataService.getDataset(datasetId);
-      if (!dataset) {
-        throw new Error('Dataset not found');
+      console.info('Calling AI query function with:', { datasetId, query, modelType });
+
+      // Try to call the Edge Function first for AI processing
+      const { data, error } = await supabase.functions.invoke('ai-query', {
+        body: { datasetId, query, modelType }
+      });
+
+      if (error) {
+        console.error('Error from AI query function:', error);
+        console.warning('Edge function error, using fallback processing:', new Error(`AI query failed: ${error.message}`));
+        
+        // If the Edge Function fails, fall back to local processing
+        return this._processQueryLocally(query, datasetId);
       }
+
+      return data;
+    } catch (error) {
+      console.error('Error processing query:', error);
       
-      // Show loading toast for better UX
-      const toastId = toast.loading(`Processing query with ${modelType === 'openai' ? 'OpenAI' : 'Claude'}...`);
+      // Fall back to local processing
+      return this._processQueryLocally(query, datasetId);
+    }
+  },
+
+  // Local fallback if the edge function fails
+  async _processQueryLocally(query: string, datasetId: string): Promise<QueryResult> {
+    try {
+      console.log('Using local query processing fallback');
       
+      // Get dataset information
+      const { data: dataset, error: datasetError } = await supabase
+        .from('datasets')
+        .select('*')
+        .eq('id', datasetId)
+        .single();
+      
+      if (datasetError) throw datasetError;
+      
+      // Get dataset preview data
       try {
-        console.log("Calling AI query function with:", { datasetId, query, modelType });
+        const previewData = await this._getDatasetPreview(dataset);
         
-        // Call our Supabase Edge Function to process the query
-        const { data, error } = await supabase.functions.invoke('ai-query', {
-          body: {
-            dataset_id: datasetId,
-            query_text: query,
-            model_type: modelType
-          }
-        });
+        // Very basic query processing logic as fallback
+        const result = this._analyzeData(query, previewData, dataset);
+        return result;
+      } catch (error) {
+        console.warning('Error getting dataset preview:', error);
         
-        // Always dismiss the loading toast
-        toast.dismiss(toastId);
-        
-        if (error) {
-          console.error('Error from AI query function:', error);
-          throw new Error(`AI query failed: ${error.message}`);
-        }
-        
-        // If no error but also no data, handle gracefully
-        if (!data) {
-          console.error('Empty response from AI query function');
-          throw new Error('No response from AI query function');
-        }
-        
-        return data as QueryResult;
-      } catch (edgeFunctionError) {
-        // Always dismiss the loading toast
-        toast.dismiss(toastId);
-        
-        console.warn('Edge function error, using fallback processing:', edgeFunctionError);
-        // Fallback to local processing
-        return this._processQueryLocally(query, dataset);
+        // Return dummy data if we can't process
+        return {
+          data: [
+            { category: 'Sample', value: 30 },
+            { category: 'Example', value: 45 },
+            { category: 'Test', value: 60 },
+          ],
+          explanation: `I couldn't analyze the actual data due to an error, so I'm showing sample data. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          chartType: 'bar'
+        };
       }
     } catch (error) {
-      console.error('Error processing NL query:', error);
+      console.error('Local query processing failed:', error);
       throw error;
     }
   },
   
-  // Local processing fallback with improved dataset handling
-  async _processQueryLocally(query: string, dataset: any): Promise<QueryResult> {
+  async _getDatasetPreview(dataset: Dataset): Promise<any[]> {
     try {
-      // First try to get actual data sample from the dataset
-      const dataPreview = await dataService.previewDataset(dataset.id, 100);
+      // Download dataset from storage
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('datasets')
+        .download(dataset.storage_path);
       
-      // If we got actual data, use it for analysis
-      if (dataPreview && dataPreview.length > 0) {
-        return this._generateSmartAnalysis(query, dataset, dataPreview);
+      if (downloadError) {
+        console.error('Storage download error:', downloadError);
+        throw downloadError;
       }
       
-      // Fallback to generating fake data based on schema
-      return this._generateFallbackResponse(query, dataset);
-    } catch (previewError) {
-      console.warn('Error getting dataset preview:', previewError);
-      // Final fallback to completely generated data
-      return this._generateFallbackResponse(query, dataset);
+      // Parse CSV data
+      const csvText = await fileData.text();
+      const parsedData = Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: true, // Automatically convert numbers and booleans
+        transformHeader: (header) => header.trim() // Trim whitespace from headers
+      });
+      
+      if (parsedData.errors && parsedData.errors.length > 0) {
+        console.warn('CSV parsing warnings:', parsedData.errors);
+      }
+      
+      return parsedData.data as any[];
+    } catch (error) {
+      console.error(`Error previewing dataset ${dataset.id}:`, error);
+      throw error;
     }
   },
   
-  // Generate more intelligent analysis based on actual data
-  _generateSmartAnalysis(query: string, dataset: any, dataPreview: any[]): QueryResult {
+  _analyzeData(query: string, data: any[], dataset: Dataset): QueryResult {
     const queryLower = query.toLowerCase();
+    const columnSchema = dataset.column_schema;
     
-    // Determine chart type based on query and data
-    let chartType: 'bar' | 'line' | 'pie' | 'scatter' | 'table' = 'table';
-    let title = "Analysis Results";
-    let explanation = "Analysis based on your dataset.";
+    // Identify numeric and categorical columns
+    const numericColumns: string[] = [];
+    const categoricalColumns: string[] = [];
     
-    // Extract potential column names from the query
-    const columns = Object.keys(dataset.column_schema || {});
-    const mentionedColumns = columns.filter(
-      column => queryLower.includes(column.toLowerCase())
-    );
+    Object.entries(columnSchema).forEach(([column, type]) => {
+      if (type === 'number' || type === 'integer') {
+        numericColumns.push(column);
+      } else if (type === 'string' || type === 'date') {
+        categoricalColumns.push(column);
+      }
+    });
     
-    // Find most relevant columns based on query
-    const stringColumns = columns.filter(col => 
-      dataset.column_schema[col] === 'string' || 
-      dataset.column_schema[col] === 'text'
-    );
+    // Default selections if we can't determine from the query
+    const defaultCategoryColumn = categoricalColumns[0] || Object.keys(data[0])[0];
+    const defaultNumericColumn = numericColumns[0] || Object.keys(data[0])[1] || Object.keys(data[0])[0];
     
-    const numericColumns = columns.filter(col => 
-      dataset.column_schema[col] === 'number' || 
-      dataset.column_schema[col] === 'integer'
-    );
-    
-    const timeColumns = columns.filter(col => 
-      dataset.column_schema[col] === 'date' ||
-      dataset.column_schema[col] === 'timestamp' ||
-      col.toLowerCase().includes('date') ||
-      col.toLowerCase().includes('time') ||
-      col.toLowerCase().includes('year')
-    );
-    
-    // Determine best dimension and measure based on query and data
-    let dimensionCol = stringColumns[0];
-    let measureCol = numericColumns[0];
-    
-    // Determine chart type based on query content
-    if (queryLower.includes('bar') || queryLower.includes('histogram') || queryLower.includes('compare')) {
-      chartType = 'bar';
-      title = "Comparison Analysis";
-      explanation = "This bar chart compares values across categories in your dataset.";
+    // Determine chart type based on query
+    let chartType = 'bar'; // Default
+    if (queryLower.includes('pie') || queryLower.includes('distribution') || queryLower.includes('proportion')) {
+      chartType = 'pie';
     } else if (queryLower.includes('line') || queryLower.includes('trend') || queryLower.includes('over time')) {
       chartType = 'line';
-      title = "Trend Analysis";
-      
-      // Use time column if available
-      if (timeColumns.length > 0) {
-        dimensionCol = timeColumns[0];
-      }
-      
-      explanation = "This line chart shows how values change over time or sequence in your dataset.";
-    } else if (queryLower.includes('pie') || queryLower.includes('proportion') || queryLower.includes('percentage') || queryLower.includes('distribution')) {
-      chartType = 'pie';
-      title = "Distribution Analysis";
-      explanation = "This pie chart shows the proportional distribution across categories in your dataset.";
-    } else if (queryLower.includes('scatter') || queryLower.includes('correlation') || queryLower.includes('relationship')) {
+    } else if (queryLower.includes('scatter') || queryLower.includes('correlation')) {
       chartType = 'scatter';
-      title = "Correlation Analysis";
-      explanation = "This scatter plot reveals relationships between two variables in your dataset.";
-      
-      // If we have at least two numeric columns, use them for scatter plot
-      if (numericColumns.length >= 2) {
-        dimensionCol = numericColumns[0];
-        measureCol = numericColumns[1];
+    }
+    
+    // Find column matches in the query
+    let categoryColumn = defaultCategoryColumn;
+    let valueColumn = defaultNumericColumn;
+    
+    // Try to find a category column mentioned in the query
+    for (const col of categoricalColumns) {
+      if (queryLower.includes(col.toLowerCase())) {
+        categoryColumn = col;
+        break;
       }
+    }
+    
+    // Try to find a numeric column mentioned in the query
+    for (const col of numericColumns) {
+      if (queryLower.includes(col.toLowerCase())) {
+        valueColumn = col;
+        break;
+      }
+    }
+    
+    // Process the data - group by category and aggregate values
+    const aggregatedData: Record<string, number> = {};
+    
+    data.forEach(row => {
+      const category = String(row[categoryColumn] || 'Unknown');
+      const value = Number(row[valueColumn] || 0);
+      
+      if (isNaN(value)) return;
+      
+      if (aggregatedData[category]) {
+        aggregatedData[category] += value;
+      } else {
+        aggregatedData[category] = value;
+      }
+    });
+    
+    // Convert to array format for charts
+    const chartData = Object.entries(aggregatedData)
+      .map(([category, value]) => ({
+        [categoryColumn]: category,
+        [valueColumn]: value
+      }))
+      .sort((a, b) => b[valueColumn] - a[valueColumn])
+      .slice(0, 10); // Limit to top 10 for better visualization
+    
+    // Generate explanation
+    const explanation = `This ${chartType} chart shows ${valueColumn} by ${categoryColumn} based on your query. ${
+      chartData.length === 10 ? 'Showing the top 10 results.' : ''
+    }`;
+    
+    // Choose a color scheme based on the chart type
+    const colorScheme = 
+      chartType === 'pie' ? COLOR_SCHEMES.vibrant :
+      chartType === 'line' ? COLOR_SCHEMES.gradient :
+      chartType === 'scatter' ? COLOR_SCHEMES.purple :
+      COLOR_SCHEMES.gradient;
+    
+    return {
+      data: chartData,
+      explanation,
+      chartType,
+      chartConfig: {
+        title: this._generateTitle(query, valueColumn, categoryColumn),
+        xAxisTitle: categoryColumn,
+        yAxisTitle: valueColumn,
+        colorScheme
+      }
+    };
+  },
+  
+  _generateTitle(query: string, measure: string, dimension: string): string {
+    const queryLower = query.toLowerCase();
+    
+    if (queryLower.includes('how many')) {
+      return `Count of ${dimension}`;
+    } else if (queryLower.includes('average') || queryLower.includes('avg')) {
+      return `Average ${measure} by ${dimension}`;
+    } else if (queryLower.includes('total') || queryLower.includes('sum')) {
+      return `Total ${measure} by ${dimension}`;
     } else {
-      // Default to most appropriate chart based on data
-      if (timeColumns.length > 0 && numericColumns.length > 0) {
-        chartType = 'line';
-        dimensionCol = timeColumns[0];
-        explanation = "This line chart shows trends over time in your dataset.";
-      } else if (stringColumns.length > 0 && numericColumns.length > 0) {
-        chartType = 'bar';
-        explanation = "This bar chart compares values across categories in your dataset.";
-      } else if (stringColumns.length > 0) {
-        chartType = 'pie';
-        explanation = "This pie chart shows the distribution of categories in your dataset.";
-      } else if (numericColumns.length >= 2) {
-        chartType = 'scatter';
-        dimensionCol = numericColumns[0];
-        measureCol = numericColumns[1];
-        explanation = "This scatter plot shows relationships between numeric variables in your dataset.";
-      }
+      return `${measure} by ${dimension}`;
     }
-    
-    // If columns are mentioned in the query, prioritize them
-    if (mentionedColumns.length > 0) {
-      if (mentionedColumns.some(col => dataset.column_schema[col] === 'string' || dataset.column_schema[col] === 'text')) {
-        dimensionCol = mentionedColumns.find(col => 
-          dataset.column_schema[col] === 'string' || dataset.column_schema[col] === 'text'
-        ) || dimensionCol;
-      }
-      
-      if (mentionedColumns.some(col => dataset.column_schema[col] === 'number' || dataset.column_schema[col] === 'integer')) {
-        measureCol = mentionedColumns.find(col => 
-          dataset.column_schema[col] === 'number' || dataset.column_schema[col] === 'integer'
-        ) || measureCol;
-      }
-    }
-    
-    // If we couldn't determine columns, use first available
-    if (!dimensionCol && columns.length > 0) dimensionCol = columns[0];
-    if (!measureCol && columns.length > 1) measureCol = columns[1];
-    
-    // Set title based on columns
-    if (dimensionCol && measureCol) {
-      title = `${measureCol} by ${dimensionCol}`;
-    }
-    
-    // Process data based on chart type
-    let processedData;
-    
-    switch (chartType) {
-      case 'pie':
-      case 'bar': {
-        // Group by dimension and sum/count measure
-        if (dimensionCol && measureCol) {
-          const groupedData = dataPreview.reduce((acc, row) => {
-            const key = String(row[dimensionCol]);
-            if (!acc[key]) {
-              acc[key] = { [dimensionCol]: key, [measureCol]: 0, count: 0 };
-            }
-            acc[key][measureCol] += Number(row[measureCol]) || 0;
-            acc[key].count += 1;
-            return acc;
-          }, {});
-          
-          processedData = Object.values(groupedData);
-          
-          // For pie charts limit to top 8 items
-          if (chartType === 'pie' && processedData.length > 8) {
-            processedData.sort((a: any, b: any) => b[measureCol] - a[measureCol]);
-            const top7 = processedData.slice(0, 7);
-            const others = processedData.slice(7).reduce((acc: any, item: any) => {
-              acc[measureCol] += item[measureCol];
-              acc.count += item.count;
-              return acc;
-            }, { [dimensionCol]: 'Others', [measureCol]: 0, count: 0 });
-            
-            processedData = [...top7, others];
-          }
-          
-          // Sort bar charts by value
-          if (chartType === 'bar') {
-            processedData.sort((a: any, b: any) => b[measureCol] - a[measureCol]);
-            if (processedData.length > 15) {
-              processedData = processedData.slice(0, 15);
-            }
-          }
-        } else {
-          processedData = dataPreview.slice(0, 10);
-        }
-        break;
-      }
-      
-      case 'line': {
-        if (dimensionCol && measureCol) {
-          // Sort by dimension, assuming it could be a date or sequence
-          const sortedData = [...dataPreview].sort((a, b) => {
-            const aVal = a[dimensionCol];
-            const bVal = b[dimensionCol];
-            
-            if (aVal instanceof Date && bVal instanceof Date) {
-              return aVal.getTime() - bVal.getTime();
-            }
-            
-            return String(aVal).localeCompare(String(bVal));
-          });
-          
-          // Group by dimension and calculate average measure
-          const groupedData = sortedData.reduce((acc, row) => {
-            const key = String(row[dimensionCol]);
-            if (!acc[key]) {
-              acc[key] = { [dimensionCol]: key, [measureCol]: 0, count: 0 };
-            }
-            acc[key][measureCol] += Number(row[measureCol]) || 0;
-            acc[key].count += 1;
-            return acc;
-          }, {});
-          
-          // Calculate averages
-          Object.values(groupedData).forEach((group: any) => {
-            group[measureCol] = group[measureCol] / group.count;
-          });
-          
-          processedData = Object.values(groupedData);
-          
-          // Limit to a reasonable number of points
-          if (processedData.length > 20) {
-            processedData = processedData.slice(0, 20);
-          }
-        } else {
-          processedData = dataPreview.slice(0, 10);
-        }
-        break;
-      }
-      
-      case 'scatter': {
-        if (dimensionCol && measureCol) {
-          processedData = dataPreview.map(row => ({
-            [dimensionCol]: row[dimensionCol],
-            [measureCol]: row[measureCol],
-            name: 'Data Point'
-          })).filter(row => 
-            row[dimensionCol] !== null && 
-            row[measureCol] !== null && 
-            !isNaN(Number(row[dimensionCol])) && 
-            !isNaN(Number(row[measureCol]))
-          );
-          
-          // Limit points to avoid overcrowding
-          if (processedData.length > 50) {
-            processedData = processedData.slice(0, 50);
-          }
-        } else {
-          processedData = dataPreview.slice(0, 10);
-        }
-        break;
-      }
-      
-      default:
-        processedData = dataPreview.slice(0, 15);
-        break;
-    }
-    
-    return {
-      data: processedData || [],
-      chartType: chartType,
-      chartConfig: {
-        xAxisTitle: dimensionCol || "Category",
-        yAxisTitle: measureCol || "Value",
-        title: title
-      },
-      explanation: explanation + " This visualization was generated based on your query and actual data from your dataset."
-    };
-  },
-  
-  // Generate a fallback response when the edge function is not available
-  _generateFallbackResponse(query: string, dataset: any): QueryResult {
-    // Very basic logic to parse the query and determine what the user might want
-    const queryLower = query.toLowerCase();
-    
-    let chartType: 'bar' | 'line' | 'pie' | 'scatter' | 'table' = 'table';
-    let title = "Analysis Results";
-    let explanation = "This is a fallback visualization generated locally.";
-    
-    // Determine chart type and generate appropriate title based on query
-    if (queryLower.includes('bar') || queryLower.includes('histogram') || queryLower.includes('compare')) {
-      chartType = 'bar';
-      title = "Comparison Analysis";
-      explanation = "This bar chart shows comparisons between different categories.";
-    } else if (queryLower.includes('line') || queryLower.includes('trend') || queryLower.includes('over time')) {
-      chartType = 'line';
-      title = "Trend Analysis";
-      explanation = "This line chart shows how values change over time.";
-    } else if (queryLower.includes('pie') || queryLower.includes('proportion') || queryLower.includes('percentage') || queryLower.includes('distribution')) {
-      chartType = 'pie';
-      title = "Distribution Analysis";
-      explanation = "This pie chart shows the proportional distribution across categories.";
-    } else if (queryLower.includes('scatter') || queryLower.includes('correlation') || queryLower.includes('relationship')) {
-      chartType = 'scatter';
-      title = "Correlation Analysis";
-      explanation = "This scatter plot shows the relationship between two variables.";
-    }
-    
-    // Extract potential column names from the query
-    const potentialColumns = Object.keys(dataset.column_schema || {}).filter(
-      column => queryLower.includes(column.toLowerCase())
-    );
-    
-    if (potentialColumns.length > 0) {
-      title += `: ${potentialColumns.join(' vs ')}`;
-    }
-    
-    // Generate smarter fallback data based on the chart type
-    const dummyData = this._generateDummyData(chartType, potentialColumns, dataset.column_schema);
-    
-    return {
-      data: dummyData,
-      chartType: chartType,
-      chartConfig: {
-        xAxisTitle: potentialColumns[0] || "Category",
-        yAxisTitle: potentialColumns[1] || "Value",
-        title: title
-      },
-      explanation: explanation + " For full AI-powered analysis, ensure the AI query edge function is operational."
-    };
-  },
-  
-  // Generate smart dummy data for fallback visualization
-  _generateDummyData(chartType: 'bar' | 'line' | 'pie' | 'scatter' | 'table', columns: string[] = [], schema: Record<string, string> = {}): any[] {
-    // Create appropriate sample data based on chart type
-    switch (chartType) {
-      case 'pie': {
-        const categories = columns.length > 0 && schema[columns[0]] === 'string' 
-          ? this._generateCategories(columns[0])
-          : ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
-        
-        return categories.map((cat, i) => ({
-          [columns.length > 0 ? columns[0] : 'category']: cat,
-          [columns.length > 1 ? columns[1] : 'value']: Math.round(Math.random() * 100 + 20)
-        }));
-      }
-      
-      case 'scatter': {
-        return Array.from({ length: 20 }, (_, i) => ({
-          [columns.length > 0 ? columns[0] : 'x']: Math.round(Math.random() * 100),
-          [columns.length > 1 ? columns[1] : 'y']: Math.round(Math.random() * 100),
-          name: `Point ${i+1}`
-        }));
-      }
-      
-      case 'line': {
-        const timeLabels = columns.length > 0 && schema[columns[0]] === 'date'
-          ? this._generateDateSeries()
-          : Array.from({ length: 10 }, (_, i) => `Month ${i+1}`);
-          
-        return timeLabels.map((label, i) => ({
-          [columns.length > 0 ? columns[0] : 'time']: label,
-          [columns.length > 1 ? columns[1] : 'value']: Math.round(
-            50 + 30 * Math.sin(i / 3) + Math.random() * 15
-          ) // Create a wave pattern with noise
-        }));
-      }
-      
-      case 'bar':
-      case 'table':
-      default: {
-        const categories = columns.length > 0 && schema[columns[0]] === 'string'
-          ? this._generateCategories(columns[0])
-          : ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
-          
-        return categories.map((cat) => ({
-          [columns.length > 0 ? columns[0] : 'category']: cat,
-          [columns.length > 1 ? columns[1] : 'value']: Math.round(Math.random() * 100 + 10)
-        }));
-      }
-    }
-  },
-  
-  // Generate realistic categories based on column name
-  _generateCategories(columnName: string): string[] {
-    const lowerName = columnName.toLowerCase();
-    
-    if (lowerName.includes('region') || lowerName.includes('location') || lowerName.includes('country')) {
-      return ['North America', 'Europe', 'Asia', 'Africa', 'South America'];
-    }
-    
-    if (lowerName.includes('product') || lowerName.includes('item')) {
-      return ['Electronics', 'Clothing', 'Home Goods', 'Sports', 'Books'];
-    }
-    
-    if (lowerName.includes('month') || lowerName.includes('period')) {
-      return ['January', 'February', 'March', 'April', 'May', 'June'];
-    }
-    
-    if (lowerName.includes('category') || lowerName.includes('type') || lowerName.includes('segment')) {
-      return ['Segment A', 'Segment B', 'Segment C', 'Segment D', 'Segment E'];
-    }
-    
-    // Default categories
-    return ['Group 1', 'Group 2', 'Group 3', 'Group 4', 'Group 5'];
-  },
-  
-  // Generate a series of dates (last 6 months)
-  _generateDateSeries(): string[] {
-    const dates = [];
-    const today = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(today);
-      date.setMonth(today.getMonth() - i);
-      dates.push(date.toISOString().split('T')[0]);
-    }
-    return dates;
   }
 };

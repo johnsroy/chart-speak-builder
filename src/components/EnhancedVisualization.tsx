@@ -2,7 +2,9 @@
 import React from 'react';
 import { 
   ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, 
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell
+  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell,
+  Area, AreaChart, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  ComposedChart, ReferenceLine
 } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,7 +25,9 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
   }
 
   const { chartType, chartConfig, data, explanation } = result;
-  const COLORS = generateChartColors(data.length);
+  
+  // Use custom color scheme if provided, otherwise generate colors
+  const COLORS = chartConfig?.colorScheme || generateChartColors(data.length);
 
   // Extract axis information from the data
   const getAxes = () => {
@@ -44,13 +48,22 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
 
   const { xAxis, yAxis } = getAxes();
 
+  // Generate a beautiful gradient for charts
+  const getChartGradient = (id: string) => (
+    <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+      <stop offset="5%" stopColor="#9b87f5" stopOpacity={0.8}/>
+      <stop offset="95%" stopColor="#9b87f5" stopOpacity={0.2}/>
+    </linearGradient>
+  );
+
   const renderChart = () => {
     switch(chartType) {
       case 'bar':
         return (
           <ResponsiveContainer width="100%" height={400}>
             <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+              <defs>{getChartGradient("colorUv")}</defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#444" opacity={0.1} />
               <XAxis 
                 dataKey={xAxis} 
                 tick={{ fill: '#ddd' }}
@@ -66,13 +79,20 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
               <Tooltip 
                 contentStyle={{ backgroundColor: '#222', border: '1px solid #444' }}
                 labelStyle={{ color: '#ddd' }}
+                cursor={{ fill: 'rgba(255,255,255,0.1)' }}
               />
               <Legend wrapperStyle={{ color: '#ddd' }} />
               <Bar 
                 dataKey={yAxis} 
-                fill="#8884d8" 
+                fill="url(#colorUv)" 
                 name={yAxis}
-              />
+                animationDuration={1500}
+                radius={[4, 4, 0, 0]}
+              >
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         );
@@ -81,7 +101,14 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
         return (
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+              <defs>
+                {getChartGradient("colorUv")}
+                <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#9b87f5" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#9b87f5" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#444" opacity={0.1} />
               <XAxis 
                 dataKey={xAxis} 
                 tick={{ fill: '#ddd' }}
@@ -99,12 +126,25 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
                 labelStyle={{ color: '#ddd' }}
               />
               <Legend wrapperStyle={{ color: '#ddd' }} />
+              <Area
+                type="monotone"
+                dataKey={yAxis}
+                stroke="#9b87f5"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#colorArea)"
+                activeDot={{ r: 8 }}
+                animationDuration={1500}
+              />
               <Line 
                 type="monotone" 
                 dataKey={yAxis} 
-                stroke="#8884d8" 
-                activeDot={{ r: 8 }} 
+                stroke="#9b87f5" 
+                strokeWidth={3}
+                dot={{ stroke: '#9b87f5', strokeWidth: 2, fill: '#1A1F2C', r: 6 }}
+                activeDot={{ r: 8, stroke: '#D6BCFA', strokeWidth: 2, fill: '#9b87f5' }} 
                 name={yAxis}
+                animationDuration={1500}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -121,18 +161,30 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
                 cx="50%"
                 cy="50%"
                 outerRadius={150}
+                innerRadius={60} // Make it a donut chart for more modern look
                 fill="#8884d8"
+                paddingAngle={2} // Add spacing between sections
                 label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                labelLine={false} // Remove label lines for cleaner look
+                animationDuration={1500}
+                animationBegin={0}
+                animationEasing="ease-out"
               >
                 {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="rgba(0,0,0,0.2)" strokeWidth={1} />
                 ))}
               </Pie>
               <Tooltip 
                 contentStyle={{ backgroundColor: '#222', border: '1px solid #444' }}
                 labelStyle={{ color: '#ddd' }}
               />
-              <Legend wrapperStyle={{ color: '#ddd' }} />
+              <Legend 
+                wrapperStyle={{ color: '#ddd' }}
+                layout="horizontal" 
+                verticalAlign="bottom"
+                align="center"
+                formatter={(value) => <span className="text-sm">{value}</span>}
+              />
             </PieChart>
           </ResponsiveContainer>
         );
@@ -141,7 +193,13 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
         return (
           <ResponsiveContainer width="100%" height={400}>
             <ScatterChart margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+              <defs>
+                <linearGradient id="scatterGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="5%" stopColor="#9b87f5" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#6E59A5" stopOpacity={0.8}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#444" opacity={0.1} />
               <XAxis 
                 dataKey={xAxis} 
                 name={chartConfig?.xAxisTitle || xAxis}
@@ -160,7 +218,17 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
                 cursor={{ strokeDasharray: '3 3' }}
               />
               <Legend wrapperStyle={{ color: '#ddd' }} />
-              <Scatter name="Data Points" data={data} fill="#8884d8" />
+              <Scatter 
+                name="Data Points" 
+                data={data} 
+                fill="url(#scatterGrad)"
+                shape="circle"
+                animationDuration={1500}
+              >
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Scatter>
             </ScatterChart>
           </ResponsiveContainer>
         );
@@ -198,11 +266,13 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
   };
 
   return (
-    <Card className="glass-card">
+    <Card className="glass-card backdrop-blur-md bg-gray-900/50 border border-purple-500/20">
       <CardHeader>
-        <CardTitle>{chartConfig?.title || 'Data Visualization'}</CardTitle>
+        <CardTitle className="text-xl font-bold text-gradient bg-gradient-to-br from-white via-white/90 to-white/70 bg-clip-text">
+          {chartConfig?.title || 'Data Visualization'}
+        </CardTitle>
         {explanation && (
-          <CardDescription>{explanation}</CardDescription>
+          <CardDescription className="text-gray-300">{explanation}</CardDescription>
         )}
       </CardHeader>
       <CardContent>

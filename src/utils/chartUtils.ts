@@ -57,23 +57,100 @@ export const processChartData = (data: any[], xField: string, yField: string) =>
 };
 
 /**
- * Generates chart colors
+ * Beautiful color palettes for data visualization
  */
-export const generateChartColors = (count: number) => {
-  const baseColors = [
-    '#0088FE', '#00C49F', '#FFBB28', '#FF8042', 
-    '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'
-  ];
+export const COLOR_PALETTES = {
+  // Purple-focused
+  purple: ['#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'],
   
-  if (count <= baseColors.length) {
-    return baseColors.slice(0, count);
+  // Vibrant colors
+  vibrant: ['#F97316', '#8B5CF6', '#0EA5E9', '#22C55E', '#EF4444', '#F59E0B', '#06B6D4', '#D946EF'],
+  
+  // Pastel colors
+  pastel: ['#FEC6A1', '#FEF7CD', '#F2FCE2', '#D3E4FD', '#FFDEE2', '#FDE1D3', '#E5DEFF', '#C8C8C9'],
+  
+  // Gradient-friendly
+  gradient: ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'],
+  
+  // Dark mode friendly
+  dark: ['#1A1F2C', '#403E43', '#221F26', '#333333', '#555555', '#8A898C', '#C8C8C9', '#9F9EA1']
+};
+
+/**
+ * Generates chart colors with better aesthetics
+ */
+export const generateChartColors = (count: number, paletteName: keyof typeof COLOR_PALETTES = 'vibrant') => {
+  const palette = COLOR_PALETTES[paletteName] || COLOR_PALETTES.vibrant;
+  
+  if (count <= palette.length) {
+    return palette.slice(0, count);
   }
   
   // Generate additional colors if needed
-  const colors = [...baseColors];
-  for (let i = baseColors.length; i < count; i++) {
-    const hue = (i * 137) % 360; // golden angle approximation
-    colors.push(`hsl(${hue}, 70%, 60%)`);
+  const colors = [...palette];
+  for (let i = palette.length; i < count; i++) {
+    const hue = (i * 137.5) % 360; // golden ratio approximation for better distribution
+    const saturation = 65 + (i % 3) * 5; // vary saturation slightly
+    const lightness = 45 + (i % 5) * 5; // vary lightness slightly
+    colors.push(`hsl(${hue}, ${saturation}%, ${lightness}%)`);
+  }
+  
+  return colors;
+};
+
+/**
+ * Create a gradient set for beautiful charts
+ */
+export const createGradientColors = (baseColor: string, count: number = 5) => {
+  // Convert hex to HSL for easier manipulation
+  const hexToHSL = (hex: string): {h: number, s: number, l: number} => {
+    let r = 0, g = 0, b = 0;
+    
+    // 3 digits
+    if (hex.length === 4) {
+      r = parseInt(hex[1] + hex[1], 16);
+      g = parseInt(hex[2] + hex[2], 16);
+      b = parseInt(hex[3] + hex[3], 16);
+    } 
+    // 6 digits
+    else if (hex.length === 7) {
+      r = parseInt(hex.slice(1, 3), 16);
+      g = parseInt(hex.slice(3, 5), 16);
+      b = parseInt(hex.slice(5, 7), 16);
+    }
+    
+    // Convert RGB to HSL
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      
+      h /= 6;
+    }
+    
+    return { h: h * 360, s: s * 100, l: l * 100 };
+  };
+  
+  // Create gradient by varying lightness and saturation
+  const hsl = hexToHSL(baseColor);
+  const colors = [];
+  
+  for (let i = 0; i < count; i++) {
+    const newL = Math.min(85, Math.max(25, hsl.l + (i - Math.floor(count/2)) * 10));
+    const newS = Math.min(100, Math.max(20, hsl.s + (i - Math.floor(count/2)) * 5));
+    colors.push(`hsl(${hsl.h}, ${newS}%, ${newL}%)`);
   }
   
   return colors;
