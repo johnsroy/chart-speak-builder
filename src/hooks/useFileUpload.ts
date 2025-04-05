@@ -123,6 +123,7 @@ export const useFileUpload = () => {
   };
 
   const handleUpload = async (isAuthenticated: boolean) => {
+    // Check both the isAuthenticated flag and the user state to determine auth status
     if (!isAuthenticated && !user) {
       toast({
         title: "Authentication required",
@@ -156,8 +157,14 @@ export const useFileUpload = () => {
     const progressInterval = simulateProgress();
     
     try {
-      // Explicitly pass the user and session to ensure authentication state is properly recognized
-      const dataset = await dataService.uploadDataset(selectedFile, datasetName, datasetDescription || undefined, user, session);
+      // Explicitly pass the current user and session to ensure authentication is recognized
+      const dataset = await dataService.uploadDataset(
+        selectedFile, 
+        datasetName, 
+        datasetDescription || undefined,
+        user,  // Make sure to pass the current user
+        session // Make sure to pass the current session
+      );
       
       // Set progress to 100% when complete
       setUploadProgress(100);

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Upload, Download, Database, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -50,20 +49,21 @@ const UploadArea = () => {
 
   const handleUploadClick = async () => {
     try {
-      // If not authenticated, try admin login first
+      let authResult;
+      
       if (!isAuthenticated) {
-        await adminLogin();
+        authResult = await adminLogin();
+        console.log("Admin login result:", authResult);
       }
       
       await handleUpload(true);
-      loadDatasets(); // Refresh the datasets list after successful upload
+      loadDatasets();
     } catch (error) {
-      // Error already handled in useFileUpload
+      console.error("Upload failed after admin login:", error);
     }
   };
 
   const handleRetryUpload = async () => {
-    // If not authenticated, try admin login first
     if (!isAuthenticated) {
       await adminLogin();
     }
@@ -132,7 +132,6 @@ const UploadArea = () => {
         setSelectedStorage={setSelectedStorage}
       />
 
-      {/* Storage Connection Dialog */}
       <StorageConnectionDialog
         open={showStorageDialog}
         onOpenChange={setShowStorageDialog}

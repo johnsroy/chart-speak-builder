@@ -85,11 +85,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const adminLogin = async () => {
     setIsLoading(true);
     try {
+      console.log("Starting admin login process...");
       const result = await authService.adminLogin();
-      setSession(result?.session || null);
-      // The admin login function now guarantees success by using a direct bypass if needed
-      setUser(result?.user || await authService.getCurrentUser());
-      return result;
+      console.log("Admin login completed:", result);
+      
+      if (result) {
+        setSession(result.session);
+        setUser(result.user);
+        return result; // Important: Return the authentication result
+      }
+      
+      // Fallback: try to get current user if session exists
+      if (!user) {
+        const currentUser = await authService.getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+        }
+      }
+    } catch (error) {
+      console.error("Admin login error:", error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
