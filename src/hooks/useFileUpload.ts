@@ -166,7 +166,7 @@ export const useFileUpload = () => {
         setDatasetDescription('');
         setSchemaPreview(null);
         
-        // Show success toast and redirect to library page
+        // Show success toast
         sonnerToast.success("Upload complete!", {
           description: "Your dataset was successfully uploaded.",
           action: {
@@ -176,7 +176,10 @@ export const useFileUpload = () => {
         });
         
         // Automatically redirect to dashboard after successful upload
-        navigate('/dashboard');
+        // Delay the navigation slightly to ensure toast is seen
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 500);
         
         return dataset;
       } catch (error) {

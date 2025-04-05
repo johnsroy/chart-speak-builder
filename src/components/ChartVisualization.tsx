@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { dataService } from '@/services/dataService';
 import { useToast } from '@/hooks/use-toast';
@@ -33,18 +32,6 @@ const COLORS = [
   '#83a6ed', '#8dd1e1', '#6970d5', '#a05195', '#d45087'
 ];
 
-// Fallback data to use when actual data cannot be loaded
-const generateFallbackData = () => {
-  // Generate fallback data based on common fields
-  return [
-    { category: 'Category A', value: 120, count: 50, date: '2025-01-01' },
-    { category: 'Category B', value: 150, count: 30, date: '2025-01-02' },
-    { category: 'Category C', value: 200, count: 80, date: '2025-01-03' },
-    { category: 'Category D', value: 80, count: 40, date: '2025-01-04' },
-    { category: 'Category E', value: 100, count: 20, date: '2025-01-05' }
-  ];
-};
-
 const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) => {
   const [data, setData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
@@ -53,7 +40,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
   const [yAxisField, setYAxisField] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [usingFallbackData, setUsingFallbackData] = useState<boolean>(false);
+  const [datasetInfo, setDatasetInfo] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -62,7 +49,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
       
       setLoading(true);
       setError(null);
-      setUsingFallbackData(false);
       
       try {
         console.log('Loading dataset with ID:', datasetId);
@@ -77,6 +63,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         }
         
         console.log('Dataset metadata loaded:', dataset);
+        setDatasetInfo(dataset);
         
         // Then get the preview data
         try {
@@ -123,37 +110,31 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
           }
         } catch (previewError) {
           console.error('Error loading dataset preview:', previewError);
+          setError(`Failed to load dataset preview: ${previewError instanceof Error ? previewError.message : 'Unknown error'}`);
           
-          // Use fallback data if we can't load the actual data
-          const fallbackData = generateFallbackData();
-          setData(fallbackData);
-          setColumns(Object.keys(fallbackData[0]));
-          setXAxisField('category');
-          setYAxisField('value');
-          setUsingFallbackData(true);
-          
-          toast({
-            title: 'Using sample data',
-            description: 'We encountered an issue loading your dataset. Using sample data for visualization.',
-            variant: 'warning',
-          });
+          // Retry with direct storage access if preview API fails
+          try {
+            console.log("Attempting direct storage access for dataset:", dataset.storage_path);
+            const directData = await dataService.getDatasetDirectFromStorage(datasetId);
+            
+            if (directData && directData.length > 0) {
+              console.log("Direct storage access successful:", directData.length, "rows");
+              setData(directData);
+              
+              const cols = Object.keys(directData[0]);
+              setColumns(cols);
+              setXAxisField(cols[0]);
+              setYAxisField(cols[1] || cols[0]);
+              setError(null); // Clear error since we recovered
+            }
+          } catch (directError) {
+            console.error("Direct storage access also failed:", directError);
+            // Keep original error
+          }
         }
       } catch (error) {
-        console.error('Error loading dataset preview:', error);
-        
-        // Use fallback data as a last resort
-        const fallbackData = generateFallbackData();
-        setData(fallbackData);
-        setColumns(Object.keys(fallbackData[0]));
-        setXAxisField('category');
-        setYAxisField('value');
-        setUsingFallbackData(true);
-        
-        toast({
-          title: 'Using sample data',
-          description: 'We encountered an issue loading your dataset. Using sample data for visualization.',
-          variant: 'warning',
-        });
+        console.error('Error loading dataset:', error);
+        setError(`Failed to load dataset: ${error instanceof Error ? error.message : 'Unknown error'}`);
       } finally {
         setLoading(false);
       }
@@ -162,7 +143,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     loadData();
   }, [datasetId, toast]);
 
-  // Helper function to determine if a field contains numerical data
   const isNumericField = (field: string) => {
     if (!data.length) return false;
     const sample = data[0][field];
@@ -179,10 +159,19 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
       );
     }
     
-    if (error && !usingFallbackData) {
+    if (error) {
       return (
-        <div className="flex justify-center items-center h-[400px] text-red-400">
+        <div className="flex flex-col justify-center items-center h-[400px] text-red-400">
+          <AlertTriangle className="h-8 w-8 mb-2" />
           <p>Error: {error}</p>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="mt-4"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </Button>
         </div>
       );
     }
@@ -190,18 +179,16 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     if (!data.length || !xAxisField || !yAxisField) {
       return (
         <div className="flex justify-center items-center h-[400px]">
-          {!data.length ? 'No data available' : 'Select fields to visualize'}
+          {!data.length ? 'No data available for this dataset' : 'Select fields to visualize'}
         </div>
       );
     }
 
-    // Process data for charts - ensure numeric values for y-axis
     const chartData = data.map(item => ({
       ...item,
       [yAxisField]: isNumericField(yAxisField) ? Number(item[yAxisField]) : 0
     }));
 
-    // Limit data for better visualization
     const limitedData = chartData.slice(0, 20);
 
     if (chartType === 'bar') {
@@ -272,7 +259,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     }
 
     if (chartType === 'pie') {
-      // For pie charts, we need to limit the data even more
       const pieData = limitedData.slice(0, 8);
       
       return (
@@ -309,15 +295,12 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
     <div className="space-y-4">
       <h2 className="text-xl font-medium mb-4">Visualize Your Data</h2>
       
-      {usingFallbackData && (
-        <div className="bg-yellow-500/20 border border-yellow-500/40 rounded-lg p-4 mb-4 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
-          <div>
-            <p className="font-medium text-yellow-300">Using sample data</p>
-            <p className="text-sm text-yellow-200/80">
-              We're experiencing issues accessing your dataset. Showing sample visualizations instead.
-            </p>
-          </div>
+      {datasetInfo && (
+        <div className="bg-blue-900/30 border border-blue-500/40 rounded-lg p-4 mb-4">
+          <h3 className="font-medium text-blue-300">Dataset: {datasetInfo.name}</h3>
+          {datasetInfo.description && (
+            <p className="text-sm text-blue-200/80 mt-1">{datasetInfo.description}</p>
+          )}
         </div>
       )}
       
@@ -325,7 +308,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">Chart Type</p>
           <Select value={chartType} onValueChange={(value: ChartType) => setChartType(value)}>
-            <SelectTrigger className="bg-black/70 border-gray-700">
+            <SelectTrigger className="bg-black/70 border-gray-700 text-white">
               <SelectValue placeholder="Select chart type" />
             </SelectTrigger>
             <SelectContent>
@@ -339,7 +322,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">X-Axis Field</p>
           <Select value={xAxisField} onValueChange={setXAxisField}>
-            <SelectTrigger className="bg-black/70 border-gray-700">
+            <SelectTrigger className="bg-black/70 border-gray-700 text-white">
               <SelectValue placeholder="Select X-axis field" />
             </SelectTrigger>
             <SelectContent>
@@ -353,7 +336,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) =>
         <div>
           <p className="mb-2 text-sm">Y-Axis Field</p>
           <Select value={yAxisField} onValueChange={setYAxisField}>
-            <SelectTrigger className="bg-black/70 border-gray-700">
+            <SelectTrigger className="bg-black/70 border-gray-700 text-white">
               <SelectValue placeholder="Select Y-axis field" />
             </SelectTrigger>
             <SelectContent>

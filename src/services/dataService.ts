@@ -1,4 +1,3 @@
-
 import { supabase, createStorageBuckets, verifyStorageBuckets } from '@/lib/supabase';
 import Papa from 'papaparse';
 import { toast } from '@/hooks/use-toast';
@@ -869,5 +868,52 @@ export const dataService = {
     
     // Cap to a reasonable maximum to avoid overflow issues
     return Math.min(estimatedRowCount, 1000000);
+  },
+
+  /**
+   * Gets dataset content directly from storage as a fallback mechanism
+   * @param datasetId Dataset ID to retrieve
+   * @returns Promise resolving to the dataset content
+   */
+  async getDatasetDirectFromStorage(datasetId: string): Promise<any[]> {
+    try {
+      // First get the dataset metadata to find the storage path
+      const { data: dataset, error: datasetError } = await supabase
+        .from('datasets')
+        .select('*')
+        .eq('id', datasetId)
+        .single();
+      
+      if (datasetError) throw datasetError;
+      if (!dataset) throw new Error('Dataset not found');
+      
+      console.log('Fetching dataset directly from storage:', dataset.storage_path);
+      
+      // Download the file from storage
+      const { data: fileData, error: downloadError } = await supabase
+        .storage
+        .from('datasets')
+        .download(dataset.storage_path);
+      
+      if (downloadError) throw downloadError;
+      if (!fileData) throw new Error('No file data found');
+      
+      // Parse the file based on its type
+      const extension = dataset.file_name.split('.').pop()?.toLowerCase();
+      
+      if (extension === 'csv') {
+        const text = await fileData.text();
+        const results = Papa.parse(text, { header: true, skipEmptyLines: true });
+        return results.data;
+      } else if (extension === 'json') {
+        const text = await fileData.text();
+        return JSON.parse(text);
+      } else {
+        throw new Error(`Unsupported file format: ${extension}`);
+      }
+    } catch (error) {
+      console.error('Error getting dataset directly from storage:', error);
+      throw error;
+    }
   }
 };

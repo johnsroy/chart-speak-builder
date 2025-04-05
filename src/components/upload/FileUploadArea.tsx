@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Upload, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -20,6 +20,7 @@ interface FileUploadAreaProps {
   uploadError: string | null;
   retryUpload: () => void;
   handleUpload: () => void;
+  uploadedDatasetId?: string | null;
 }
 
 const FileUploadArea: React.FC<FileUploadAreaProps> = ({
@@ -37,8 +38,20 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   uploadProgress,
   uploadError,
   retryUpload,
-  handleUpload
+  handleUpload,
+  uploadedDatasetId
 }) => {
+  // Dispatch custom event when upload is successful
+  useEffect(() => {
+    if (uploadedDatasetId) {
+      // Dispatch a custom event that the upload page can listen for
+      const event = new CustomEvent('upload:success', { 
+        detail: { datasetId: uploadedDatasetId } 
+      });
+      window.dispatchEvent(event);
+    }
+  }, [uploadedDatasetId]);
+
   return (
     <div className="glass-card p-6">
       <h2 className="text-xl font-medium mb-4 text-left">Upload File</h2>
@@ -104,7 +117,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
               type="text" 
               value={datasetName} 
               onChange={e => setDatasetName(e.target.value)} 
-              className="w-full px-3 py-2 rounded-md border bg-white/10 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" 
+              className="w-full px-3 py-2 rounded-md border bg-black/70 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" 
               placeholder="Enter dataset name" 
               disabled={isUploading}
             />
@@ -115,7 +128,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
             <textarea 
               value={datasetDescription} 
               onChange={e => setDatasetDescription(e.target.value)} 
-              className="w-full px-3 py-2 rounded-md border bg-white/10 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" 
+              className="w-full px-3 py-2 rounded-md border bg-black/70 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" 
               placeholder="Enter dataset description" 
               rows={3}
               disabled={isUploading}

@@ -1,10 +1,29 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import NavBar from '@/components/NavBar';
 import UploadArea from '@/components/UploadArea';
 import Footer from '@/components/Footer';
+import { useNavigate } from 'react-router-dom';
 
 const Upload = () => {
+  const navigate = useNavigate();
+  
+  // Listen for successful upload events
+  useEffect(() => {
+    const handleUploadSuccess = (event: CustomEvent) => {
+      // Redirect to dashboard after successful upload
+      navigate('/dashboard');
+    };
+    
+    // Add event listener
+    window.addEventListener('upload:success' as any, handleUploadSuccess);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('upload:success' as any, handleUploadSuccess);
+    };
+  }, [navigate]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
       <NavBar />
