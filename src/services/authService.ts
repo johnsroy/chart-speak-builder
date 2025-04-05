@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
@@ -20,7 +21,7 @@ export const adminCredentials = {
 
 // In-memory admin user for direct bypass
 const testAdminUser: User = {
-  id: 'test-admin-id',
+  id: '00000000-0000-0000-0000-000000000000',  // Use consistent UUID format
   email: adminCredentials.email,
   role: 'admin',
   name: 'Admin User',

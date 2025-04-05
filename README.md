@@ -1,151 +1,166 @@
 
-# Data Visualization Platform
+# GenBI - Data Visualization Platform
 
-A powerful data visualization platform for uploading, analyzing, and visualizing datasets with advanced AI capabilities.
+GenBI is a powerful data visualization platform that allows users to upload, analyze, visualize and transform datasets. The application features a modern, responsive UI with real-time data visualization capabilities, AI-powered insights, and robust data management.
 
-## Project Overview
-
-This platform allows users to upload datasets (CSV, Excel, JSON), analyze them, and create interactive visualizations. Built with modern web technologies and integrating AI-powered features, it streamlines the data analysis process for both technical and non-technical users.
-
-## Features
-
-- **Data Upload**: Upload CSV, Excel, or JSON files with automatic schema inference
-- **Large File Support**: Handles large files with chunked uploading and progress tracking
-- **Cloud Storage Integration**: Connect to AWS S3, Azure Storage, Google Cloud Storage, or Dropbox
-- **Interactive Data Visualization**: Create charts and graphs using Recharts and shadcn/ui
-- **AI-Powered Analytics**: Generate insights using OpenAI and Anthropic AI models
-- **Authentication**: Secure user authentication via Supabase
-- **Responsive Design**: Fully responsive UI that works on desktop and mobile devices
-
-## Technology Stack
+## Tech Stack
 
 ### Frontend
-- **React**: UI library for building component-based interfaces
-- **TypeScript**: For type safety and improved developer experience
-- **Vite**: For fast development and optimized builds
-- **Tailwind CSS**: For utility-first styling
-- **shadcn/ui**: For high-quality UI components
-- **Recharts**: For data visualization components
-- **Tanstack Query**: For efficient data fetching and state management
+- **React**: Main UI framework (v18.3+)
+- **TypeScript**: For type-safe code
+- **Vite**: Build tool and development server
+- **TailwindCSS**: For styling and responsive design
+- **shadcn/ui**: Component library for consistent UI elements
+- **Recharts & ECharts**: For data visualization
+- **React Router**: For client-side routing
+- **React Query**: For efficient data fetching and state management
 
-### Backend (Supabase)
-- **PostgreSQL**: For database storage
-- **Supabase Storage**: For file storage
-- **Supabase Auth**: For user authentication
-- **Row Level Security (RLS)**: For data protection
-- **Edge Functions**: For serverless API endpoints
+### Backend
+- **Supabase**: For authentication, data storage, and serverless functions
+  - Authentication with email/password and JWT
+  - PostgreSQL database for storing user data and datasets
+  - Storage buckets for file management
+  - Edge Functions for serverless operations
+  - Row-Level Security (RLS) for data protection
 
-### AI Integration
-- **OpenAI API**: For natural language processing and data analysis
-- **Anthropic API**: For conversational AI and alternative NLP capabilities
+### Data Processing
+- **PapaParse**: For CSV parsing and schema inference
+- **OpenAI API**: For AI-powered queries and insights
+- **Anthropic API**: Alternative AI provider for analysis
 
 ## Database Schema
 
 ### Tables
 
 #### datasets
-- **id**: UUID (Primary Key)
-- **name**: Text
-- **description**: Text (optional)
-- **user_id**: UUID (Foreign Key to auth.users)
-- **file_name**: Text
-- **file_size**: Integer
-- **row_count**: Integer
-- **column_schema**: JSONB (column name -> data type)
-- **created_at**: Timestamp with timezone
-- **updated_at**: Timestamp with timezone
-- **storage_type**: Text ('supabase', 's3', 'azure', 'gcs', 'dropbox')
-- **storage_path**: Text
+- `id` (UUID): Primary key
+- `user_id` (UUID): References the user who uploaded the dataset
+- `name` (TEXT): Dataset name
+- `description` (TEXT): Optional dataset description
+- `file_name` (TEXT): Original filename
+- `file_size` (INTEGER): Size in bytes
+- `row_count` (INTEGER): Estimated row count
+- `column_schema` (JSONB): Column names and data types
+- `storage_type` (TEXT): Storage provider (supabase, s3, etc.)
+- `storage_path` (TEXT): Path to the file in storage
+- `storage_bucket` (TEXT): 'datasets' or 'cold_storage'
+- `created_at` (TIMESTAMP): Creation timestamp
+- `updated_at` (TIMESTAMP): Last update timestamp
 
 #### queries
-- **id**: UUID (Primary Key)
-- **name**: Text
-- **query_text**: Text
-- **query_type**: Text
-- **query_config**: JSONB
-- **dataset_id**: UUID (Foreign Key to datasets)
-- **user_id**: UUID (Foreign Key to auth.users)
-- **created_at**: Timestamp with timezone
-- **updated_at**: Timestamp with timezone
+- `id` (UUID): Primary key
+- `user_id` (UUID): References the user who created the query
+- `dataset_id` (UUID): References the dataset
+- `name` (TEXT): Query name
+- `query_text` (TEXT): The query in natural language
+- `query_type` (TEXT): Type of query (sql, chart, ai, etc.)
+- `query_config` (JSONB): Configuration for the query
+- `created_at` (TIMESTAMP): Creation timestamp
+- `updated_at` (TIMESTAMP): Last update timestamp
 
 #### visualizations
-- **id**: UUID (Primary Key)
-- **name**: Text
-- **chart_type**: Text
-- **chart_config**: JSONB
-- **query_id**: UUID (Foreign Key to queries)
-- **user_id**: UUID (Foreign Key to auth.users)
-- **created_at**: Timestamp with timezone
-- **updated_at**: Timestamp with timezone
+- `id` (UUID): Primary key
+- `user_id` (UUID): References the user who created the visualization
+- `query_id` (UUID): References the query
+- `name` (TEXT): Visualization name
+- `chart_type` (TEXT): Type of chart (bar, line, pie, etc.)
+- `chart_config` (JSONB): Configuration for the chart
+- `created_at` (TIMESTAMP): Creation timestamp
+- `updated_at` (TIMESTAMP): Last update timestamp
 
 #### storage_connections
-- **id**: UUID (Primary Key)
-- **user_id**: UUID (Foreign Key to auth.users)
-- **storage_type**: Text ('s3', 'azure', 'gcs', 'dropbox')
-- **connection_details**: JSONB
-- **created_at**: Timestamp with timezone
+- `id` (UUID): Primary key
+- `user_id` (UUID): References the user
+- `storage_type` (TEXT): Type of storage (s3, azure, gcs, dropbox)
+- `connection_details` (JSONB): Connection details
+- `created_at` (TIMESTAMP): Creation timestamp
 
-## Storage Buckets
+## Storage Architecture
 
-- **datasets**: Stores uploaded dataset files
-- **secure**: Stores sensitive credentials for cloud storage connections
+The application uses a tiered storage approach:
 
-## Authentication
+1. **Active Storage**: For frequently used, smaller datasets (< 50MB)
+   - Stored in the 'datasets' bucket
+   - Optimized for quick access and visualization
 
-The platform uses Supabase Authentication with:
-- Email/password authentication
-- JWT token-based sessions
-- Row Level Security policies ensuring users can only access their own data
-- Admin user capabilities for system management
+2. **Cold Storage**: For large datasets (> 50MB) or archived data
+   - Stored in the 'cold_storage' bucket
+   - Optimized for cost efficiency
 
-## AI Features
+## Authentication System
 
-### Natural Language Querying
-- Transform natural language questions into SQL or data queries
-- Support for both OpenAI and Anthropic models
-- Query history and saved queries
+The application supports:
 
-### Data Insights
-- Automatic pattern detection and insights generation
-- Anomaly detection in datasets
-- Smart visualization recommendations
+- **Email/Password Authentication**: For standard users
+- **Admin Bypass**: For testing purposes using admin@genbi.com / admin123!
+- **JWT Tokens**: For secure API access
 
-## File Upload & Processing
+## AI Integration
 
-The platform handles file uploads with a robust approach:
-- Chunked uploads for large files (>5MB)
-- Automatic retries with exponential backoff
-- Progress tracking and cancelation
-- Server-side validation and schema inference
+GenBI leverages advanced AI models for data analysis:
 
-## Getting Started
+- **OpenAI GPT-4**: For natural language query interpretation and advanced analytics
+- **Anthropic Claude**: Alternative AI model for data insights
+
+## Key Features
+
+1. **Dataset Management**
+   - Upload CSV, Excel, and JSON files
+   - Schema inference and data type detection
+   - Dataset metadata tracking
+   - File storage with Supabase buckets
+
+2. **Data Visualization**
+   - Interactive charts and graphs
+   - Custom visualization creation
+   - Shareable dashboards
+   - Real-time updates
+
+3. **AI-Powered Analysis**
+   - Natural language queries
+   - Automated insights
+   - Trend detection
+   - Anomaly highlighting
+
+4. **User Management**
+   - User authentication
+   - Role-based permissions
+   - Secure data access controls
+   - User-specific dataset libraries
+
+## Microservices Architecture
+
+The application follows a microservices approach:
+
+1. **Auth Service**: Handles user authentication and session management
+2. **Data Service**: Manages dataset operations and storage
+3. **Query Service**: Processes data queries and analysis
+4. **Visualization Service**: Handles chart generation and display
+5. **AI Service**: Manages connections to AI providers
+
+## Development Setup
 
 1. Clone the repository
 2. Install dependencies with `npm install`
-3. Run development server with `npm run dev`
-4. Open http://localhost:5173 in your browser
-
-## Environment Setup
-
-The project connects to Supabase for backend functionality. The following environment variables are used:
-
-- Supabase URL: https://rehadpogugijylybwmoe.supabase.co
-- Supabase public key (automatically configured)
-- OpenAI API key (for AI features)
-- Anthropic API key (for alternative AI model)
+3. Set up Supabase:
+   - Create a Supabase project
+   - Configure authentication
+   - Create the necessary tables
+   - Set up storage buckets
+4. Configure environment variables
+5. Run the development server with `npm run dev`
 
 ## Deployment
 
-The application can be deployed using the Lovable publishing feature, which provides:
-- Automatic builds and deployments
-- Custom domain support
-- SSL certificate management
-- CDN and edge caching
+The application can be deployed using:
 
-## License
+1. **Vercel/Netlify**: For the frontend
+2. **Supabase**: For backend services and database
 
-This project is MIT licensed.
+## Future Enhancements
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+- Data transformation capabilities
+- Advanced collaboration features
+- Custom dashboard creation
+- Machine learning model integration
+- Extended connectivity to more data sources

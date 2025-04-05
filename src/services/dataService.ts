@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import Papa from 'papaparse';
 import { toast } from '@/hooks/use-toast';
@@ -58,9 +57,24 @@ export const dataService = {
       let userId = null;
       
       // Use provided explicit userId first (most reliable)
-      if (providedUserId && typeof providedUserId === 'string' && providedUserId.length >= 10) {
+      if (providedUserId && typeof providedUserId === 'string') {
         console.log("Using explicitly provided userId:", providedUserId);
-        userId = providedUserId;
+        
+        // Special handling for admin test user
+        if (providedUserId === 'test-admin-id') {
+          // For admin test user, generate a deterministic UUID based on the test ID
+          // This ensures we always get the same UUID for the test admin
+          userId = '00000000-0000-0000-0000-000000000000';
+          console.log("Using special UUID for admin test user:", userId);
+        } else {
+          // For regular users, validate UUID format
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!uuidRegex.test(providedUserId)) {
+            console.error("Invalid user ID format for regular user:", providedUserId);
+            throw new Error('Invalid user ID format. Please login again.');
+          }
+          userId = providedUserId;
+        }
       }
       // Then try to get user from Supabase session
       else {
@@ -76,18 +90,11 @@ export const dataService = {
         console.log("User authenticated for upload:", userId);
       }
       
-      // Check that userId is a valid UUID format
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(userId)) {
-        console.error("Invalid user ID format:", userId);
-        throw new Error('Invalid user ID format. Please login again.');
-      }
-      
       // Parse the CSV to get schema and row count
       const parseResult = await new Promise<Papa.ParseResult<any>>((resolve, reject) => {
         Papa.parse(file, {
           header: true,
-          preview: 500, // Read first 500 rows to better infer schema
+          preview: 500,
           skipEmptyLines: true,
           complete: resolve,
           error: reject,
@@ -108,17 +115,22 @@ export const dataService = {
       const fileExt = file.name.split('.').pop() || '';
       const uniqueFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
       
+      // Determine if this is for active or cold storage based on file size
+      // Files larger than 50MB go to cold storage
+      const isLargeFile = file.size > 50 * 1024 * 1024;
+      const bucketName = isLargeFile ? 'cold_storage' : 'datasets';
+      
       // Store the file in Supabase storage with retry logic
       const filePath = `${userId}/${uniqueFileName}`;
       
-      console.log(`Attempting to upload ${file.name} (${file.size} bytes) to ${filePath}`);
+      console.log(`Attempting to upload ${file.name} (${file.size} bytes) to ${bucketName}/${filePath}`);
 
       // For large files, use chunked upload
       let uploadResult;
       if (file.size > CHUNK_SIZE) {
-        uploadResult = await this._uploadLargeFile(file, filePath, userId);
+        uploadResult = await this._uploadLargeFile(file, filePath, userId, bucketName);
       } else {
-        uploadResult = await this._uploadRegularFile(file, filePath);
+        uploadResult = await this._uploadRegularFile(file, filePath, bucketName);
       }
       
       if (!uploadResult.success) {
@@ -138,12 +150,13 @@ export const dataService = {
         column_schema: columnSchema,
         storage_type: 'supabase',
         storage_path: filePath,
+        storage_bucket: bucketName,
       }).select().single();
       
       if (error) {
         console.error("Dataset metadata insertion error:", error);
         // Clean up the uploaded file if metadata insertion fails
-        await supabase.storage.from('datasets').remove([filePath]);
+        await supabase.storage.from(bucketName).remove([filePath]);
         throw error;
       }
       
@@ -156,8 +169,8 @@ export const dataService = {
   },
 
   // Upload large files in chunks
-  async _uploadLargeFile(file: File, filePath: string, userId: string) {
-    console.log(`Using chunked upload for large file: ${file.size} bytes`);
+  async _uploadLargeFile(file: File, filePath: string, userId: string, bucketName = 'datasets') {
+    console.log(`Using chunked upload for large file: ${file.size} bytes to bucket: ${bucketName}`);
     
     try {
       // Initialize array of upload promises
@@ -191,7 +204,7 @@ export const dataService = {
             }
             
             const { data, error } = await supabase.storage
-              .from('datasets')
+              .from(bucketName)
               .upload(partPath, chunk, {
                 cacheControl: '3600',
                 upsert: attempts > 0
@@ -260,8 +273,8 @@ export const dataService = {
   },
 
   // Upload regular sized files
-  async _uploadRegularFile(file: File, filePath: string) {
-    console.log(`Using regular upload for file: ${file.size} bytes`);
+  async _uploadRegularFile(file: File, filePath: string, bucketName = 'datasets') {
+    console.log(`Using regular upload for file: ${file.size} bytes to bucket: ${bucketName}`);
     
     let attempts = 0;
     const maxRetries = 5;
@@ -279,7 +292,7 @@ export const dataService = {
         }
         
         const { data, error } = await supabase.storage
-          .from('datasets')
+          .from(bucketName)
           .upload(filePath, file, {
             cacheControl: '3600',
             upsert: attempts > 0 // Only use upsert after first attempt
@@ -318,23 +331,37 @@ export const dataService = {
     return { success: false, error: 'Exceeded maximum retry attempts' };
   },
 
-  // Get all datasets for the current user
-  async getDatasets() {
+  // Get all datasets for a specific user or current user
+  async getDatasets(specificUserId = null) {
     try {
-      // Get current session
-      const { data: { session } } = await supabase.auth.getSession();
+      let userId;
       
-      if (!session || !session.user) {
-        console.error("No authenticated user found when fetching datasets");
-        throw new Error('User not authenticated');
+      if (specificUserId) {
+        // If a specific user ID is provided, use it
+        if (specificUserId === 'test-admin-id') {
+          // Handle admin test user
+          userId = '00000000-0000-0000-0000-000000000000';
+        } else {
+          userId = specificUserId;
+        }
+      } else {
+        // Get current session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session || !session.user) {
+          console.error("No authenticated user found when fetching datasets");
+          throw new Error('User not authenticated');
+        }
+        
+        userId = session.user.id;
       }
       
-      console.log("User authenticated for getting datasets:", session.user.id);
+      console.log("Getting datasets for user:", userId);
 
       const { data, error } = await supabase
         .from('datasets')
         .select('*')
-        .eq('user_id', session.user.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
       
       if (error) {
@@ -424,7 +451,7 @@ export const dataService = {
       
       // Delete the file from storage
       const { error: storageError } = await supabase.storage
-        .from('datasets')
+        .from(dataset.storage_bucket)
         .remove([dataset.storage_path]);
       
       if (storageError) throw storageError;
@@ -440,6 +467,53 @@ export const dataService = {
       return true;
     } catch (error) {
       console.error(`Error deleting dataset ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Get dataset storage statistics for a user
+  async getStorageStats(userId: string = null) {
+    try {
+      let actualUserId = userId;
+      
+      // If no userId provided, get the current user
+      if (!actualUserId) {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user?.id) {
+          throw new Error('User not authenticated');
+        }
+        
+        actualUserId = session.user.id;
+      }
+      
+      // Special handling for admin test user
+      if (actualUserId === 'test-admin-id') {
+        actualUserId = '00000000-0000-0000-0000-000000000000';
+      }
+      
+      // Get datasets to calculate total storage
+      const { data, error } = await supabase
+        .from('datasets')
+        .select('file_size, storage_bucket')
+        .eq('user_id', actualUserId);
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Calculate storage metrics
+      const stats = {
+        totalFiles: data.length,
+        totalSize: data.reduce((acc, dataset) => acc + dataset.file_size, 0),
+        coldStorageFiles: data.filter(d => d.storage_bucket === 'cold_storage').length,
+        coldStorageSize: data.filter(d => d.storage_bucket === 'cold_storage')
+          .reduce((acc, dataset) => acc + dataset.file_size, 0)
+      };
+      
+      return stats;
+    } catch (error) {
+      console.error('Error getting storage stats:', error);
       throw error;
     }
   },

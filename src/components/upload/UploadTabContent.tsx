@@ -5,6 +5,7 @@ import FileUploadArea from './FileUploadArea';
 import CloudStoragePanel from './CloudStoragePanel';
 import DatasetVisualizationCard from './DatasetVisualizationCard';
 import VisualizeDatasetPanel from './VisualizeDatasetPanel';
+import UserDatasetLibrary from '../user/UserDatasetLibrary';
 
 interface UploadTabContentProps {
   activeTab: string;
@@ -111,6 +112,8 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
         onUploadClick={() => setActiveTab('upload')}
       />
     );
+  } else if (activeTab === 'library') {
+    return <UserDatasetLibrary />;
   } else if (activeTab === 'transform') {
     return (
       <div className="glass-card p-6">
