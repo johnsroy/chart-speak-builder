@@ -5,65 +5,27 @@
 
 @layer base {
   :root {
-    --background: 240 30% 98%;
-    --foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 255 70% 80%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 255 60% 95%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 255 80% 96%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 255 70% 60%;
-
-    --radius: 0.75rem;
-  }
-
-  .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
-
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
-
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-
-    --primary: 255 70% 70%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
+    --primary: 263.4 70% 50.4%;
+    --primary-foreground: 210 40% 98%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
-
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
-
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
-
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --ring: 263.4 70% 50.4%;
+    
+    --radius: 0.5rem;
   }
 }
 
@@ -74,106 +36,25 @@
   body {
     @apply bg-background text-foreground;
   }
-  
-  html {
-    scroll-behavior: smooth;
-  }
 }
 
-@layer utilities {
-  .glass {
-    @apply bg-white/10 backdrop-blur-md border border-white/20 shadow-lg;
-  }
-  
-  .glass-card {
-    @apply glass rounded-xl;
-  }
-  
-  .glass-button {
-    @apply glass rounded-lg transition-all hover:bg-white/20;
-  }
-  
-  .purple-gradient {
-    @apply bg-gradient-to-r from-purple-500 via-purple-600 to-indigo-600;
-  }
-  
-  .text-gradient {
-    @apply bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent;
-  }
-  
-  /* Animation utilities */
-  .animate-float {
-    animation: float 6s ease-in-out infinite;
-  }
-  
-  @keyframes float {
-    0% {
-      transform: translateY(0px);
-    }
-    50% {
-      transform: translateY(-20px);
-    }
-    100% {
-      transform: translateY(0px);
-    }
-  }
-  
-  .animate-pulse-glow {
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-  
-  @keyframes pulse-glow {
-    0% {
-      opacity: 0.8;
-      box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
-    }
-    50% {
-      opacity: 1;
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
-    }
-    100% {
-      opacity: 0.8;
-      box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
-    }
-  }
-  
-  /* Enhanced fade-in animation */
-  @keyframes enhanced-fade-in {
-    0% { 
-      opacity: 0;
-      transform: translateY(20px) scale(0.95);
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-  
-  .animate-enhanced-fade-in {
-    animation: enhanced-fade-in 0.8s ease-out forwards;
-  }
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-blue-400 to-violet-400;
 }
 
-#root {
-  width: 100%;
-  margin: 0 auto;
-  text-align: center;
+.glass-card {
+  @apply backdrop-blur-lg bg-slate-900/60 shadow-xl border-slate-700/50;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+/* Custom animation for the progress bar in the redirect dialog */
+@keyframes grow {
+  0% {
+    width: 0%;
+  }
+  90% {
+    width: 90%;
+  }
+  100% {
+    width: 100%;
+  }
 }

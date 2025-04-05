@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -7,7 +6,7 @@ import { useDatasets } from '@/hooks/useDatasets';
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home } from 'lucide-react';
+import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home, Trash2 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -20,6 +19,7 @@ const Dashboard = () => {
   const [filterType, setFilterType] = useState<string | null>(null);
   const [deleteDatasetId, setDeleteDatasetId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingDataset, setDeletingDataset] = useState(false);
 
   useEffect(() => {
     const setupAuth = async () => {
@@ -65,6 +65,7 @@ const Dashboard = () => {
     if (!deleteDatasetId) return;
     
     try {
+      setDeletingDataset(true);
       await dataService.deleteDataset(deleteDatasetId);
       toast.success("Dataset deleted successfully");
       loadDatasets();
@@ -74,6 +75,7 @@ const Dashboard = () => {
     } finally {
       setShowDeleteConfirm(false);
       setDeleteDatasetId(null);
+      setDeletingDataset(false);
     }
   };
 
@@ -164,7 +166,7 @@ const Dashboard = () => {
                             e.stopPropagation();
                             handleDeleteDataset(dataset.id);
                           }} className="text-red-500">
-                            <Database className="mr-2 h-4 w-4" />
+                            <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -238,8 +240,22 @@ const Dashboard = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteDataset} className="bg-red-500 hover:bg-red-600">
-              Delete
+            <AlertDialogAction 
+              onClick={confirmDeleteDataset} 
+              className="bg-red-500 hover:bg-red-600"
+              disabled={deletingDataset}
+            >
+              {deletingDataset ? (
+                <>
+                  <span className="mr-2">Deleting</span>
+                  <Trash2 className="h-4 w-4 animate-pulse" />
+                </>
+              ) : (
+                <>
+                  <span className="mr-2">Delete</span>
+                  <Trash2 className="h-4 w-4" />
+                </>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

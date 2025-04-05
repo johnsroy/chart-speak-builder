@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -28,6 +27,7 @@ export const useFileUpload = () => {
   const [schemaPreview, setSchemaPreview] = useState<Record<string, string> | null>(null);
   const [uploadedDatasetId, setUploadedDatasetId] = useState<string | null>(null);
   const [showVisualizeAfterUpload, setShowVisualizeAfterUpload] = useState(false);
+  const [showRedirectDialog, setShowRedirectDialog] = useState(false);
   
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -115,7 +115,7 @@ export const useFileUpload = () => {
   };
 
   /**
-   * Initiates file upload process with improved error handling
+   * Initiates file upload process with improved error handling and redirect dialog
    */
   const handleUpload = async (isAuthenticated: boolean, userId: string) => {
     if (!selectedFile) {
@@ -166,6 +166,9 @@ export const useFileUpload = () => {
         setDatasetDescription('');
         setSchemaPreview(null);
         
+        // Show redirect dialog
+        setShowRedirectDialog(true);
+        
         // Show success toast
         sonnerToast.success("Upload complete!", {
           description: "Your dataset was successfully uploaded.",
@@ -181,8 +184,11 @@ export const useFileUpload = () => {
         });
         window.dispatchEvent(uploadSuccessEvent);
         
-        // Automatically navigate to dashboard after successful upload
-        navigate('/dashboard');
+        // Set a timeout to automatically navigate after showing the dialog
+        setTimeout(() => {
+          setShowRedirectDialog(false);
+          navigate('/dashboard');
+        }, 3000);
         
         return dataset;
       } catch (error) {
@@ -230,10 +236,12 @@ export const useFileUpload = () => {
     schemaPreview,
     uploadedDatasetId,
     showVisualizeAfterUpload,
+    showRedirectDialog,
     setDatasetName,
     setDatasetDescription,
     setUploadedDatasetId,
     setShowVisualizeAfterUpload,
+    setShowRedirectDialog,
     handleDrag,
     handleDrop,
     handleFileInput,

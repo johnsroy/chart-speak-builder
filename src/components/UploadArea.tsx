@@ -17,6 +17,7 @@ const UploadArea = () => {
   const [selectedStorage, setSelectedStorage] = useState<string | null>(null);
   const [showStorageDialog, setShowStorageDialog] = useState(false);
   const [bucketsVerified, setBucketsVerified] = useState<boolean | null>(null);
+  const [showRedirectDialog, setShowRedirectDialog] = useState(false);
   
   const navigate = useNavigate();
   const { isAuthenticated, user, session, adminLogin } = useAuth();
@@ -35,6 +36,7 @@ const UploadArea = () => {
     setDatasetName,
     setDatasetDescription,
     setShowVisualizeAfterUpload,
+    setShowRedirectDialog,
     handleDrag,
     handleDrop,
     handleFileInput,
@@ -289,6 +291,8 @@ const UploadArea = () => {
         uploadedDatasetId={uploadedDatasetId}
         showVisualizeAfterUpload={showVisualizeAfterUpload}
         setShowVisualizeAfterUpload={setShowVisualizeAfterUpload}
+        showRedirectDialog={showRedirectDialog}
+        setShowRedirectDialog={setShowRedirectDialog}
         selectedStorage={selectedStorage}
         setSelectedStorage={setSelectedStorage}
       />

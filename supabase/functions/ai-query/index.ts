@@ -45,6 +45,23 @@ serve(async (req) => {
     // Parse request payload
     const { datasetId, query, modelType = 'openai' } = await req.json();
 
+    // Validate input
+    if (!datasetId) {
+      return new Response(
+        JSON.stringify({ error: "Dataset ID is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!query) {
+      return new Response(
+        JSON.stringify({ error: "Query is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Processing query for dataset ${datasetId}: "${query}" using ${modelType} model`);
+
     // Get dataset information
     const { data: dataset, error: datasetError } = await supabase
       .from('datasets')
@@ -53,19 +70,23 @@ serve(async (req) => {
       .single();
 
     if (datasetError) {
+      console.error("Dataset error:", datasetError);
       return new Response(
         JSON.stringify({ error: `Dataset not found: ${datasetError.message}` }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    console.log("Dataset found:", dataset.name, "Storage path:", dataset.storage_path);
+
     // Download the dataset file
     const { data: fileData, error: fileError } = await supabase
       .storage
-      .from('datasets')
+      .from(dataset.storage_type || 'datasets')
       .download(dataset.storage_path);
 
     if (fileError) {
+      console.error("File download error:", fileError);
       return new Response(
         JSON.stringify({ error: `Failed to download dataset file: ${fileError.message}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -74,10 +95,14 @@ serve(async (req) => {
 
     // Parse CSV data
     const text = await fileData.text();
+    console.log("File content sample:", text.substring(0, 200) + "...");
+    
     const parsedData = await parseCSV(text);
+    console.log(`Parsed ${parsedData.length} rows of data`);
 
-    // Determine the best visualization based on the query
+    // Process the data with "AI" (rule-based approach for now)
     const result = await processDataWithAI(parsedData, query, dataset, modelType);
+    console.log("Generated result:", JSON.stringify(result).substring(0, 200) + "...");
 
     return new Response(
       JSON.stringify(result),
@@ -157,23 +182,53 @@ async function parseCSV(text: string) {
 async function processDataWithAI(data: any[], query: string, dataset: any, modelType: string): Promise<QueryResult> {
   // For MVP, we'll use a rules-based approach since we don't have a real AI model integration yet
   const queryLower = query.toLowerCase();
-  const schema = dataset.column_schema;
+  const schema = dataset.column_schema || {};
   
   // Find numeric and categorical columns
   const numericColumns: string[] = [];
   const categoricalColumns: string[] = [];
   const dateColumns: string[] = [];
   
+  // First pass - identify column types from the schema
   Object.entries(schema).forEach(([column, type]) => {
-    if (type === 'number' || type === 'integer') {
-      numericColumns.push(column);
-    } else if (type === 'date') {
-      dateColumns.push(column);
-      categoricalColumns.push(column);
-    } else {
-      categoricalColumns.push(column);
+    if (typeof type === 'string') {
+      if (type === 'number' || type === 'integer') {
+        numericColumns.push(column);
+      } else if (type === 'date') {
+        dateColumns.push(column);
+        categoricalColumns.push(column);
+      } else {
+        categoricalColumns.push(column);
+      }
     }
   });
+  
+  // Second pass - if schema doesn't have enough info, infer from data
+  if (numericColumns.length === 0 || categoricalColumns.length === 0) {
+    if (data.length > 0) {
+      const firstRow = data[0];
+      Object.entries(firstRow).forEach(([column, value]) => {
+        if (typeof value === 'number') {
+          if (!numericColumns.includes(column)) {
+            numericColumns.push(column);
+          }
+        } else {
+          if (!categoricalColumns.includes(column)) {
+            categoricalColumns.push(column);
+            
+            // Check if it looks like a date
+            if (typeof value === 'string' && 
+                !isNaN(Date.parse(value)) && 
+                (value.includes('-') || value.includes('/'))) {
+              dateColumns.push(column);
+            }
+          }
+        }
+      });
+    }
+  }
+  
+  console.log("Identified columns - Numeric:", numericColumns, "Categorical:", categoricalColumns, "Dates:", dateColumns);
   
   // Determine chart type from query
   let chartType = 'bar'; // Default
@@ -218,21 +273,51 @@ async function processDataWithAI(data: any[], query: string, dataset: any, model
     if (chartType === 'line' && dateColumns.length > 0) {
       // For line charts, prefer date columns
       dimensionColumn = dateColumns[0];
-    } else {
+    } else if (categoricalColumns.length > 0) {
       // Otherwise use the first categorical column
       dimensionColumn = categoricalColumns[0];
+    } else if (data.length > 0) {
+      // Last resort: use the first non-numeric column
+      const firstRow = data[0];
+      const firstNonNumericColumn = Object.entries(firstRow)
+        .find(([_, value]) => typeof value !== 'number')?.[0];
+      
+      if (firstNonNumericColumn) {
+        dimensionColumn = firstNonNumericColumn;
+      }
     }
   }
   
   // If no measure found, pick the first numeric column
   if (!measureColumn && numericColumns.length > 0) {
     measureColumn = numericColumns[0];
+  } else if (!measureColumn && data.length > 0) {
+    // Last resort: use the first numeric column
+    const firstRow = data[0];
+    const firstNumericColumn = Object.entries(firstRow)
+      .find(([_, value]) => typeof value === 'number')?.[0];
+    
+    if (firstNumericColumn) {
+      measureColumn = firstNumericColumn;
+    }
   }
   
   // If we have no measure but have dimension, use count as measure
   if (!measureColumn && dimensionColumn) {
     measureColumn = 'count';
+  } else if (!dimensionColumn && !measureColumn && data.length > 0) {
+    // Complete fallback if no dimensions or measures found
+    const columns = Object.keys(data[0]);
+    if (columns.length >= 2) {
+      dimensionColumn = columns[0];
+      measureColumn = columns[1];
+    } else if (columns.length === 1) {
+      dimensionColumn = columns[0];
+      measureColumn = 'count';
+    }
   }
+  
+  console.log(`Selected dimension: ${dimensionColumn}, measure: ${measureColumn}`);
   
   // Process data based on the selected dimension and measure
   let processedData: any[] = [];
@@ -317,8 +402,8 @@ async function processDataWithAI(data: any[], query: string, dataset: any, model
     colorScheme = COLOR_SCHEMES.gradient;
   }
   
-  // Generate title
-  const title = generateTitle(query, measure, dimension);
+  // Generate title based on the query
+  const title = generateTitle(query, measureColumn, dimensionColumn);
   
   return {
     data: processedData,
