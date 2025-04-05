@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
@@ -111,6 +112,15 @@ export const authService = {
           user_metadata: { role: 'admin', name: 'Admin User' },
           aud: 'authenticated',
           email: testAdminUser.email,
+          created_at: new Date().toISOString(), // Add the missing created_at property
+          updated_at: new Date().toISOString(), // Also add updated_at for completeness
+          phone: '',  // Add any other required fields
+          confirmed_at: new Date().toISOString(),
+          last_sign_in_at: new Date().toISOString(),
+          role: '',  // This is not the same as our custom role
+          is_anonymous: false,
+          factors: null,
+          identities: []
         },
         expires_in: 3600,
         expires_at: new Date().getTime() + 3600000, // 1 hour from now
