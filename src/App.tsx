@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import { AuthProvider } from "./hooks/useAuth";
 import ProtectedRoute from "./components/ProtectedRoute";
 
+// Create a new QueryClient instance
 const queryClient = new QueryClient();
 
 const App = () => (
