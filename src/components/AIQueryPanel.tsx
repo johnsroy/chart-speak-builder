@@ -59,7 +59,7 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({ datasetId, onQueryResult })
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="openai" onValueChange={(value) => setActiveModel(value as 'openai' | 'anthropic')}>
+        <Tabs defaultValue={activeModel} onValueChange={(value) => setActiveModel(value as 'openai' | 'anthropic')}>
           <TabsList className="grid w-full grid-cols-2 mb-4">
             <TabsTrigger value="openai" className="flex items-center">
               <Brain className="w-4 h-4 mr-2" />

@@ -99,6 +99,24 @@ serve(async (req) => {
       result = await processWithAnthropic(query_text, dataset, datasetSample, anthropicApiKey);
     }
     
+    // Log the query for future improvements
+    try {
+      await supabase.from('queries').insert({
+        user_id: dataset.user_id,
+        dataset_id: dataset_id,
+        query_type: 'natural_language',
+        query_text: query_text,
+        name: query_text.slice(0, 50) + (query_text.length > 50 ? '...' : ''),
+        query_config: {
+          model: model_type,
+          chart_type: result.chartType,
+        }
+      });
+    } catch (logError) {
+      // Non-critical error, just log and continue
+      console.error("Error logging query:", logError);
+    }
+    
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -193,6 +211,13 @@ async function processWithOpenAI(query: string, dataset: any, datasetSample: any
       3. Chart configuration (title, axis labels, etc.)
       4. A brief explanation of the insights
       
+      When selecting a chart type:
+      - Use bar charts for comparisons across categories
+      - Use line charts for trends over time
+      - Use pie charts for proportions of a whole
+      - Use scatter plots for relationships between variables
+      - Use tables for detailed data views or when no clear visualization applies
+      
       Return ONLY a valid JSON object with the following structure:
       {
         "chartType": string,
@@ -266,6 +291,13 @@ async function processWithAnthropic(query: string, dataset: any, datasetSample: 
       2. A processed subset of data optimized for visualization
       3. Chart configuration (title, axis labels, etc.)
       4. A brief explanation of the insights
+      
+      When selecting a chart type:
+      - Use bar charts for comparisons across categories
+      - Use line charts for trends over time
+      - Use pie charts for proportions of a whole
+      - Use scatter plots for relationships between variables
+      - Use tables for detailed data views or when no clear visualization applies
       
       Return ONLY a valid JSON object with the following structure:
       {

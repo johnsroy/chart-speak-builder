@@ -5,17 +5,33 @@ import ChartVisualization from '@/components/ChartVisualization';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Loader2, ChevronLeft, Database } from 'lucide-react';
+import { 
+  Loader2, 
+  ChevronLeft, 
+  Database, 
+  BarChart,
+  LineChart,
+  PieChart,
+  Table as TableIcon,
+  Download,
+  Share2,
+  BrainCircuit
+} from 'lucide-react';
 import { toast } from "sonner";
 import AIQueryPanel from '@/components/AIQueryPanel';
 import EnhancedVisualization from '@/components/EnhancedVisualization';
 import { QueryResult } from '@/services/nlpService';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 const Visualize = () => {
   const { datasetId } = useParams<{ datasetId: string }>();
   const [dataset, setDataset] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
+  const [activeTab, setActiveTab] = useState<'query' | 'explore'>('query');
+  const [exampleQuery, setExampleQuery] = useState('');
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -47,6 +63,23 @@ const Visualize = () => {
     setQueryResult(result);
   };
 
+  const handleDownload = () => {
+    toast.success("Download started");
+    // In a real app, this would initiate a download of the visualization or data
+  };
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success("Visualization link copied to clipboard");
+  };
+
+  const setQuery = (query: string) => {
+    setExampleQuery(query);
+    // In a real implementation, we would need to pass this to the AIQueryPanel
+    // This is a simplified example - in production, we would use refs or context
+    toast.info(`Selected example query: "${query}"`);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
       <div className="container mx-auto py-8">
@@ -65,29 +98,128 @@ const Visualize = () => {
           </div>
         ) : dataset ? (
           <div className="space-y-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gradient">{dataset.name}</h1>
-              <p className="text-gray-300">{dataset.file_name} • {(dataset.file_size / (1024 * 1024)).toFixed(2)} MB</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gradient">{dataset.name}</h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-gray-300">{dataset.file_name}</p>
+                  <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/40">
+                    {(dataset.file_size / (1024 * 1024)).toFixed(2)} MB
+                  </Badge>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 mt-4 md:mt-0">
+                <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={handleDownload}>
+                  <Download className="h-4 w-4" />
+                  Download
+                </Button>
+                <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={handleShare}>
+                  <Share2 className="h-4 w-4" />
+                  Share
+                </Button>
+              </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="md:col-span-3">
+            <Tabs defaultValue={activeTab} onValueChange={(value) => setActiveTab(value as 'query' | 'explore')} className="space-y-4">
+              <TabsList className="grid grid-cols-2 w-full max-w-md mx-auto">
+                <TabsTrigger value="query" className="flex items-center justify-center gap-2">
+                  <BrainCircuit className="h-4 w-4" />
+                  AI Query
+                </TabsTrigger>
+                <TabsTrigger value="explore" className="flex items-center justify-center gap-2">
+                  <BarChart className="h-4 w-4" />
+                  Explore Data
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="query" className="space-y-6">
                 <AIQueryPanel 
                   datasetId={datasetId!} 
                   onQueryResult={handleQueryResult} 
                 />
-              </div>
-              
-              <div className="md:col-span-3">
+                
                 {queryResult ? (
                   <EnhancedVisualization result={queryResult} />
                 ) : (
-                  <div className="glass-card p-6">
-                    <ChartVisualization datasetId={datasetId!} />
-                  </div>
+                  <Card className="glass-card p-8 text-center">
+                    <CardContent className="pt-8">
+                      <BrainCircuit className="h-16 w-16 mx-auto mb-4 text-indigo-400" />
+                      <h3 className="text-xl font-medium mb-2">Ask AI About Your Data</h3>
+                      <p className="text-gray-400 max-w-md mx-auto mb-4">
+                        Use natural language queries to explore insights from your dataset. Here are some examples:
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
+                        <Button variant="outline" size="sm" className="justify-start" 
+                          onClick={() => setQuery("Show me a breakdown of sales by category as a bar chart")}>
+                          "Show me a breakdown of sales by category"
+                        </Button>
+                        <Button variant="outline" size="sm" className="justify-start"
+                          onClick={() => setQuery("What's the trend of revenue over time?")}>
+                          "What's the trend of revenue over time?"
+                        </Button>
+                        <Button variant="outline" size="sm" className="justify-start"
+                          onClick={() => setQuery("Compare the distribution of values across regions")}>
+                          "Compare the distribution across regions"
+                        </Button>
+                        <Button variant="outline" size="sm" className="justify-start"
+                          onClick={() => setQuery("Show the correlation between price and quantity")}>
+                          "Show correlation between price and quantity"
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
-              </div>
-            </div>
+              </TabsContent>
+              
+              <TabsContent value="explore">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                  <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Bar Chart</CardTitle>
+                      <BarChart className="h-4 w-4 text-purple-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground">Compare values across categories</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Line Chart</CardTitle>
+                      <LineChart className="h-4 w-4 text-blue-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground">View trends over time</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Pie Chart</CardTitle>
+                      <PieChart className="h-4 w-4 text-green-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground">Show proportions of a whole</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Data Table</CardTitle>
+                      <TableIcon className="h-4 w-4 text-orange-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground">View raw tabular data</p>
+                    </CardContent>
+                  </Card>
+                </div>
+                
+                <div className="glass-card p-6">
+                  <ChartVisualization datasetId={datasetId!} />
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         ) : (
           <div className="glass-card p-12 text-center">

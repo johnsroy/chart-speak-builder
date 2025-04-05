@@ -7,16 +7,22 @@ import { useNavigate } from 'react-router-dom';
 interface DatasetVisualizationCardProps {
   datasetId: string;
   onHideClick: () => void;
+  onExploreClick?: () => void; // Making this optional with a default implementation
 }
 
 const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   datasetId,
   onHideClick,
+  onExploreClick,
 }) => {
   const navigate = useNavigate();
 
   const handleExploreClick = () => {
-    navigate(`/visualize/${datasetId}`);
+    if (onExploreClick) {
+      onExploreClick();
+    } else {
+      navigate(`/visualize/${datasetId}`);
+    }
   };
 
   return (
