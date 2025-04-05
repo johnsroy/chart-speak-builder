@@ -43,9 +43,9 @@ const toastVariants = cva(
   }
 )
 
-// Define the base ToastProps type that will be used across the project
-export type ToastProps = React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> &
-  VariantProps<typeof toastVariants>
+// Define the base ToastProps type that will be exported
+export interface ToastProps extends React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root>,
+  VariantProps<typeof toastVariants> {}
 
 const Toast = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Root>,
