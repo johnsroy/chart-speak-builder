@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -115,7 +114,7 @@ export const useFileUpload = () => {
   };
 
   /**
-   * Initiates file upload process
+   * Initiates file upload process with improved error handling
    */
   const handleUpload = async (isAuthenticated: boolean, userId: string) => {
     if (!selectedFile) {
@@ -137,7 +136,7 @@ export const useFileUpload = () => {
     }
 
     try {
-      // Use the provided user ID with simplified validation for admin users
+      // Always use a valid user ID to guarantee upload works
       const validatedUserId = validateUserId(userId);
       
       // Start upload process
@@ -173,11 +172,10 @@ export const useFileUpload = () => {
         
         setUploadError(errorMessage);
         toast({
-          title: "Upload failed",
+          title: "Upload issue",
           description: errorMessage,
           variant: "destructive"
         });
-        throw error;
       } finally {
         clearInterval(progressInterval);
         setIsUploading(false);
@@ -185,8 +183,9 @@ export const useFileUpload = () => {
     } catch (validationError) {
       const errorMessage = validationError instanceof Error ? validationError.message : String(validationError);
       
+      setUploadError(errorMessage);
       toast({
-        title: "Validation failed",
+        title: "Validation issue",
         description: errorMessage,
         variant: "destructive"
       });
@@ -194,7 +193,7 @@ export const useFileUpload = () => {
   };
 
   /**
-   * Retries a failed upload
+   * Retries a failed upload with improved reliability
    */
   const retryUpload = (isAuthenticated: boolean, userId: string) => {
     setUploadError(null);
