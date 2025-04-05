@@ -8,14 +8,19 @@ import Benefits from '@/components/Benefits';
 import Testimonials from '@/components/Testimonials';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/hooks/useAuth';
-import { Navigate } from 'react-router-dom';
 
 const Index = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isLoading } = useAuth();
   
-  // Redirect authenticated users to the dashboard
-  if (isAuthenticated && !isLoading) {
-    return <Navigate to="/dashboard" />;
+  // Remove the automatic redirect so users can see the landing page
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900">
+        <div className="glass-card p-8 rounded-xl text-white text-center">
+          <div className="animate-pulse">Loading...</div>
+        </div>
+      </div>
+    );
   }
 
   return (
