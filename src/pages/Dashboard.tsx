@@ -4,7 +4,8 @@ import {
   BarChart, PieChart, LineChart, 
   Activity, FileSpreadsheet, Plus, 
   Search, Settings, Download, Database,
-  LayoutDashboard, Users, ChevronRight, Upload
+  LayoutDashboard, Users, ChevronRight, Upload,
+  Home
 } from 'lucide-react';
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -91,6 +92,12 @@ const Dashboard = () => {
             <p className="text-gray-300">Analyze and visualize your datasets</p>
           </div>
           <div className="flex gap-3">
+            <Button asChild variant="ghost" className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/20">
+              <Link to="/upload" className="flex items-center gap-2">
+                <Home size={16} />
+                Home
+              </Link>
+            </Button>
             <Button asChild className="purple-gradient">
               <Link to="/upload" className="flex items-center gap-2">
                 <Upload size={16} />

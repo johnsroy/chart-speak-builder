@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,7 +16,8 @@ import {
   Download,
   Share2,
   BrainCircuit,
-  MessageSquare
+  MessageSquare,
+  Home
 } from 'lucide-react';
 import { toast } from "sonner";
 import AIQueryPanel from '@/components/AIQueryPanel';
@@ -83,14 +84,27 @@ const Visualize = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
       <div className="container mx-auto py-8">
-        <Button 
-          variant="ghost" 
-          className="mb-6 flex items-center text-gray-300 hover:text-white"
-          onClick={() => navigate('/dashboard')}
-        >
-          <ChevronLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Button>
+        <div className="flex items-center gap-4 mb-6">
+          <Button 
+            variant="ghost" 
+            className="flex items-center text-gray-300 hover:text-white"
+            onClick={() => navigate('/dashboard')}
+          >
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          
+          <Button 
+            variant="ghost" 
+            className="flex items-center text-gray-300 hover:text-white"
+            asChild
+          >
+            <Link to="/upload">
+              <Home className="mr-2 h-4 w-4" />
+              Home
+            </Link>
+          </Button>
+        </div>
         
         {isLoading ? (
           <div className="flex justify-center items-center h-64">

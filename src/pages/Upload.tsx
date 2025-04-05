@@ -4,6 +4,7 @@ import NavBar from '@/components/NavBar';
 import UploadArea from '@/components/UploadArea';
 import Footer from '@/components/Footer';
 import { useNavigate } from 'react-router-dom';
+import { toast } from "sonner";
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -11,7 +12,9 @@ const Upload = () => {
   // Listen for successful upload events
   useEffect(() => {
     const handleUploadSuccess = (event: CustomEvent) => {
+      console.log('Upload success event received', event.detail);
       // Redirect to dashboard after successful upload
+      toast.success("Upload successful! Redirecting to dashboard...");
       navigate('/dashboard');
     };
     
