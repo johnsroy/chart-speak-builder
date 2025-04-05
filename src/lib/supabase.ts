@@ -15,114 +15,14 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-// Helper function to directly create storage buckets via API
-export const createStorageBuckets = async () => {
-  try {
-    console.log("Creating storage buckets directly via API");
-    
-    // Required buckets
-    const requiredBuckets = ['datasets', 'secure', 'cold_storage'];
-    const results = [];
-    
-    // Get current session for auth
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      console.error("No active session when creating storage buckets");
-      return false;
-    }
-    
-    // Get existing buckets first
-    const { data: existingBuckets, error: listError } = await supabase.storage.listBuckets();
-    if (listError) {
-      console.error("Failed to list buckets:", listError);
-    }
-    
-    const existingBucketNames = existingBuckets?.map(b => b.name) || [];
-    console.log("Existing buckets:", existingBucketNames);
-    
-    // Create each required bucket if it doesn't exist
-    for (const bucketName of requiredBuckets) {
-      if (!existingBucketNames.includes(bucketName)) {
-        console.log(`Creating bucket: ${bucketName}`);
-        const { data, error } = await supabase.storage.createBucket(bucketName, {
-          public: false,
-          fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
-        });
-        
-        if (error) {
-          console.error(`Failed to create bucket ${bucketName}:`, error);
-          results.push({ bucket: bucketName, success: false, error: error.message });
-        } else {
-          console.log(`Successfully created bucket: ${bucketName}`);
-          results.push({ bucket: bucketName, success: true });
-        }
-      } else {
-        console.log(`Bucket ${bucketName} already exists`);
-        results.push({ bucket: bucketName, success: true, existing: true });
-      }
-    }
-    
-    // Verify buckets now exist
-    const { data: verifyBuckets, error: verifyError } = await supabase.storage.listBuckets();
-    
-    if (verifyError) {
-      console.error("Failed to verify buckets after creation:", verifyError);
-      return false;
-    }
-    
-    const finalBucketNames = verifyBuckets?.map(b => b.name) || [];
-    const allBucketsExist = requiredBuckets.every(b => finalBucketNames.includes(b));
-    
-    console.log("Bucket creation complete. All buckets exist:", allBucketsExist);
-    console.log("Final buckets:", finalBucketNames);
-    
-    return allBucketsExist;
-  } catch (error) {
-    console.error("Error creating storage buckets:", error);
-    return false;
-  }
-};
-
-// Helper function to call the storage-manager edge function
-const callStorageManager = async (operation: string) => {
-  try {
-    // Construct the URL for the edge function
-    const functionUrl = `${supabaseUrl}/functions/v1/storage-manager/${operation}`;
-    console.log(`Calling storage manager: ${functionUrl}`);
-    
-    // Get the current session for auth
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    // Call the edge function with authorization
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || supabaseKey}`
-      },
-      body: JSON.stringify({})
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Storage manager ${operation} failed:`, errorText);
-      return { success: false, error: errorText };
-    }
-    
-    const result = await response.json();
-    console.log(`Storage manager ${operation} result:`, result);
-    return result;
-  } catch (error) {
-    console.error(`Error calling storage manager ${operation}:`, error);
-    return { success: false, error: String(error) };
-  }
-};
-
-// Initialize storage and admin user on app startup
+// Initialize app and admin user on app startup
 const initializeApp = async () => {
   try {
     if (typeof window !== 'undefined') {
       console.log("Initializing app and creating storage buckets...");
+      
+      // Import utilities only when needed to avoid circular dependencies
+      const { verifyStorageBuckets, createStorageBuckets, callStorageManager } = await import('@/utils/storageUtils');
       
       // First try direct API approach to create buckets
       const bucketsCreated = await createStorageBuckets();
@@ -181,48 +81,18 @@ if (typeof window !== 'undefined') {
   initializeApp();
 }
 
-// Expose a function to manually trigger bucket setup
+// Expose these functions from the imported utilities to avoid breaking existing code
 export const setupStorageBuckets = async () => {
-  console.log("Manually triggering storage bucket setup...");
-  // First try direct API method
-  const bucketsCreated = await createStorageBuckets();
-  
-  if (bucketsCreated) {
-    return { success: true, message: "Buckets successfully created via API" };
-  }
-  
-  // If direct method fails, try the edge function
-  return await callStorageManager('force-create-buckets');
+  const { setupStorageBuckets: setupBuckets } = await import('@/utils/storageUtils');
+  return await setupBuckets();
 };
 
-// Expose a function to verify storage buckets exist
 export const verifyStorageBuckets = async () => {
-  try {
-    // Check via the direct API first
-    const { data: buckets, error } = await supabase.storage.listBuckets();
-    
-    if (error) {
-      console.error("Failed to list buckets:", error);
-      // Try to create the buckets if listing fails
-      return await createStorageBuckets();
-    }
-    
-    const bucketNames = buckets?.map(b => b.name) || [];
-    const requiredBuckets = ['datasets', 'secure', 'cold_storage'];
-    const allBucketsExist = requiredBuckets.every(b => bucketNames.includes(b));
-    
-    console.log("Storage bucket verification:", 
-      allBucketsExist ? "All required buckets exist" : "Some buckets are missing");
-    
-    if (!allBucketsExist) {
-      console.log("Missing buckets:", requiredBuckets.filter(b => !bucketNames.includes(b)));
-      // Try to create the missing buckets
-      return await createStorageBuckets();
-    }
-    
-    return allBucketsExist;
-  } catch (error) {
-    console.error("Error verifying storage buckets:", error);
-    return false;
-  }
+  const { verifyStorageBuckets: verifyBuckets } = await import('@/utils/storageUtils');
+  return await verifyBuckets();
+};
+
+export const createStorageBuckets = async () => {
+  const { createStorageBuckets: createBuckets } = await import('@/utils/storageUtils');
+  return await createBuckets();
 };
