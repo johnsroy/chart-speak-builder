@@ -18,6 +18,7 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [adminLoading, setAdminLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { login, register, adminLogin, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -33,13 +34,15 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     
     try {
       if (isRegistering) {
         await register(email, password, name);
+        setSuccessMessage("Account created! Please check your email to confirm your account.");
         toast({
           title: 'Account created!',
-          description: 'Your account has been created successfully.',
+          description: 'Please check your email to confirm your account.',
         });
       } else {
         await login(email, password);
@@ -47,10 +50,20 @@ const Login = () => {
           title: 'Welcome back!',
           description: 'You have been logged in successfully.',
         });
+        navigate('/upload');
       }
-      navigate('/upload');
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to authenticate';
+      let errorMsg = error instanceof Error ? error.message : 'Failed to authenticate';
+      
+      // Handle specific error cases with more user-friendly messages
+      if (errorMsg.includes('Email not confirmed')) {
+        errorMsg = 'Please confirm your email address before logging in. Check your inbox for a confirmation email.';
+      } else if (errorMsg.includes('Invalid login credentials')) {
+        errorMsg = 'Invalid email or password. Please try again.';
+      } else if (errorMsg.includes('User already registered')) {
+        errorMsg = 'This email is already registered. Try logging in instead.';
+      }
+      
       setErrorMessage(errorMsg);
       toast({
         title: 'Authentication error',
@@ -65,6 +78,7 @@ const Login = () => {
   const handleAdminLogin = async () => {
     setAdminLoading(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     
     try {
       toast({
@@ -94,7 +108,6 @@ const Login = () => {
     }
   };
 
-  
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white flex flex-col items-center justify-center p-4">
       <div className="glass-card w-full max-w-md p-8 rounded-xl">
@@ -109,6 +122,12 @@ const Login = () => {
         {errorMessage && (
           <Alert variant="destructive" className="mb-4 bg-red-900/50 border border-red-700/50">
             <AlertDescription>{errorMessage}</AlertDescription>
+          </Alert>
+        )}
+        
+        {successMessage && (
+          <Alert className="mb-4 bg-green-900/50 border border-green-700/50">
+            <AlertDescription>{successMessage}</AlertDescription>
           </Alert>
         )}
         
@@ -175,7 +194,11 @@ const Login = () => {
           <p>
             {isRegistering ? 'Already have an account? ' : "Don't have an account? "}
             <button
-              onClick={() => setIsRegistering(!isRegistering)}
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setErrorMessage(null); 
+                setSuccessMessage(null);
+              }}
               className="text-purple-300 hover:text-white underline"
               disabled={isLoading}
             >

@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 
 export interface User {
@@ -32,6 +33,7 @@ export const authService = {
             name,
             role: 'user',
           },
+          emailRedirectTo: window.location.origin + '/upload',
         },
       });
 

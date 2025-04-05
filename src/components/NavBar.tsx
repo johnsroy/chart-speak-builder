@@ -1,13 +1,22 @@
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
 import { Button } from '@/components/ui/button';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const NavBar = () => {
   const [scrolled, setScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { isAuthenticated, user, logout } = useAuth();
+  const navigate = useNavigate();
   
   useEffect(() => {
     const handleScroll = () => {
@@ -22,6 +31,11 @@ const NavBar = () => {
       document.removeEventListener('scroll', handleScroll);
     };
   }, [scrolled]);
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   return (
     <nav className={`fixed top-0 left-0 w-full px-4 py-4 z-50 transition-all duration-300 ${
@@ -52,14 +66,38 @@ const NavBar = () => {
         
         {/* Action Buttons */}
         <div className="hidden md:flex items-center gap-3">
-          <Link to="/upload">
-            <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/20">
-              Upload Data
-            </Button>
-          </Link>
-          <Link to="/signup">
-            <Button className="purple-gradient">Get Started</Button>
-          </Link>
+          {isAuthenticated ? (
+            <>
+              <Link to="/upload">
+                <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/20">
+                  Upload Data
+                </Button>
+              </Link>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/20">
+                    {user?.name || user?.email || 'Account'}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                    <LogOut className="mr-2 h-4 w-4" /> Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : (
+            <>
+              <Link to="/login">
+                <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/20">
+                  Login
+                </Button>
+              </Link>
+              <Link to="/login">
+                <Button className="purple-gradient">Get Started</Button>
+              </Link>
+            </>
+          )}
         </div>
       </div>
       
@@ -72,16 +110,38 @@ const NavBar = () => {
             <MobileNavLink href="#how-it-works" onClick={() => setIsMenuOpen(false)}>How It Works</MobileNavLink>
             <MobileNavLink href="#testimonials" onClick={() => setIsMenuOpen(false)}>Testimonials</MobileNavLink>
             <div className="flex flex-col space-y-2 pt-2">
-              <Link to="/upload" onClick={() => setIsMenuOpen(false)}>
-                <Button variant="outline" className="w-full bg-white/10 border-white/20">
-                  Upload Data
-                </Button>
-              </Link>
-              <Link to="/signup" onClick={() => setIsMenuOpen(false)}>
-                <Button className="w-full purple-gradient">
-                  Get Started
-                </Button>
-              </Link>
+              {isAuthenticated ? (
+                <>
+                  <Link to="/upload" onClick={() => setIsMenuOpen(false)}>
+                    <Button variant="outline" className="w-full bg-white/10 border-white/20">
+                      Upload Data
+                    </Button>
+                  </Link>
+                  <Button 
+                    variant="destructive" 
+                    className="w-full" 
+                    onClick={() => {
+                      handleLogout();
+                      setIsMenuOpen(false);
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" /> Logout
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link to="/login" onClick={() => setIsMenuOpen(false)}>
+                    <Button variant="outline" className="w-full bg-white/10 border-white/20">
+                      Login
+                    </Button>
+                  </Link>
+                  <Link to="/login" onClick={() => setIsMenuOpen(false)}>
+                    <Button className="w-full purple-gradient">
+                      Get Started
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>

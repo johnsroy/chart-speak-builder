@@ -29,51 +29,67 @@ serve(async (req) => {
     const adminPassword = "admin123!";
     
     // Check if admin user already exists
-    const { data: existingUsers, error: searchError } = await supabase
-      .from("auth.users")
-      .select("*")
-      .eq("email", adminEmail)
-      .maybeSingle();
+    const { data: existingUsers, error: searchError } = await supabase.auth.admin
+      .listUsers({ 
+        filter: { email: adminEmail } 
+      });
     
     if (searchError) {
       console.error("Error checking for admin user:", searchError);
       return new Response(
-        JSON.stringify({ success: false, message: "Failed to check for admin user" }),
+        JSON.stringify({ success: false, message: "Failed to check for admin user", error: searchError }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
     
-    if (existingUsers) {
-      // Admin user exists, ensure email is confirmed
-      await supabase.auth.admin.updateUserById(existingUsers.id, {
-        email_confirm: true,
-        user_metadata: { role: "admin" }
-      });
+    let adminUser = existingUsers?.users?.find(user => user.email === adminEmail);
+    
+    if (adminUser) {
+      // Admin user exists, ensure email is confirmed and role is set
+      console.log("Updating existing admin user:", adminUser.id);
+      
+      const { data: updatedUser, error: updateError } = await supabase.auth.admin.updateUserById(
+        adminUser.id,
+        { 
+          email_confirm: true,
+          user_metadata: { role: "admin", name: "Admin User" }
+        }
+      );
+      
+      if (updateError) {
+        console.error("Error updating admin user:", updateError);
+        return new Response(
+          JSON.stringify({ success: false, message: "Failed to update admin user", error: updateError }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+        );
+      }
       
       console.log("Updated existing admin user");
       
       return new Response(
-        JSON.stringify({ success: true, message: "Admin user already exists" }),
+        JSON.stringify({ success: true, message: "Admin user already exists and has been updated" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
     
     // Create new admin user if doesn't exist
+    console.log("Creating new admin user");
     const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
       email: adminEmail,
       password: adminPassword,
       email_confirm: true,
-      user_metadata: { role: "admin" }
+      user_metadata: { role: "admin", name: "Admin User" }
     });
     
     if (createError) {
       console.error("Error creating admin user:", createError);
       return new Response(
-        JSON.stringify({ success: false, message: "Failed to create admin user" }),
+        JSON.stringify({ success: false, message: "Failed to create admin user", error: createError }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
     
+    console.log("Admin user created successfully");
     return new Response(
       JSON.stringify({ success: true, message: "Admin user created successfully" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
