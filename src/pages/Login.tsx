@@ -8,6 +8,8 @@ import Logo from '@/components/Logo';
 import { supabase } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2 } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -15,6 +17,7 @@ const Login = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { login, register, adminLogin, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -29,6 +32,7 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMessage(null);
     
     try {
       if (isRegistering) {
@@ -46,9 +50,11 @@ const Login = () => {
       }
       navigate('/upload');
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to authenticate';
+      setErrorMessage(errorMsg);
       toast({
         title: 'Authentication error',
-        description: error instanceof Error ? error.message : 'Failed to authenticate',
+        description: errorMsg,
         variant: 'destructive',
       });
     } finally {
@@ -58,11 +64,13 @@ const Login = () => {
 
   const handleAdminLogin = async () => {
     setIsLoading(true);
+    setErrorMessage(null);
     
     try {
       // First try to set up the admin user via edge function
       const setupResponse = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup');
-      console.log('Admin setup response:', await setupResponse.json());
+      const setupResult = await setupResponse.json();
+      console.log('Admin setup response:', setupResult);
       
       // Then attempt to login
       await adminLogin();
@@ -73,9 +81,11 @@ const Login = () => {
       navigate('/upload');
     } catch (error) {
       console.error('Admin login error:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Failed to login as admin';
+      setErrorMessage(errorMsg);
       toast({
         title: 'Admin login failed',
-        description: error instanceof Error ? error.message : 'Failed to login as admin',
+        description: errorMsg,
         variant: 'destructive',
       });
     } finally {
@@ -93,6 +103,12 @@ const Login = () => {
         <h1 className="text-2xl font-bold text-center mb-6">
           {isRegistering ? 'Create an Account' : 'Welcome Back'}
         </h1>
+        
+        {errorMessage && (
+          <Alert variant="destructive" className="mb-4 bg-red-900/50 border border-red-700/50">
+            <AlertDescription>{errorMessage}</AlertDescription>
+          </Alert>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           {isRegistering && (
@@ -144,7 +160,12 @@ const Login = () => {
             className="w-full purple-gradient"
             disabled={isLoading}
           >
-            {isLoading ? 'Processing...' : isRegistering ? 'Create Account' : 'Sign In'}
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : isRegistering ? 'Create Account' : 'Sign In'}
           </Button>
         </form>
         
@@ -167,7 +188,12 @@ const Login = () => {
               onClick={handleAdminLogin}
               disabled={isLoading}
             >
-              {isLoading ? 'Processing...' : 'Login as Admin (Testing Only)'}
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : 'Login as Admin (Testing Only)'}
             </Button>
           </div>
         </div>

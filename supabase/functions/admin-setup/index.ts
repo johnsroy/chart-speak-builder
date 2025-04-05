@@ -35,17 +35,14 @@ serve(async (req) => {
     console.log("Initializing admin user setup");
     
     // Check if admin exists
-    const { data: userData, error: userError } = await supabaseAdmin
-      .from('users')
-      .select('*')
-      .eq('email', adminCredentials.email)
-      .maybeSingle();
-
-    if (userError) {
-      console.error("Error checking if admin user exists:", userError.message);
+    const { data: existingUser, error: searchError } = await supabaseAdmin.auth.admin.listUsers();
+    
+    let adminExists = false;
+    if (!searchError) {
+      adminExists = existingUser.users.some(user => user.email === adminCredentials.email);
     }
     
-    if (userData) {
+    if (adminExists) {
       console.log("Admin user already exists");
       return new Response(
         JSON.stringify({ success: true, message: 'Admin user already exists' }),
@@ -53,12 +50,12 @@ serve(async (req) => {
       );
     }
 
-    // Create admin user with service role
+    // Create admin user with service role and auto-confirm email
     console.log("Creating admin user");
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email: adminCredentials.email,
       password: adminCredentials.password,
-      email_confirm: true,
+      email_confirm: true, // This ensures the email is confirmed automatically
       user_metadata: {
         name: 'Admin User',
         role: 'admin',

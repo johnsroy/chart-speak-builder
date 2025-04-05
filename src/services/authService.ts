@@ -100,54 +100,15 @@ export const authService = {
     try {
       console.log("Setting up admin user");
       
-      // First check if the admin user exists by trying to sign in
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: adminCredentials.email,
-          password: adminCredentials.password,
-        });
-        
-        if (!error && data.user) {
-          console.log('Admin user already exists');
-          return;
-        }
-      } catch (error) {
-        // Admin doesn't exist, continue to creation
-        console.log('Admin not found, creating...');
-      }
+      // Call the admin-setup edge function to ensure admin user exists
+      const response = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup');
+      const result = await response.json();
       
-      // Create admin user
-      const { data, error: signUpError } = await supabase.auth.admin.createUser({
-        email: adminCredentials.email,
-        password: adminCredentials.password,
-        email_confirm: true,
-        user_metadata: {
-          name: 'Admin User',
-          role: 'admin',
-        },
-      });
-
-      if (signUpError) {
-        console.error('Could not create admin via admin API, trying regular signup');
-        
-        // Fallback: Try regular signup (may be needed in dev environments)
-        const { error: regularSignupError } = await supabase.auth.signUp({
-          email: adminCredentials.email,
-          password: adminCredentials.password,
-          options: {
-            data: {
-              name: 'Admin User',
-              role: 'admin',
-            },
-          },
-        });
-        
-        if (regularSignupError) {
-          throw regularSignupError;
-        }
+      if (!result.success) {
+        console.error('Error from admin-setup edge function:', result.message);
+      } else {
+        console.log('Admin user created successfully');
       }
-      
-      console.log('Admin user created successfully');
     } catch (error) {
       console.error('Error setting up admin user:', error);
     }
