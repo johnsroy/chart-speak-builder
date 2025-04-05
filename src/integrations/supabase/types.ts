@@ -9,7 +9,160 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      datasets: {
+        Row: {
+          column_schema: Json
+          created_at: string
+          description: string | null
+          file_name: string
+          file_size: number
+          id: string
+          name: string
+          row_count: number
+          storage_path: string
+          storage_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          column_schema: Json
+          created_at?: string
+          description?: string | null
+          file_name: string
+          file_size: number
+          id?: string
+          name: string
+          row_count: number
+          storage_path: string
+          storage_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          column_schema?: Json
+          created_at?: string
+          description?: string | null
+          file_name?: string
+          file_size?: number
+          id?: string
+          name?: string
+          row_count?: number
+          storage_path?: string
+          storage_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      queries: {
+        Row: {
+          created_at: string
+          dataset_id: string
+          id: string
+          name: string
+          query_config: Json
+          query_text: string
+          query_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          dataset_id: string
+          id?: string
+          name: string
+          query_config: Json
+          query_text: string
+          query_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          dataset_id?: string
+          id?: string
+          name?: string
+          query_config?: Json
+          query_text?: string
+          query_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "queries_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "datasets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      storage_connections: {
+        Row: {
+          connection_details: Json
+          created_at: string
+          id: string
+          storage_type: string
+          user_id: string
+        }
+        Insert: {
+          connection_details: Json
+          created_at?: string
+          id?: string
+          storage_type: string
+          user_id: string
+        }
+        Update: {
+          connection_details?: Json
+          created_at?: string
+          id?: string
+          storage_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      visualizations: {
+        Row: {
+          chart_config: Json
+          chart_type: string
+          created_at: string
+          id: string
+          name: string
+          query_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          chart_config: Json
+          chart_type: string
+          created_at?: string
+          id?: string
+          name: string
+          query_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          chart_config?: Json
+          chart_type?: string
+          created_at?: string
+          id?: string
+          name?: string
+          query_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visualizations_query_id_fkey"
+            columns: ["query_id"]
+            isOneToOne: false
+            referencedRelation: "queries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,1 +1,5 @@
+
 project_id = "rehadpogugijylybwmoe"
+
+[functions.transform]
+verify_jwt = true
