@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
@@ -42,11 +41,8 @@ const NavBar = () => {
       scrolled ? 'backdrop-blur-lg bg-black/20 border-b border-white/10' : ''
     }`}>
       <div className="mx-auto container flex items-center justify-between">
-        <Link to="/">
-          <Logo />
-        </Link>
+        <Logo />
         
-        {/* Desktop Navigation */}
         <div className="hidden md:flex space-x-8 items-center">
           <NavLink href="#features">Features</NavLink>
           <NavLink href="#benefits">Benefits</NavLink>
@@ -54,7 +50,6 @@ const NavBar = () => {
           <NavLink href="#testimonials">Testimonials</NavLink>
         </div>
         
-        {/* Mobile menu button */}
         <div className="md:hidden">
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)} 
@@ -64,7 +59,6 @@ const NavBar = () => {
           </button>
         </div>
         
-        {/* Action Buttons */}
         <div className="hidden md:flex items-center gap-3">
           {isAuthenticated ? (
             <>
@@ -101,7 +95,6 @@ const NavBar = () => {
         </div>
       </div>
       
-      {/* Mobile menu */}
       {isMenuOpen && (
         <div className="md:hidden absolute top-16 left-0 right-0 backdrop-blur-xl bg-black/50 border-b border-white/10 animate-fade-in">
           <div className="flex flex-col space-y-4 p-4">
