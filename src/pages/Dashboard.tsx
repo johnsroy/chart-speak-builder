@@ -52,7 +52,6 @@ const Dashboard = () => {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Fetch datasets using react-query
   const { isLoading, error, data: datasets, refetch } = useQuery({
     queryKey: ['datasets'],
     queryFn: () => dataService.getDatasets(),
@@ -236,7 +235,6 @@ const Dashboard = () => {
         <h1 className="text-3xl font-bold mb-4 text-gradient">Dashboard</h1>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Dataset Selection */}
           <div className="md:col-span-1">
             <div className="glass-card p-4 mb-6">
               <h2 className="text-xl font-medium mb-4">Select Dataset</h2>
@@ -314,7 +312,6 @@ const Dashboard = () => {
             )}
           </div>
 
-          {/* Query Input and Results */}
           <div className="md:col-span-2">
             <div className="glass-card p-4">
               <h2 className="text-xl font-medium mb-4">Natural Language Query</h2>
