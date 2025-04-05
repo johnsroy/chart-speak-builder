@@ -1,6 +1,4 @@
 
-# This is the config file for your Supabase project's API services.
-# The environment variables configured here will be available in the SQL on database startup.
 project_id = "rehadpogugijylybwmoe"
 
 [api]
@@ -11,13 +9,44 @@ schemas = ["public", "storage"]
 [db]
 port = 54322
 
+[db.shadow]
+port = 54320
+
 [studio]
+enabled = true
 port = 54323
+
+[auth]
+enabled = true
+port = 54324
+
+[realtime]
+enabled = true
+port = 54325
 
 [storage]
 enabled = true
+port = 54326
 
-[functions]
+[analytics]
+enabled = false
+port = 54327
+
+[inbucket]
+enabled = true
+port = 54328
+
+[functions.admin-setup]
+verify_jwt = false
+
+[functions.ai-query]
+verify_jwt = false
+
 [functions.storage-manager]
 verify_jwt = false
 
+[functions.transform]
+verify_jwt = false
+
+[functions.data-processor]
+verify_jwt = false

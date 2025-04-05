@@ -1,8 +1,9 @@
 
-import React from 'react';
-import { Database, Upload } from 'lucide-react';
+import React, { useState } from 'react';
+import { Database, Upload, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ChartVisualization from '@/components/ChartVisualization';
+import DeleteDatasetDialog from './DeleteDatasetDialog';
 
 interface VisualizeDatasetPanelProps {
   isLoading: boolean;
@@ -10,6 +11,7 @@ interface VisualizeDatasetPanelProps {
   selectedDatasetId: string | null;
   setSelectedDatasetId: (id: string) => void;
   onUploadClick: () => void;
+  onDatasetDeleted?: () => void;
 }
 
 const VisualizeDatasetPanel: React.FC<VisualizeDatasetPanelProps> = ({
@@ -17,8 +19,12 @@ const VisualizeDatasetPanel: React.FC<VisualizeDatasetPanelProps> = ({
   datasets,
   selectedDatasetId,
   setSelectedDatasetId,
-  onUploadClick
+  onUploadClick,
+  onDatasetDeleted
 }) => {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const selectedDataset = datasets.find(d => d.id === selectedDatasetId);
+
   return (
     <div className="glass-card p-6">
       {isLoading ? (
@@ -48,7 +54,32 @@ const VisualizeDatasetPanel: React.FC<VisualizeDatasetPanelProps> = ({
             ))}
           </div>
           
-          {selectedDatasetId && <ChartVisualization datasetId={selectedDatasetId} />}
+          {selectedDatasetId && (
+            <>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium">{selectedDataset?.name}</h3>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="bg-red-600/60 hover:bg-red-700"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete Dataset
+                </Button>
+              </div>
+              <ChartVisualization datasetId={selectedDatasetId} />
+            </>
+          )}
+          
+          <DeleteDatasetDialog
+            open={showDeleteDialog}
+            onOpenChange={setShowDeleteDialog}
+            datasetId={selectedDatasetId}
+            datasetName={selectedDataset?.name}
+            onDeleted={() => {
+              if (onDatasetDeleted) onDatasetDeleted();
+            }}
+          />
         </div>
       )}
     </div>

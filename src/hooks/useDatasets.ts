@@ -17,6 +17,32 @@ export const useDatasets = () => {
       loadDatasets();
     }
   }, [isAuthenticated]);
+  
+  // Listen for dataset events
+  useEffect(() => {
+    const handleDatasetDeleted = () => {
+      loadDatasets();
+    };
+    
+    const handleDatasetUploaded = (event: any) => {
+      loadDatasets();
+      
+      // If there's a datasetId in the event, select it
+      if (event.detail?.datasetId) {
+        setSelectedDatasetId(event.detail.datasetId);
+      }
+    };
+    
+    // Add event listeners
+    window.addEventListener('dataset-deleted', handleDatasetDeleted);
+    window.addEventListener('dataset-upload-success', handleDatasetUploaded);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('dataset-deleted', handleDatasetDeleted);
+      window.removeEventListener('dataset-upload-success', handleDatasetUploaded);
+    };
+  }, []);
 
   const loadDatasets = async () => {
     setIsLoading(true);
@@ -24,9 +50,12 @@ export const useDatasets = () => {
       const data = await dataService.getDatasets();
       setDatasets(data);
 
-      // Select the first dataset by default if available
+      // Select the first dataset by default if available and none is selected
       if (data.length > 0 && !selectedDatasetId) {
         setSelectedDatasetId(data[0].id);
+      } else if (selectedDatasetId && !data.find(d => d.id === selectedDatasetId)) {
+        // If the currently selected dataset was deleted, select the first one
+        setSelectedDatasetId(data.length > 0 ? data[0].id : null);
       }
     } catch (error) {
       console.error('Error loading datasets:', error);

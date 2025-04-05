@@ -174,7 +174,7 @@ export const useFileUpload = () => {
           description: "Your dataset was successfully uploaded.",
           action: {
             label: "View Dataset",
-            onClick: () => navigate(`/visualize/${dataset.id}`),
+            onClick: () => window.location.href = `/visualize/${dataset.id}`,
           },
         });
         
@@ -183,12 +183,6 @@ export const useFileUpload = () => {
           detail: { datasetId: dataset.id }
         });
         window.dispatchEvent(uploadSuccessEvent);
-        
-        // Set a timeout to automatically navigate after showing the dialog
-        setTimeout(() => {
-          setShowRedirectDialog(false);
-          navigate('/dashboard');
-        }, 3000);
         
         return dataset;
       } catch (error) {

@@ -12,6 +12,7 @@ import VisualizeDatasetPanel from './VisualizeDatasetPanel';
 import DatasetVisualizationCard from './DatasetVisualizationCard';
 import RedirectDialog from './RedirectDialog';
 import UserDatasetLibrary from './UserDatasetLibrary';
+import UploadSuccessDialog from './UploadSuccessDialog';
 
 interface UploadTabContentProps {
   activeTab: string;
@@ -123,6 +124,11 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
           selectedDatasetId={selectedDatasetId}
           setSelectedDatasetId={setSelectedDatasetId}
           onUploadClick={() => setActiveTab('upload')}
+          onDatasetDeleted={() => {
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('dataset-deleted'));
+            }
+          }}
         />
       );
     } else if (activeTab === 'library') {
@@ -158,6 +164,12 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
       <RedirectDialog 
         open={showRedirectDialog} 
         onOpenChange={setShowRedirectDialog} 
+      />
+      <UploadSuccessDialog
+        open={showRedirectDialog}
+        onOpenChange={setShowRedirectDialog}
+        datasetId={uploadedDatasetId}
+        datasetName={datasetName}
       />
     </>
   );
