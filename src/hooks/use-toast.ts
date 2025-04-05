@@ -9,7 +9,7 @@ import type {
 // Define the toast variant options
 type ToastVariant = "default" | "destructive" | "success" | "warning"
 
-// Extend the module declaration in a file separate from the component definition
+// Extend the module declaration to add variants
 declare module "@/components/ui/toast" {
   interface ToastProps {
     variant?: ToastVariant

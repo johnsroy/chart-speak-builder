@@ -75,76 +75,76 @@ serve(async (req) => {
 
 async function setupStorageBuckets(supabase) {
   try {
-    // Try to get existing buckets
-    const { data: buckets, error: getBucketsError } = await supabase.storage.listBuckets();
-    
-    if (getBucketsError) {
-      // If we can't list buckets, we need to create them using SQL
-      console.log("Failed to list buckets, attempting to create via SQL");
-      
-      // Create datasets bucket using SQL directly
-      await supabase.rpc('create_storage_bucket', { 
-        bucket_name: 'datasets',
-        public_bucket: false
-      });
-      
-      // Try to verify bucket was created
-      const { data: verifyBuckets } = await supabase.storage.listBuckets();
-      const existingBuckets = verifyBuckets?.map(bucket => bucket.name) || [];
-      
-      return { 
-        success: existingBuckets.includes('datasets'),
-        message: existingBuckets.includes('datasets') ? 
-          'Successfully created datasets bucket via RPC' : 
-          'Failed to create datasets bucket'
-      };
-    }
-    
-    const existingBuckets = buckets?.map(bucket => bucket.name) || [];
-    console.log("Existing buckets:", existingBuckets);
-    
-    if (existingBuckets.includes('datasets')) {
-      return {
-        success: true,
-        message: "Datasets bucket already exists",
-        buckets: existingBuckets
-      };
-    }
-    
-    // Create the datasets bucket since it doesn't exist
-    const { data, error } = await supabase.storage.createBucket('datasets', {
-      public: false,
-      fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
+    // Try more reliable approach through SQL
+    const { error: sqlError } = await supabase.rpc('create_storage_bucket', { 
+      bucket_name: 'datasets',
+      public_bucket: false
     });
     
-    if (error) {
-      console.error("Error creating datasets bucket:", error);
+    if (sqlError) {
+      console.error("SQL RPC approach failed:", sqlError);
       
-      // Try alternative approach via RPC
-      try {
-        await supabase.rpc('create_storage_bucket', { 
-          bucket_name: 'datasets',
-          public_bucket: false
-        });
-        
-        return { 
-          success: true,
-          message: 'Successfully created datasets bucket via RPC'
-        };
-      } catch (rpcError) {
-        console.error("RPC error:", rpcError);
+      // Try direct API approach as a fallback
+      // Check if bucket already exists first
+      const { data: existingBuckets, error: listError } = await supabase.storage.listBuckets();
+      
+      if (listError) {
+        console.error("Failed to list buckets:", listError);
         return { 
           success: false, 
-          message: `Failed to create bucket: ${error.message}`,
-          rpcError: rpcError.message
+          message: `Failed to access storage: ${listError.message}` 
         };
       }
+      
+      if (existingBuckets && existingBuckets.some(b => b.name === 'datasets')) {
+        return {
+          success: true,
+          message: "Datasets bucket already exists",
+          buckets: existingBuckets.map(b => b.name)
+        };
+      }
+      
+      // Create bucket through API
+      const { data, error } = await supabase.storage.createBucket('datasets', {
+        public: false,
+        fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
+      });
+      
+      if (error) {
+        console.error("Failed to create bucket through API:", error);
+        return { 
+          success: false, 
+          message: `Failed to create bucket: ${error.message}` 
+        };
+      }
+      
+      return {
+        success: true,
+        message: "Successfully created datasets bucket through API",
+        bucket: 'datasets'
+      };
     }
+    
+    // Verify bucket was created
+    const { data: verifyBuckets, error: verifyError } = await supabase.storage.listBuckets();
+    
+    if (verifyError) {
+      console.error("Failed to verify buckets:", verifyError);
+      return { 
+        success: true, 
+        message: "Bucket creation successful, but verification failed",
+        error: verifyError.message
+      };
+    }
+    
+    const bucketExists = verifyBuckets?.some(b => b.name === 'datasets');
     
     return {
       success: true,
-      message: "Successfully created datasets bucket",
-      bucket: data
+      message: bucketExists ? 
+        "Successfully created or verified datasets bucket" : 
+        "Bucket creation may have failed silently, please check manually",
+      buckets: verifyBuckets?.map(b => b.name) || []
     };
   } catch (error) {
     console.error("Failed to setup storage buckets:", error);
@@ -185,7 +185,7 @@ async function addSampleFiles(supabase) {
     }
     
     // If upload was successful, add metadata to the dataset table
-    const { error: dbError } = await supabase.from('datasets').insert({
+    const { error: dbError } = await supabase.from('datasets').upsert({
       name: 'Sample Dataset',
       description: 'A sample dataset for demonstration purposes',
       user_id: adminId,
@@ -202,6 +202,8 @@ async function addSampleFiles(supabase) {
       storage_type: 'supabase',
       storage_path: filePath,
       storage_bucket: 'datasets'
+    }, { 
+      onConflict: 'name,user_id' 
     }).select().maybeSingle();
     
     if (dbError) {

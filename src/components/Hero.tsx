@@ -1,51 +1,58 @@
 
 import React from 'react';
-import { Button } from '@/components/ui/button';
-import { ArrowRight, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { ChevronRight, Upload, BarChart2 } from 'lucide-react';
 import HeroDemo from './HeroDemo';
+import { useAuth } from '@/hooks/useAuth';
 
 const Hero = () => {
+  const { isAuthenticated, user, adminLogin } = useAuth();
+  
+  // Function to handle the dashboard or login button click
+  const handleDashboardClick = () => {
+    if (!isAuthenticated && !user) {
+      adminLogin();
+    }
+  };
+  
   return (
-    <section className="py-24 px-4 relative overflow-hidden">
-      {/* Decorative background elements */}
-      <div className="absolute inset-0 -z-10">
-        <div className="absolute top-40 left-20 w-64 h-64 rounded-full bg-purple-400/30 blur-3xl"></div>
-        <div className="absolute top-20 right-20 w-72 h-72 rounded-full bg-blue-400/20 blur-3xl"></div>
-        <div className="absolute bottom-20 left-1/3 w-80 h-80 rounded-full bg-pink-400/20 blur-3xl"></div>
-      </div>
-
-      <div className="container mx-auto relative">
-        <div className="flex flex-col items-center">
-          <span className="inline-flex items-center px-4 py-1.5 rounded-full glass-card mb-8 animate-fade-in">
-            <span className="mr-2">✨</span> Introducing GenBI
-          </span>
-          
-          <h1 className="text-5xl md:text-7xl font-bold mb-8 text-center max-w-4xl animate-fade-in">
-            <span className="text-gradient">Ask Questions.</span>
-            <br />
-            <span className="text-gradient">Get Insights.</span>
-          </h1>
-          
-          <p className="text-xl text-muted-foreground mb-10 max-w-3xl text-center animate-fade-in opacity-80">
-            Transform complex data into beautiful visualizations using natural language. 
-            Simply ask questions about your data, and our AI delivers instant insights.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-6 mb-20 animate-fade-in">
-            <Link to="/signup">
-              <Button className="purple-gradient text-white px-8 py-7 flex items-center gap-2 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-105">
-                Start Free Trial 
-                <ArrowRight className="h-5 w-5 ml-1" />
+    <section id="hero" className="py-16 md:py-24 relative overflow-hidden">
+      <div className="container mx-auto px-4 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div className="max-w-2xl text-center lg:text-left">
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-gradient">
+              Turn Your Data into Visual Insights
+            </h1>
+            <p className="text-xl md:text-2xl mb-8 text-gray-300">
+              Upload your data, ask questions in plain English, and get beautiful visualizations instantly. No coding required.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+              <Button asChild size="lg" className="purple-gradient shadow-glow">
+                <Link to="/upload" className="flex items-center">
+                  <Upload className="mr-2 h-5 w-5" />
+                  Upload Data
+                  <ChevronRight className="ml-2 h-5 w-5" />
+                </Link>
               </Button>
-            </Link>
-            <Button variant="outline" className="px-8 py-7 flex items-center gap-2 text-lg backdrop-blur-md bg-white/10 border border-white/20 shadow-md rounded-xl hover:bg-white/20 transition-all">
-              <Play className="h-5 w-5" /> Watch Demo
-            </Button>
+              
+              <Button 
+                asChild 
+                size="lg" 
+                variant="outline" 
+                className="border-purple-400 bg-transparent hover:bg-purple-900/20"
+                onClick={handleDashboardClick}
+              >
+                <Link to="/dashboard" className="flex items-center">
+                  <BarChart2 className="mr-2 h-5 w-5" />
+                  Dashboard
+                </Link>
+              </Button>
+            </div>
           </div>
-          
-          {/* Wrap the demo in a glassmorphic container */}
-          <div className="w-full max-w-5xl rounded-2xl backdrop-blur-xl bg-white/10 border border-white/20 shadow-2xl p-1.5 relative animate-fade-in">
+
+          <div className="glass-card p-1 rounded-2xl">
             <HeroDemo />
           </div>
         </div>

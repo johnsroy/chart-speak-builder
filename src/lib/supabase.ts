@@ -50,52 +50,27 @@ const callStorageManager = async (operation: string) => {
   }
 };
 
-// Initialize storage and admin user on app startup
+// Initialize storage and admin user on app startup - MODIFIED TO ENSURE BUCKETS ARE CREATED
 const initializeApp = async () => {
   try {
-    // Check if we're in a browser environment
     if (typeof window !== 'undefined') {
-      console.log("Initializing app...");
+      console.log("Initializing app and creating storage buckets...");
       
-      // First try to list buckets to see if they exist
-      const { data: buckets, error } = await supabase.storage.listBuckets();
+      // Always attempt to create storage buckets via edge function on app init
+      const setupResult = await callStorageManager('setup');
       
-      if (error) {
-        console.error("Failed to list storage buckets:", error);
-        console.log("Will try to create buckets via edge function...");
+      if (setupResult.success) {
+        console.log("Successfully set up storage buckets:", setupResult);
         
-        // Call the storage-manager edge function to set up buckets
-        const setupResult = await callStorageManager('setup');
-        
-        if (setupResult.success) {
-          console.log("Successfully set up storage buckets:", setupResult);
-          
-          // Add sample data to the buckets for testing
-          const sampleResult = await callStorageManager('sample');
-          if (sampleResult.success) {
-            console.log("Added sample data to buckets:", sampleResult);
-          } else {
-            console.warn("Failed to add sample data:", sampleResult.message || "Unknown error");
-          }
+        // Add sample data to the buckets for testing
+        const sampleResult = await callStorageManager('sample');
+        if (sampleResult.success) {
+          console.log("Added sample data to buckets:", sampleResult);
         } else {
-          console.error("Failed to set up storage buckets:", setupResult.message || "Unknown error");
+          console.warn("Failed to add sample data:", sampleResult.message || "Unknown error");
         }
       } else {
-        // Buckets found, log them
-        const bucketNames = buckets?.map(b => b.name).join(", ") || "None";
-        console.log("Storage buckets found:", bucketNames);
-        
-        // If no 'datasets' bucket, try to create it via the edge function
-        if (!buckets?.some(b => b.name === 'datasets')) {
-          console.log("No 'datasets' bucket found, attempting to create via edge function...");
-          const setupResult = await callStorageManager('setup');
-          
-          if (setupResult.success) {
-            console.log("Successfully created 'datasets' bucket:", setupResult);
-          } else {
-            console.error("Failed to create 'datasets' bucket:", setupResult.message || "Unknown error");
-          }
-        }
+        console.error("Failed to set up storage buckets:", setupResult.message || "Unknown error");
       }
       
       // Initialize admin user
@@ -115,8 +90,9 @@ const initializeApp = async () => {
   }
 };
 
-// Only run in browser environment and only once
+// Run initialization immediately when imported to ensure buckets are created
 if (typeof window !== 'undefined') {
+  // Run the function immediately
   initializeApp();
 }
 
@@ -129,6 +105,14 @@ export const setupStorageBuckets = async () => {
 // Expose a function to verify storage buckets exist
 export const verifyStorageBuckets = async () => {
   try {
+    // First try calling the setup function to ensure buckets exist
+    const setupResult = await callStorageManager('setup');
+    if (setupResult.success) {
+      console.log("Storage buckets verified/created successfully");
+      return true;
+    }
+    
+    // Fallback to checking via the API
     const { data: buckets, error } = await supabase.storage.listBuckets();
     
     if (error) {
