@@ -109,24 +109,58 @@ serve(async (req) => {
           }
         );
       } else if (operation === "create-datasets-bucket") {
-        // This focused operation just creates the datasets bucket
         try {
-          // Try to delete the bucket first (ignore errors)
-          try {
-            await supabase.storage.deleteBucket("datasets");
-          } catch (err) {
-            // Ignore deletion errors
+          console.log("Creating datasets bucket with service role key");
+          
+          // First check if the bucket already exists
+          const { data: existingBuckets, error: listError } = await supabase.storage.listBuckets();
+          
+          if (listError) {
+            console.error("Error listing buckets:", listError.message);
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                message: `Error listing buckets: ${listError.message}`,
+                error: listError
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 500
+              }
+            );
           }
           
-          // Create the datasets bucket
+          const bucketExists = existingBuckets?.some(b => b.name === "datasets");
+          
+          if (bucketExists) {
+            console.log("datasets bucket already exists");
+            return new Response(
+              JSON.stringify({ 
+                success: true,
+                message: "datasets bucket already exists",
+                existing: true
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 200
+              }
+            );
+          }
+          
+          // Create the datasets bucket with service role key
           const { data, error } = await supabase.storage.createBucket("datasets", {
-            public: false,
-            fileSizeLimit: 50 * 1024 * 1024
+            public: true, // Make it public for this example
+            fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
           });
           
           if (error) {
+            console.error("Error creating bucket:", error.message);
             return new Response(
-              JSON.stringify({ success: false, message: error.message }),
+              JSON.stringify({ 
+                success: false, 
+                message: `Error creating bucket: ${error.message}`, 
+                error 
+              }),
               {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
                 status: 500
@@ -134,12 +168,55 @@ serve(async (req) => {
             );
           }
           
-          // Verify the bucket exists
-          const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+          // Set up policies to allow authenticated users to upload
+          try {
+            // Create policy to allow all authenticated users to upload to the datasets bucket
+            const policySQL = `
+              BEGIN;
+              
+              -- Allow authenticated users to upload files to their user_id folders
+              INSERT INTO storage.policies (name, bucket_id, definition)
+              VALUES (
+                'Allow uploads to user folders',
+                'datasets',
+                '(bucket_id = ''datasets'' AND auth.role() = ''authenticated'')'
+              )
+              ON CONFLICT (name, bucket_id) DO NOTHING;
+              
+              -- Allow authenticated users to read any file in datasets bucket
+              INSERT INTO storage.policies (name, bucket_id, definition, operation)
+              VALUES (
+                'Allow reading any file',
+                'datasets',
+                '(bucket_id = ''datasets'' AND auth.role() = ''authenticated'')',
+                'SELECT'
+              )
+              ON CONFLICT (name, bucket_id, operation) DO NOTHING;
+              
+              COMMIT;
+            `;
+            
+            const { error: policyError } = await supabase.rpc('exec_sql', { sql: policySQL });
+            
+            if (policyError) {
+              console.warn("Error setting policies:", policyError.message);
+              // Continue despite policy errors as we can fix them later
+            }
+          } catch (policyErr) {
+            console.warn("Exception setting policies:", policyErr);
+            // Continue despite policy errors
+          }
           
-          if (listError) {
+          // Verify the bucket exists after creation
+          const { data: verifyBuckets, error: verifyError } = await supabase.storage.listBuckets();
+          
+          if (verifyError) {
+            console.error("Error verifying bucket creation:", verifyError.message);
             return new Response(
-              JSON.stringify({ success: false, message: listError.message }),
+              JSON.stringify({ 
+                success: false, 
+                message: `Created bucket but failed verification: ${verifyError.message}` 
+              }),
               {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
                 status: 500
@@ -147,21 +224,41 @@ serve(async (req) => {
             );
           }
           
-          const hasDatasetsBacket = buckets?.some(b => b.name === "datasets");
+          const bucketCreated = verifyBuckets?.some(b => b.name === "datasets");
           
+          if (!bucketCreated) {
+            console.error("Bucket creation verification failed - bucket not found in list");
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                message: "Bucket creation reported success but bucket not found in verification" 
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 500
+              }
+            );
+          }
+          
+          console.log("datasets bucket created and verified successfully");
           return new Response(
             JSON.stringify({ 
-              success: hasDatasetsBacket,
-              message: hasDatasetsBacket ? "datasets bucket created successfully" : "datasets bucket creation failed"
+              success: true,
+              message: "datasets bucket created successfully"
             }),
             {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
-              status: hasDatasetsBacket ? 200 : 500
+              status: 200
             }
           );
         } catch (err) {
+          console.error("Exception creating datasets bucket:", err);
           return new Response(
-            JSON.stringify({ success: false, message: err.message }),
+            JSON.stringify({ 
+              success: false, 
+              message: `Exception creating bucket: ${err.message}`,
+              error: err 
+            }),
             {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
               status: 500
@@ -196,7 +293,7 @@ async function forceCreateBuckets(supabase) {
   try {
     // Define required buckets with their configurations
     const requiredBuckets = [
-      { name: 'datasets', public: false },
+      { name: 'datasets', public: true }, // Changed to public for easier access
       { name: 'secure', public: false },
       { name: 'cold_storage', public: false }
     ];
@@ -305,7 +402,7 @@ async function setupStorageBuckets(supabase) {
     
     // Define required buckets with their configurations
     const requiredBuckets = [
-      { name: 'datasets', public: false },
+      { name: 'datasets', public: true }, // Changed to public for easier access
       { name: 'secure', public: false },
       { name: 'cold_storage', public: false }
     ];

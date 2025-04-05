@@ -94,50 +94,46 @@ export const validateFileForUpload = (file: File | null): boolean => {
  */
 export const ensureStorageBucketsExist = async (): Promise<boolean> => {
   console.log("Ensuring storage buckets exist before upload...");
-  let bucketsVerified = await verifyStorageBuckets();
   
-  if (!bucketsVerified) {
-    console.log("Buckets not verified, attempting to create them...");
+  try {
+    // Try calling the edge function directly to create the datasets bucket
+    const functionUrl = `https://rehadpogugijylybwmoe.supabase.co/functions/v1/storage-manager/create-datasets-bucket`;
     
-    // Try direct creation
-    const bucketsCreated = await createStorageBuckets();
+    const { data: { session } } = await supabase.auth.getSession();
     
-    if (!bucketsCreated) {
-      console.log("Direct bucket creation failed, trying force create via edge function...");
-      
-      // Try force creation via edge function
-      const functionUrl = `https://rehadpogugijylybwmoe.supabase.co/functions/v1/storage-manager/create-datasets-bucket`;
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        console.error("No active session when creating storage buckets");
-        throw new Error("Authentication session required for upload infrastructure setup");
-      }
-      
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({})
-      });
-      
-      const edgeFunctionResult = await response.json();
-      
-      if (!edgeFunctionResult.success) {
-        throw new Error("Failed to create the required storage infrastructure. Please try again later.");
-      }
-      
-      bucketsVerified = true;
-    } else {
-      console.log("Direct bucket creation successful");
-      bucketsVerified = true;
+    if (!session) {
+      console.error("No active session when creating storage buckets");
+      throw new Error("Authentication session required for upload infrastructure setup");
     }
+    
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({})
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Error response from storage-manager:", errorText);
+      throw new Error("Failed to create storage bucket via edge function");
+    }
+    
+    const result = await response.json();
+    
+    if (!result.success) {
+      console.error("Storage bucket creation reported failure:", result);
+      throw new Error("Failed to create the required storage infrastructure");
+    }
+    
+    console.log("Storage bucket creation successful:", result);
+    return true;
+  } catch (error) {
+    console.error("Error ensuring storage buckets exist:", error);
+    throw new Error("Failed to create the required storage infrastructure. Please try again later.");
   }
-  
-  return bucketsVerified;
 };
 
 /**
