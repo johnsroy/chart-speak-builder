@@ -80,6 +80,16 @@ serve(async (req) => {
             status: 200 
           }
         );
+      } else if (operation === "force-create-buckets") {
+        // Force create all required buckets regardless of existing ones
+        const result = await forceCreateBuckets(supabase);
+        return new Response(
+          JSON.stringify(result),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200
+          }
+        );
       }
     }
 
@@ -103,6 +113,98 @@ serve(async (req) => {
   }
 });
 
+// Helper to force create all required buckets regardless of existing state
+async function forceCreateBuckets(supabase) {
+  try {
+    // Define required buckets with their configurations
+    const requiredBuckets = [
+      { name: 'datasets', public: false },
+      { name: 'secure', public: false },
+      { name: 'cold_storage', public: false }
+    ];
+    
+    const results = [];
+    
+    for (const bucket of requiredBuckets) {
+      try {
+        // Try to delete the bucket if it exists (ignore errors)
+        try {
+          await supabase.storage.deleteBucket(bucket.name);
+          console.log(`Deleted existing bucket: ${bucket.name}`);
+        } catch (err) {
+          console.log(`Bucket ${bucket.name} does not exist or couldn't be deleted, creating new`);
+        }
+        
+        // Create the bucket with specified configuration
+        const { data, error } = await supabase.storage.createBucket(bucket.name, {
+          public: bucket.public,
+          fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
+        });
+        
+        if (error) {
+          console.error(`Failed to create bucket ${bucket.name}:`, error);
+          results.push({
+            bucket: bucket.name,
+            success: false,
+            message: error.message
+          });
+        } else {
+          console.log(`Successfully created bucket: ${bucket.name}`);
+          results.push({
+            bucket: bucket.name,
+            success: true
+          });
+        }
+      } catch (createError) {
+        console.error(`Exception creating bucket ${bucket.name}:`, createError);
+        results.push({
+          bucket: bucket.name,
+          success: false,
+          message: createError.message
+        });
+      }
+    }
+    
+    // Verify buckets after creation attempts
+    const { data: verifyBuckets, error: verifyError } = await supabase.storage.listBuckets();
+    
+    if (verifyError) {
+      return {
+        success: false,
+        message: `Failed to verify buckets after creation: ${verifyError.message}`,
+        results
+      };
+    }
+    
+    const existingBuckets = verifyBuckets?.map(b => b.name) || [];
+    const allBucketsCreated = requiredBuckets.every(b => existingBuckets.includes(b.name));
+    
+    if (allBucketsCreated) {
+      return {
+        success: true,
+        message: "All buckets were successfully created",
+        buckets: existingBuckets,
+        results
+      };
+    } else {
+      const missingBuckets = requiredBuckets
+        .filter(b => !existingBuckets.includes(b.name))
+        .map(b => b.name);
+      
+      return {
+        success: false,
+        message: `Some buckets could not be created: ${missingBuckets.join(', ')}`,
+        existing: existingBuckets,
+        missing: missingBuckets,
+        results
+      };
+    }
+  } catch (error) {
+    console.error("Failed to create storage buckets:", error);
+    return { success: false, message: error.message };
+  }
+}
+
 async function setupStorageBuckets(supabase) {
   try {
     // Get a list of existing buckets first
@@ -110,10 +212,8 @@ async function setupStorageBuckets(supabase) {
     
     if (listError) {
       console.error("Failed to list buckets:", listError);
-      return { 
-        success: false, 
-        message: `Failed to access storage: ${listError.message}` 
-      };
+      // If we can't list buckets, try to force create them
+      return forceCreateBuckets(supabase);
     }
     
     const existingBucketNames = existingBuckets?.map(b => b.name) || [];
@@ -128,6 +228,7 @@ async function setupStorageBuckets(supabase) {
     
     // Create buckets that don't exist yet
     const creationResults = [];
+    let hadCreationError = false;
     
     for (const bucket of requiredBuckets) {
       if (!existingBucketNames.includes(bucket.name)) {
@@ -145,6 +246,7 @@ async function setupStorageBuckets(supabase) {
               success: false,
               message: error.message
             });
+            hadCreationError = true;
           } else {
             console.log(`Successfully created bucket: ${bucket.name}`);
             creationResults.push({
@@ -159,6 +261,7 @@ async function setupStorageBuckets(supabase) {
             success: false,
             message: createError.message
           });
+          hadCreationError = true;
         }
       } else {
         console.log(`Bucket ${bucket.name} already exists`);
@@ -170,16 +273,22 @@ async function setupStorageBuckets(supabase) {
       }
     }
     
+    // If we had any errors, try the force create method
+    if (hadCreationError) {
+      console.log("Had creation errors, attempting to force create all buckets");
+      return forceCreateBuckets(supabase);
+    }
+    
     // Verify buckets after creation attempts
     const { data: verifyBuckets, error: verifyError } = await supabase.storage.listBuckets();
     
     if (verifyError) {
       console.error("Failed to verify buckets after creation:", verifyError);
       return { 
-        success: true, 
-        message: "Some buckets may have been created, but verification failed",
-        results: creationResults,
-        error: verifyError.message
+        success: false, 
+        message: "Failed to verify buckets after creation",
+        error: verifyError.message,
+        results: creationResults
       };
     }
     
@@ -198,13 +307,9 @@ async function setupStorageBuckets(supabase) {
         .filter(b => !finalBucketNames.includes(b.name))
         .map(b => b.name);
         
-      return {
-        success: false,
-        message: `Some buckets could not be created: ${missingBuckets.join(', ')}`,
-        existing: finalBucketNames,
-        missing: missingBuckets,
-        results: creationResults
-      };
+      // Try force creating if verification failed
+      console.log("Verification failed, missing buckets:", missingBuckets);
+      return forceCreateBuckets(supabase);
     }
   } catch (error) {
     console.error("Failed to setup storage buckets:", error);
@@ -229,28 +334,17 @@ async function addSampleFiles(supabase) {
     const filePath = `${adminId}/sample-data.csv`;
     
     // Make sure datasets bucket exists before uploading
-    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+    console.log("Ensuring buckets exist before sample upload");
+    const setupResult = await setupStorageBuckets(supabase);
     
-    if (bucketsError) {
-      console.error("Error listing buckets:", bucketsError);
-      return { 
-        success: false, 
-        message: `Failed to verify storage buckets: ${bucketsError.message}` 
+    if (!setupResult.success) {
+      return {
+        success: false,
+        message: `Failed to create required buckets: ${setupResult.message}`
       };
     }
     
-    const bucketExists = buckets?.some(bucket => bucket.name === 'datasets');
-    
-    if (!bucketExists) {
-      console.log("Datasets bucket doesn't exist, creating it now");
-      const setupResult = await setupStorageBuckets(supabase);
-      if (!setupResult.success) {
-        return {
-          success: false,
-          message: `Could not create datasets bucket: ${setupResult.message}`
-        };
-      }
-    }
+    console.log("Buckets verified, uploading sample file");
     
     // Upload the file
     const { data, error } = await supabase.storage
@@ -269,34 +363,43 @@ async function addSampleFiles(supabase) {
     }
     
     // If upload was successful, add metadata to the dataset table
-    const { error: dbError } = await supabase.from('datasets').upsert({
-      name: 'Sample Dataset',
-      description: 'A sample dataset for demonstration purposes',
-      user_id: adminId,
-      file_name: 'sample-data.csv',
-      file_size: sampleCsvContent.length,
-      row_count: 5,
-      column_schema: {
-        id: 'integer',
-        name: 'string',
-        age: 'integer',
-        city: 'string',
-        income: 'integer'
-      },
-      storage_type: 'supabase',
-      storage_path: filePath,
-      storage_bucket: 'datasets'
-    }, { 
-      onConflict: 'name,user_id' 
-    }).select().maybeSingle();
-    
-    if (dbError) {
-      console.error("Error adding sample dataset metadata:", dbError);
+    try {
+      const { error: dbError } = await supabase.from('datasets').upsert({
+        name: 'Sample Dataset',
+        description: 'A sample dataset for demonstration purposes',
+        user_id: adminId,
+        file_name: 'sample-data.csv',
+        file_size: sampleCsvContent.length,
+        row_count: 5,
+        column_schema: {
+          id: 'integer',
+          name: 'string',
+          age: 'integer',
+          city: 'string',
+          income: 'integer'
+        },
+        storage_type: 'supabase',
+        storage_path: filePath,
+        storage_bucket: 'datasets'
+      }, { 
+        onConflict: 'name,user_id' 
+      }).select().maybeSingle();
+      
+      if (dbError) {
+        console.error("Error adding sample dataset metadata:", dbError);
+        return {
+          success: true,
+          upload: "success",
+          metadata: "failed",
+          message: `Sample file uploaded but metadata creation failed: ${dbError.message}`
+        };
+      }
+    } catch (metadataError) {
       return {
         success: true,
         upload: "success",
         metadata: "failed",
-        message: `Sample file uploaded but metadata creation failed: ${dbError.message}`
+        message: `Sample file uploaded but metadata operation failed: ${metadataError.message}`
       };
     }
     

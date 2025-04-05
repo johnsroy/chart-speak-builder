@@ -50,17 +50,17 @@ const callStorageManager = async (operation: string) => {
   }
 };
 
-// Initialize storage and admin user on app startup - MODIFIED TO ENSURE BUCKETS ARE CREATED
+// Initialize storage and admin user on app startup
 const initializeApp = async () => {
   try {
     if (typeof window !== 'undefined') {
       console.log("Initializing app and creating storage buckets...");
       
-      // Always attempt to create storage buckets via edge function on app init
-      const setupResult = await callStorageManager('setup');
+      // First try the force creation endpoint which will ensure buckets exist
+      const forceCreateResult = await callStorageManager('force-create-buckets');
       
-      if (setupResult.success) {
-        console.log("Successfully set up storage buckets:", setupResult);
+      if (forceCreateResult.success) {
+        console.log("Successfully created storage buckets:", forceCreateResult);
         
         // Add sample data to the buckets for testing
         const sampleResult = await callStorageManager('sample');
@@ -70,7 +70,15 @@ const initializeApp = async () => {
           console.warn("Failed to add sample data:", sampleResult.message || "Unknown error");
         }
       } else {
-        console.error("Failed to set up storage buckets:", setupResult.message || "Unknown error");
+        console.error("Failed to create storage buckets:", forceCreateResult.message || "Unknown error");
+        
+        // Try the regular setup as a fallback
+        const setupResult = await callStorageManager('setup');
+        if (setupResult.success) {
+          console.log("Bucket setup fallback successful:", setupResult);
+        } else {
+          console.error("All bucket creation methods failed");
+        }
       }
       
       // Initialize admin user
@@ -99,20 +107,27 @@ if (typeof window !== 'undefined') {
 // Expose a function to manually trigger bucket setup
 export const setupStorageBuckets = async () => {
   console.log("Manually triggering storage bucket setup...");
-  return await callStorageManager('setup');
+  return await callStorageManager('force-create-buckets');
 };
 
 // Expose a function to verify storage buckets exist
 export const verifyStorageBuckets = async () => {
   try {
-    // First try calling the setup function to ensure buckets exist
-    const setupResult = await callStorageManager('setup');
-    if (setupResult.success) {
-      console.log("Storage buckets verified/created successfully");
+    // First try calling the force-create-buckets function to ensure buckets exist
+    const forceCreateResult = await callStorageManager('force-create-buckets');
+    if (forceCreateResult.success) {
+      console.log("Storage buckets created/verified successfully");
       return true;
     }
     
-    // Fallback to checking via the API
+    // Fallback to the regular setup
+    const setupResult = await callStorageManager('setup');
+    if (setupResult.success) {
+      console.log("Storage buckets setup successful");
+      return true;
+    }
+    
+    // Last resort: check via the API
     const { data: buckets, error } = await supabase.storage.listBuckets();
     
     if (error) {
