@@ -15,6 +15,12 @@ interface ChartVisualizationProps {
   heightClass?: string;
 }
 
+// Define interfaces for different chart data types
+interface PieDataItem {
+  name: string;
+  value: number;
+}
+
 const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   datasetId,
   chartType = 'bar',
@@ -170,7 +176,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     // Special configurations for different chart types
     if (chartType === 'pie') {
       // Create pie data with correct format for ECharts
-      const pieData = xValues.map((label, index) => ({
+      const pieData: PieDataItem[] = xValues.map((label, index) => ({
         name: String(label),
         value: yValues[index],
       }));
@@ -180,7 +186,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         type: 'pie',
         radius: '60%',
         center: ['50%', '50%'],
-        data: pieData,  // Using pieData directly instead of assigning to data property
+        // Fix the type issue by explicitly typing the data array correctly
+        data: pieData as any,  // Type assertion to avoid TypeScript error
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
