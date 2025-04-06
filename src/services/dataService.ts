@@ -1,24 +1,9 @@
 
 import { supabase } from '@/lib/supabase';
 import { toast as sonnerToast } from "sonner";
-
-/**
- * Dataset type definition
- */
-export interface Dataset {
-  id: string;
-  name: string;
-  description?: string;
-  file_name: string;
-  file_size: number;
-  storage_type: string;
-  storage_path: string;
-  row_count: number;
-  column_schema: Record<string, string>;
-  user_id: string;
-  created_at?: string;
-  updated_at?: string;
-}
+import { Dataset, StorageStats } from './types/datasetTypes';
+import { formatFileSize, parseCSV, generateSampleData } from './utils/fileUtils';
+import { schemaService } from './schemaService';
 
 /**
  * Service for handling data operations
@@ -29,7 +14,7 @@ export const dataService = {
    * Get all datasets for the current user
    * @returns Promise resolving to array of datasets
    */
-  getDatasets: async () => {
+  getDatasets: async (): Promise<Dataset[]> => {
     console.log("Fetching all datasets...");
     try {
       // Fetch all datasets from Supabase
@@ -55,7 +40,7 @@ export const dataService = {
    * @param id Dataset ID
    * @returns Promise resolving to dataset object
    */
-  getDataset: async (id: string) => {
+  getDataset: async (id: string): Promise<Dataset | null> => {
     try {
       const { data, error } = await supabase
         .from('datasets')
@@ -92,7 +77,7 @@ export const dataService = {
     existingDatasetId?: string | null,
     onProgress?: (progress: number) => void,
     userId?: string | null
-  ) => {
+  ): Promise<Dataset> => {
     try {
       // Generate storage path
       const fileExtension = file.name.split('.').pop() || '';
@@ -120,11 +105,11 @@ export const dataService = {
       
       try {
         if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-          const schema = await inferSchemaFromCSV(file);
+          const schema = await schemaService.inferSchemaFromCSV(file);
           columnSchema = schema.schema;
           rowCount = schema.rowCount;
         } else if (file.name.endsWith('.json')) {
-          const schema = await inferSchemaFromJSON(file);
+          const schema = await schemaService.inferSchemaFromJSON(file);
           columnSchema = schema.schema;
           rowCount = schema.rowCount;
         } else {
@@ -199,7 +184,7 @@ export const dataService = {
    * @param id Dataset ID to delete
    * @returns Promise resolving when delete is complete
    */
-  deleteDataset: async (id: string) => {
+  deleteDataset: async (id: string): Promise<boolean> => {
     try {
       // Call the data processor edge function to handle deletion of both the file and database record
       const { error } = await supabase.functions.invoke('data-processor', {
@@ -226,21 +211,8 @@ export const dataService = {
    * @param file File to infer schema from
    * @returns Promise resolving to inferred schema
    */
-  previewSchemaInference: async (file: File) => {
-    try {
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        const result = await inferSchemaFromCSV(file);
-        return result.schema;
-      } else if (file.name.endsWith('.json')) {
-        const result = await inferSchemaFromJSON(file);
-        return result.schema;
-      }
-      
-      return {};
-    } catch (error) {
-      console.error('Error previewing schema:', error);
-      return {};
-    }
+  previewSchemaInference: async (file: File): Promise<Record<string, string>> => {
+    return schemaService.previewSchemaInference(file);
   },
   
   /**
@@ -248,7 +220,7 @@ export const dataService = {
    * @param datasetId Dataset ID to preview
    * @returns Promise resolving to dataset preview data
    */
-  previewDataset: async (datasetId: string) => {
+  previewDataset: async (datasetId: string): Promise<any[]> => {
     try {
       console.log(`Previewing dataset ${datasetId}...`);
       
@@ -341,7 +313,7 @@ export const dataService = {
    * @param userId User ID to get stats for
    * @returns Promise resolving to storage stats
    */
-  getStorageStats: async (userId: string) => {
+  getStorageStats: async (userId: string): Promise<StorageStats> => {
     try {
       const { data: datasets, error } = await supabase
         .from('datasets')
@@ -376,255 +348,3 @@ export const dataService = {
     }
   }
 };
-
-/**
- * Infer schema from CSV file
- * @param file CSV file
- * @returns Promise resolving to schema and row count
- */
-async function inferSchemaFromCSV(file: File): Promise<{schema: Record<string, string>, rowCount: number}> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const rows = text.split('\n');
-        const headers = rows[0].split(',').map(h => h.trim());
-        const schema: Record<string, string> = {};
-        
-        // Use a few rows to infer types
-        const sampleRowCount = Math.min(20, rows.length - 1);
-        const sampleRows = rows.slice(1, 1 + sampleRowCount)
-          .filter(row => row.trim().length > 0);
-        
-        headers.forEach((header, i) => {
-          const values = sampleRows
-            .map(row => {
-              const cells = parseCSVRow(row);
-              return cells[i];
-            })
-            .filter(val => val !== undefined && val !== null && val !== '');
-          
-          // Determine type based on sample values
-          let type = 'string';
-          
-          if (values.every(val => !isNaN(Number(val)))) {
-            type = 'number';
-          } else if (values.every(val => val === 'true' || val === 'false')) {
-            type = 'boolean';
-          } else if (values.every(val => !isNaN(Date.parse(val)))) {
-            type = 'date';
-          }
-          
-          schema[header] = type;
-        });
-        
-        resolve({ 
-          schema, 
-          rowCount: rows.length - 1 
-        });
-      } catch (error) {
-        reject(error);
-      }
-    };
-    
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
-    
-    reader.readAsText(file);
-  });
-}
-
-/**
- * Infer schema from JSON file
- * @param file JSON file
- * @returns Promise resolving to schema and row count
- */
-async function inferSchemaFromJSON(file: File): Promise<{schema: Record<string, string>, rowCount: number}> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const json = JSON.parse(text);
-        const data = Array.isArray(json) ? json : [json];
-        const schema: Record<string, string> = {};
-        
-        if (data.length === 0) {
-          resolve({ schema: {}, rowCount: 0 });
-          return;
-        }
-        
-        // Use first object to determine schema
-        const firstObj = data[0];
-        
-        for (const key in firstObj) {
-          const value = firstObj[key];
-          let type = 'string';
-          
-          if (typeof value === 'number') {
-            type = 'number';
-          } else if (typeof value === 'boolean') {
-            type = 'boolean';
-          } else if (
-            typeof value === 'string' && 
-            !isNaN(Date.parse(value)) &&
-            String(value).match(/^\d{4}-\d{2}-\d{2}/)
-          ) {
-            type = 'date';
-          } else if (typeof value === 'object' && value !== null) {
-            type = 'object';
-          }
-          
-          schema[key] = type;
-        }
-        
-        resolve({ schema, rowCount: data.length });
-      } catch (error) {
-        reject(error);
-      }
-    };
-    
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
-    
-    reader.readAsText(file);
-  });
-}
-
-/**
- * Parse CSV text
- * @param text CSV text
- * @returns Parsed CSV data
- */
-function parseCSV(text: string): any[] {
-  const rows = text.split('\n');
-  if (rows.length === 0) return [];
-  
-  const headers = parseCSVRow(rows[0]);
-  const result = [];
-  
-  for (let i = 1; i < rows.length; i++) {
-    if (!rows[i].trim()) continue;
-    
-    const values = parseCSVRow(rows[i]);
-    if (values.length !== headers.length) continue;
-    
-    const obj: Record<string, any> = {};
-    headers.forEach((header, index) => {
-      const value = values[index];
-      
-      if (value === '' || value === 'null') {
-        obj[header] = null;
-      } else if (!isNaN(Number(value))) {
-        obj[header] = Number(value);
-      } else if (value === 'true') {
-        obj[header] = true;
-      } else if (value === 'false') {
-        obj[header] = false;
-      } else {
-        obj[header] = value;
-      }
-    });
-    
-    result.push(obj);
-  }
-  
-  return result;
-}
-
-/**
- * Parse a CSV row, handling quotes correctly
- * @param row CSV row
- * @returns Array of cell values
- */
-function parseCSVRow(row: string): string[] {
-  const result: string[] = [];
-  let inQuotes = false;
-  let currentCell = '';
-  
-  for (let i = 0; i < row.length; i++) {
-    const char = row[i];
-    
-    if (char === '"') {
-      if (i + 1 < row.length && row[i + 1] === '"') {
-        // Handle escaped quotes
-        currentCell += '"';
-        i++;
-      } else {
-        // Toggle quote state
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      // End of cell
-      result.push(currentCell.trim());
-      currentCell = '';
-    } else {
-      currentCell += char;
-    }
-  }
-  
-  // Don't forget the last cell
-  result.push(currentCell.trim());
-  return result;
-}
-
-/**
- * Generate sample data based on schema
- * @param schema Column schema
- * @param count Number of rows to generate
- * @returns Generated data
- */
-function generateSampleData(schema: Record<string, string>, count: number): any[] {
-  const result = [];
-  const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
-  const products = ['Product X', 'Product Y', 'Product Z'];
-  const regions = ['North', 'South', 'East', 'West'];
-  
-  for (let i = 0; i < count; i++) {
-    const row: Record<string, any> = {};
-    
-    for (const [key, type] of Object.entries(schema)) {
-      if (type === 'number') {
-        row[key] = Math.floor(Math.random() * 1000);
-      } else if (type === 'boolean') {
-        row[key] = Math.random() > 0.5;
-      } else if (type === 'date') {
-        const date = new Date();
-        date.setDate(date.getDate() - Math.floor(Math.random() * 365));
-        row[key] = date.toISOString().split('T')[0];
-      } else if (key.toLowerCase().includes('category')) {
-        row[key] = categories[i % categories.length];
-      } else if (key.toLowerCase().includes('product')) {
-        row[key] = products[i % products.length];
-      } else if (key.toLowerCase().includes('region')) {
-        row[key] = regions[i % regions.length];
-      } else {
-        row[key] = `Value ${i + 1}`;
-      }
-    }
-    
-    result.push(row);
-  }
-  
-  return result;
-}
-
-/**
- * Format file size
- * @param bytes Size in bytes
- * @returns Formatted file size string
- */
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}

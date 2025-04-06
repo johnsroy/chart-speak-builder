@@ -1,5 +1,5 @@
-
-import { Dataset } from '@/services/dataService';
+import { supabase } from '@/lib/supabase';
+import { Dataset } from '@/services/types/datasetTypes';
 
 /**
  * Determines if a field is suitable for a numeric axis
