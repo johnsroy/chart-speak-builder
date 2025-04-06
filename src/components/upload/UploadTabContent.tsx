@@ -1,4 +1,3 @@
-
 import React from 'react';
 import FileUploadArea from './FileUploadArea';
 import UserDatasetLibrary from '../user/UserDatasetLibrary';
@@ -65,7 +64,7 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
   uploadedDatasetId,
   showVisualizeAfterUpload,
   setShowVisualizeAfterUpload,
-  showRedirectDialog, 
+  showRedirectDialog,
   setShowRedirectDialog,
   selectedStorage,
   setSelectedStorage,
@@ -133,7 +132,7 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
       <RedirectDialog 
         open={showRedirectDialog} 
         onOpenChange={setShowRedirectDialog}
-        datasetId={uploadedDatasetId}
+        datasetId={uploadedDatasetId || ''}
         showVisualize={showVisualizeAfterUpload}
         setShowVisualize={setShowVisualizeAfterUpload}
       />

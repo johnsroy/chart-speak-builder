@@ -1,36 +1,71 @@
 
 import React from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Loader2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
+import { Check, Eye, Lightbulb } from 'lucide-react';
 
-interface RedirectDialogProps {
+export interface RedirectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  datasetId: string;
+  showVisualize: boolean;
+  setShowVisualize: (show: boolean) => void;
 }
 
-const RedirectDialog: React.FC<RedirectDialogProps> = ({ open, onOpenChange }) => {
+const RedirectDialog: React.FC<RedirectDialogProps> = ({
+  open,
+  onOpenChange,
+  datasetId,
+  showVisualize,
+  setShowVisualize
+}) => {
+  const navigate = useNavigate();
+
+  const handleVisualize = () => {
+    onOpenChange(false);
+    if (datasetId) {
+      navigate(`/visualize/${datasetId}`);
+    }
+  };
+
+  const handleUploadAnother = () => {
+    setShowVisualize(false);
+    onOpenChange(false);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md text-center p-6 bg-gradient-to-br from-purple-900 to-blue-900 border-purple-500/30">
-        <div className="flex flex-col items-center justify-center space-y-4">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-16 w-16 rounded-full bg-purple-600/20 animate-pulse" />
+      <DialogContent className="bg-background/95 backdrop-blur-sm border-purple-500/20 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-center">
+            <div className="flex items-center justify-center gap-2">
+              <Check className="h-6 w-6 text-green-500" />
+              Upload Complete
             </div>
-            <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
-          </div>
-          
-          <h3 className="text-xl font-medium text-white pt-2">
-            Upload Successful!
-          </h3>
-          
-          <p className="text-gray-200">
-            Redirecting you to the dashboard...
-          </p>
-          
-          <div className="w-full bg-gray-700/50 rounded-full h-1.5 mt-2">
-            <div className="bg-purple-500 h-1.5 rounded-full animate-[grow_3s_ease-in-out]"></div>
-          </div>
+          </DialogTitle>
+          <DialogDescription className="text-center pt-2">
+            Your dataset was uploaded successfully! What would you like to do next?
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="flex flex-col gap-4">
+          <Button 
+            variant="default" 
+            className="w-full flex items-center gap-2"
+            onClick={handleVisualize}
+          >
+            <Eye className="h-4 w-4" />
+            Visualize This Dataset
+          </Button>
+          <Button 
+            variant="outline" 
+            className="w-full flex items-center gap-2"
+            onClick={handleUploadAnother}
+          >
+            <Lightbulb className="h-4 w-4" />
+            Upload Another Dataset
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

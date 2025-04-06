@@ -182,12 +182,17 @@ serve(async (req) => {
           }
           
           // Update the dataset with the inferred schema
-          await supabase
+          const { error: updateError } = await supabase
             .from('datasets')
             .update({ column_schema: schema })
             .eq('id', dataset_id);
             
-          dataset.column_schema = schema;
+          if (updateError) {
+            console.error('Error updating schema:', updateError);
+          } else {
+            console.log('Successfully updated column schema:', schema);
+            dataset.column_schema = schema;
+          }
         }
         
         // Generate more meaningful data if the dataset is too small

@@ -9,29 +9,57 @@ import DataTable from '@/components/DataTable';
 import { dataService } from '@/services/dataService';
 
 export interface DatasetVisualizationCardProps {
-  datasetId: string;
-  onHideClick: () => void;
+  datasetId?: string;
+  datasets?: any[];
+  isLoading?: boolean;
+  selectedDatasetId?: string | null;
+  setSelectedDatasetId?: (id: string | null) => void;
+  onHideClick?: () => void;
   onExploreClick?: () => void;
+  setActiveTab?: (tab: string) => void;
 }
 
 const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   datasetId,
+  datasets,
+  isLoading: externalLoading,
+  selectedDatasetId: externalSelectedId,
+  setSelectedDatasetId: externalSetSelectedId,
   onHideClick,
   onExploreClick,
+  setActiveTab
 }) => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'chart' | 'table'>('chart');
   const [dataPreview, setDataPreview] = useState<any[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+
+  // Determine which dataset ID to use
+  const effectiveDatasetId = datasetId || externalSelectedId || internalSelectedId;
+  const isMultiDataset = Boolean(datasets && datasets.length > 0);
+  const isLoading = externalLoading || false;
 
   React.useEffect(() => {
-    if (activeView === 'table' && !dataPreview) {
-      loadDataPreview();
+    if (activeView === 'table' && effectiveDatasetId && !dataPreview) {
+      loadDataPreview(effectiveDatasetId);
     }
-  }, [activeView]);
+  }, [activeView, effectiveDatasetId]);
 
-  const loadDataPreview = async () => {
+  React.useEffect(() => {
+    // If we have datasets but no selection, select the first one
+    if (isMultiDataset && datasets && datasets.length > 0 && !effectiveDatasetId) {
+      const firstId = datasets[0].id;
+      if (externalSetSelectedId) {
+        externalSetSelectedId(firstId);
+      } else {
+        setInternalSelectedId(firstId);
+      }
+    }
+  }, [datasets, effectiveDatasetId, externalSetSelectedId, isMultiDataset]);
+
+  const loadDataPreview = async (datasetId: string) => {
     setPreviewLoading(true);
     setPreviewError(null);
     
@@ -55,58 +83,108 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   const handleExploreClick = () => {
     if (onExploreClick) {
       onExploreClick();
-    } else {
-      navigate(`/visualize/${datasetId}`);
+    } else if (effectiveDatasetId) {
+      navigate(`/visualize/${effectiveDatasetId}`);
     }
   };
+
+  const handleHideClick = () => {
+    if (onHideClick) {
+      onHideClick();
+    } else if (setActiveTab) {
+      setActiveTab('upload');
+    }
+  };
+
+  const handleDatasetSelect = (id: string) => {
+    if (externalSetSelectedId) {
+      externalSetSelectedId(id);
+    } else {
+      setInternalSelectedId(id);
+    }
+    setDataPreview(null); // Reset preview when changing dataset
+  };
+
+  // Handle the case where we're asked to visualize with no dataset
+  if (!effectiveDatasetId && !isMultiDataset) {
+    return (
+      <div className="glass-card p-6">
+        <h2 className="text-xl font-medium mb-4 text-left">Dataset Visualization</h2>
+        <p className="text-gray-300">No dataset selected for visualization. Please upload or select a dataset.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="glass-card p-6">
       <h2 className="text-xl font-medium mb-4 text-left">Dataset Visualization</h2>
       
-      <Tabs defaultValue="chart" onValueChange={(value) => setActiveView(value as 'chart' | 'table')} className="mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <TabsList>
-            <TabsTrigger value="chart" className="flex items-center gap-1">
-              <BarChart className="h-4 w-4" />
-              Chart View
-            </TabsTrigger>
-            <TabsTrigger value="table" className="flex items-center gap-1">
-              <TableIcon className="h-4 w-4" />
-              Table View
-            </TabsTrigger>
-          </TabsList>
+      {/* Multi-dataset selector */}
+      {isMultiDataset && datasets && datasets.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto">
+          {datasets.map(dataset => (
+            <button 
+              key={dataset.id} 
+              className={`px-3 py-2 rounded-md text-sm ${effectiveDatasetId === dataset.id ? 'bg-primary text-white' : 'bg-white/20 hover:bg-white/30'}`} 
+              onClick={() => handleDatasetSelect(dataset.id)}
+            >
+              {dataset.name}
+            </button>
+          ))}
         </div>
-        
-        <TabsContent value="chart">
-          <ChartVisualization datasetId={datasetId} />
-        </TabsContent>
-        
-        <TabsContent value="table">
-          <div className="mb-4">
-            <DataTable 
-              data={dataPreview} 
-              loading={previewLoading} 
-              error={previewError}
-              title="Data Preview"
-              pageSize={5}
-            />
-          </div>
-        </TabsContent>
-      </Tabs>
+      )}
       
-      <div className="mt-6 flex justify-center">
-        <Button 
-          variant="outline" 
-          onClick={onHideClick} 
-          className="mr-2"
-        >
-          Hide Visualization
-        </Button>
-        <Button onClick={handleExploreClick}>
-          Explore More
-        </Button>
-      </div>
+      {isLoading ? (
+        <div className="flex justify-center items-center h-40">
+          <div className="animate-pulse">Loading visualization...</div>
+        </div>
+      ) : (
+        <>
+          <Tabs defaultValue="chart" onValueChange={(value) => setActiveView(value as 'chart' | 'table')} className="mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <TabsList>
+                <TabsTrigger value="chart" className="flex items-center gap-1">
+                  <BarChart className="h-4 w-4" />
+                  Chart View
+                </TabsTrigger>
+                <TabsTrigger value="table" className="flex items-center gap-1">
+                  <TableIcon className="h-4 w-4" />
+                  Table View
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            
+            <TabsContent value="chart">
+              {effectiveDatasetId && <ChartVisualization datasetId={effectiveDatasetId} />}
+            </TabsContent>
+            
+            <TabsContent value="table">
+              <div className="mb-4">
+                <DataTable 
+                  data={dataPreview} 
+                  loading={previewLoading} 
+                  error={previewError}
+                  title="Data Preview"
+                  pageSize={5}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+          
+          <div className="mt-6 flex justify-center">
+            <Button 
+              variant="outline" 
+              onClick={handleHideClick} 
+              className="mr-2"
+            >
+              Hide Visualization
+            </Button>
+            <Button onClick={handleExploreClick}>
+              Explore More
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 };
