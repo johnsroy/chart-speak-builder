@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -41,8 +42,7 @@ const Dashboard = () => {
       const duplicates = findDuplicateDatasets(datasets);
       if (duplicates.length > 0) {
         setDuplicateWarnings(true);
-        toast({
-          title: "Duplicate Datasets Detected",
+        toast("Duplicate Datasets Detected", {
           description: `You have ${duplicates.length} files with duplicate uploads. Consider removing duplicates.`,
           duration: 5000
         });
