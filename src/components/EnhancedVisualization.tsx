@@ -34,7 +34,7 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{chartConfig.title || 'No Data'}</CardTitle>
+          <CardTitle>{chartConfig?.title || 'No Data'}</CardTitle>
           <CardDescription>No data available for visualization</CardDescription>
         </CardHeader>
         <CardContent>
@@ -49,11 +49,11 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
   // Get all properties from the first item
   const firstItem = data[0];
   // Figure out which property to use for x-axis (name or category) if not specified
-  const xAxisField = chartConfig.xAxis || Object.keys(firstItem)[0];
+  const xAxisField = chartConfig?.xAxis || Object.keys(firstItem)[0];
   
   // Figure out which property to use for y-axis (value or amount) if not specified
   // Prefer numeric fields
-  const yAxisField = chartConfig.yAxis || Object.keys(firstItem).find(key => 
+  const yAxisField = chartConfig?.yAxis || Object.keys(firstItem).find(key => 
     typeof firstItem[key] === 'number' && key !== xAxisField
   ) || Object.keys(firstItem)[1];
 
@@ -76,11 +76,11 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
               <XAxis 
                 dataKey={xAxisField} 
                 tick={{ fill: '#ddd' }} 
-                label={{ value: chartConfig.xAxisTitle || '', fill: '#ddd', dy: 20 }}
+                label={{ value: chartConfig?.xAxisTitle || '', fill: '#ddd', dy: 20 }}
               />
               <YAxis 
                 tick={{ fill: '#ddd' }} 
-                label={{ value: chartConfig.yAxisTitle || '', fill: '#ddd', angle: -90, dx: -20 }}
+                label={{ value: chartConfig?.yAxisTitle || '', fill: '#ddd', angle: -90, dx: -20 }}
               />
               <Tooltip {...tooltipProps} />
               <Legend wrapperStyle={{ color: '#ddd' }} />
@@ -101,11 +101,11 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
               <XAxis 
                 dataKey={xAxisField} 
                 tick={{ fill: '#ddd' }} 
-                label={{ value: chartConfig.xAxisTitle || '', fill: '#ddd', dy: 20 }}
+                label={{ value: chartConfig?.xAxisTitle || '', fill: '#ddd', dy: 20 }}
               />
               <YAxis 
                 tick={{ fill: '#ddd' }} 
-                label={{ value: chartConfig.yAxisTitle || '', fill: '#ddd', angle: -90, dx: -20 }}
+                label={{ value: chartConfig?.yAxisTitle || '', fill: '#ddd', angle: -90, dx: -20 }}
               />
               <Tooltip {...tooltipProps} />
               <Legend wrapperStyle={{ color: '#ddd' }} />
@@ -147,15 +147,15 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
               <CartesianGrid strokeDasharray="3 3" stroke="#444" />
               <XAxis 
                 dataKey={xAxisField} 
-                name={chartConfig.xAxisTitle || xAxisField}
+                name={chartConfig?.xAxisTitle || xAxisField}
                 tick={{ fill: '#ddd' }} 
-                label={{ value: chartConfig.xAxisTitle || '', fill: '#ddd', dy: 20 }}
+                label={{ value: chartConfig?.xAxisTitle || '', fill: '#ddd', dy: 20 }}
               />
               <YAxis 
                 dataKey={yAxisField} 
-                name={chartConfig.yAxisTitle || yAxisField}
+                name={chartConfig?.yAxisTitle || yAxisField}
                 tick={{ fill: '#ddd' }} 
-                label={{ value: chartConfig.yAxisTitle || '', fill: '#ddd', angle: -90, dx: -20 }}
+                label={{ value: chartConfig?.yAxisTitle || '', fill: '#ddd', angle: -90, dx: -20 }}
               />
               <Tooltip {...tooltipProps} cursor={{ strokeDasharray: '3 3' }} />
               <Legend wrapperStyle={{ color: '#ddd' }} />
@@ -219,8 +219,8 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
       <CardHeader className="flex flex-row items-center space-y-0 gap-2">
         {getChartIcon()}
         <div>
-          <CardTitle>{chartConfig.title || 'Data Visualization'}</CardTitle>
-          {chartConfig.subtitle && <CardDescription>{chartConfig.subtitle}</CardDescription>}
+          <CardTitle>{chartConfig?.title || 'Data Visualization'}</CardTitle>
+          {chartConfig?.subtitle && <CardDescription>{chartConfig.subtitle}</CardDescription>}
         </div>
       </CardHeader>
       <CardContent>

@@ -153,6 +153,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
 
     // Special configurations for different chart types
     if (chartType === 'pie') {
+      // Create pie data with correct format for ECharts
       const pieData = xValues.map((label, index) => ({
         name: String(label),
         value: yValues[index],
