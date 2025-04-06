@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query, dataset_id, dataset_name, column_schema } = await req.json();
+    const { query, dataset_id, dataset_name, column_schema, model = 'openai' } = await req.json();
 
     if (!query || !dataset_id) {
       return new Response(
@@ -27,11 +27,14 @@ serve(async (req) => {
       );
     }
 
-    const apiKey = Deno.env.get("OPENAI_API_KEY");
+    // Get the appropriate API key based on the model
+    const apiKey = model === 'anthropic' 
+      ? Deno.env.get("ANTHROPIC_API_KEY")
+      : Deno.env.get("OPENAI_API_KEY");
     
     if (!apiKey) {
       return new Response(
-        JSON.stringify({ error: "OpenAI API key not configured" }),
+        JSON.stringify({ error: `${model === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key not configured` }),
         { 
           headers: { ...corsHeaders, "Content-Type": "application/json" }, 
           status: 500 
@@ -62,39 +65,60 @@ serve(async (req) => {
     
     Format your response as valid JSON only, nothing else.`;
 
-    // Send request to OpenAI API
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+    // Choose endpoint and parameters based on the model
+    let apiEndpoint, requestBody;
+    
+    if (model === 'anthropic') {
+      apiEndpoint = "https://api.anthropic.com/v1/messages";
+      requestBody = JSON.stringify({
+        model: "claude-3-sonnet-20240229",
+        messages: [
+          { role: "user", content: systemContent + "\n\n" + query }
+        ],
+        max_tokens: 1024,
+        temperature: 0.5
+      });
+    } else {
+      apiEndpoint = "https://api.openai.com/v1/chat/completions";
+      requestBody = JSON.stringify({
         model: "gpt-3.5-turbo",
         messages: [
           { role: "system", content: systemContent },
           { role: "user", content: query }
         ],
         temperature: 0.5,
-      }),
+      });
+    }
+
+    // Send request to appropriate API
+    const response = await fetch(apiEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": model === 'anthropic' ? `Bearer ${apiKey}` : `Bearer ${apiKey}`,
+        ...(model === 'anthropic' ? { "Anthropic-Version": "2023-06-01" } : {})
+      },
+      body: requestBody
     });
 
     if (!response.ok) {
       const error = await response.text();
-      console.error("OpenAI API error:", error);
-      throw new Error(`OpenAI API error: ${response.status} ${error}`);
+      console.error(`${model === 'anthropic' ? 'Anthropic' : 'OpenAI'} API error:`, error);
+      throw new Error(`${model === 'anthropic' ? 'Anthropic' : 'OpenAI'} API error: ${response.status} ${error}`);
     }
 
     const result = await response.json();
     
-    // Extract and parse the response content
+    // Extract and parse the response content based on the model
     let analysisResult;
     try {
-      const content = result.choices[0].message.content;
+      const content = model === 'anthropic' 
+        ? result.content[0].text
+        : result.choices[0].message.content;
       // Try to parse the JSON response
       analysisResult = JSON.parse(content);
     } catch (e) {
-      console.error("Error parsing OpenAI response:", e);
+      console.error("Error parsing AI response:", e);
       throw new Error("Failed to parse AI response");
     }
 
