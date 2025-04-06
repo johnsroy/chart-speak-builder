@@ -1,305 +1,219 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  BarChart, LineChart, PieChart, ScatterChart,
-  Bar, Line, Pie, Scatter, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, Cell
-} from 'recharts';
-import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, AlertTriangle, BarChart as BarChartIcon, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Loader2 } from 'lucide-react';
+import ReactECharts from 'echarts-for-react';
 import { dataService } from '@/services/dataService';
-import { Button } from './ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Label } from './ui/label';
+import { useToast } from '@/hooks/use-toast';
 
 interface ChartVisualizationProps {
   datasetId: string;
+  chartType?: 'bar' | 'line' | 'pie' | 'scatter';
+  xAxis?: string;
+  yAxis?: string;
+  heightClass?: string;
 }
 
-const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
-
-const ChartVisualization: React.FC<ChartVisualizationProps> = ({ datasetId }) => {
-  const [data, setData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+const ChartVisualization: React.FC<ChartVisualizationProps> = ({
+  datasetId,
+  chartType = 'bar',
+  xAxis,
+  yAxis,
+  heightClass = 'h-[400px]'
+}) => {
+  const [chartData, setChartData] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [chartType, setChartType] = useState<'bar' | 'line' | 'pie' | 'scatter'>('bar');
-  const [xAxisField, setXAxisField] = useState<string>('');
-  const [yAxisField, setYAxisField] = useState<string>('');
-  const [availableFields, setAvailableFields] = useState<string[]>([]);
-  const [categoricalFields, setCategoricalFields] = useState<string[]>([]);
-  const [numericFields, setNumericFields] = useState<string[]>([]);
+  const [availableColumns, setAvailableColumns] = useState<string[]>([]);
+  const { toast } = useToast();
 
-  const fetchDataset = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      console.log(`Fetching dataset preview for ${datasetId}`);
-      const preview = await dataService.getDatasetPreview(datasetId);
-      
-      if (!preview || !preview.data || preview.data.length === 0) {
-        throw new Error('No data available for visualization');
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        // Use previewDataset to get data for visualization
+        const data = await dataService.previewDataset(datasetId);
+        setChartData(data);
+        
+        // Get column names from the first row
+        if (data && data.length > 0) {
+          setAvailableColumns(Object.keys(data[0]));
+        }
+        
+        setError(null);
+      } catch (err) {
+        console.error('Error loading chart data:', err);
+        setError('Failed to load data for visualization');
+        toast({
+          title: 'Error Visualizing Data',
+          description: 'Failed to load dataset for visualization',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
       }
+    };
+
+    if (datasetId) {
+      loadData();
+    }
+  }, [datasetId, toast]);
+
+  // Determine which columns to use for X and Y axes
+  const determineAxes = () => {
+    if (!chartData || chartData.length === 0 || !availableColumns.length) {
+      return { xField: '', yField: '' };
+    }
+
+    // Use provided axes if they exist in the data
+    const xField = xAxis && availableColumns.includes(xAxis) ? xAxis : availableColumns[0];
+    
+    // For Y-axis, prefer a numerical field if possible
+    let yField = '';
+    
+    if (yAxis && availableColumns.includes(yAxis)) {
+      yField = yAxis;
+    } else {
+      // Try to find a numerical column for Y-axis
+      const firstRow = chartData[0];
+      const numericalColumn = availableColumns.find(
+        col => typeof firstRow[col] === 'number'
+      );
       
-      console.log(`Received dataset preview with ${preview.data.length} rows`);
-      setData(preview.data);
-      
-      // Extract available fields and their types from the first data item
-      const fields = Object.keys(preview.data[0]);
-      setAvailableFields(fields);
-      
-      // Try to infer categorical and numeric fields
-      const categorical: string[] = [];
-      const numeric: string[] = [];
-      
-      // Use schema if available
-      if (preview.schema) {
-        console.log("Using schema from preview:", preview.schema);
-        for (const [field, type] of Object.entries(preview.schema)) {
-          if (type === 'string' || type === 'date') {
-            categorical.push(field);
-          } else if (type === 'number' || type === 'integer') {
-            numeric.push(field);
-          } else {
-            // Check the actual data to determine field type
-            const fieldType = typeof preview.data[0][field];
-            if (fieldType === 'number') {
-              numeric.push(field);
-            } else {
-              categorical.push(field);
+      yField = numericalColumn || availableColumns[1] || availableColumns[0];
+    }
+
+    return { xField, yField };
+  };
+
+  const getChartOption = () => {
+    if (!chartData || chartData.length === 0) {
+      return {};
+    }
+
+    const { xField, yField } = determineAxes();
+    
+    if (!xField || !yField) {
+      return {};
+    }
+
+    // Extract values for the selected fields
+    const xValues = chartData.map(item => item[xField]);
+    const yValues = chartData.map(item => {
+      const val = item[yField];
+      return typeof val === 'number' ? val : isNaN(Number(val)) ? 0 : Number(val);
+    });
+    
+    // Basic chart configurations
+    const options = {
+      title: {
+        text: `${yField} by ${xField}`,
+        textStyle: {
+          color: '#cccccc',
+          fontWeight: 'normal',
+        },
+      },
+      tooltip: {
+        trigger: 'axis',
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        data: xValues,
+        axisLabel: {
+          color: '#aaaaaa',
+        },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          color: '#aaaaaa',
+        },
+      },
+      series: [
+        {
+          name: yField,
+          type: chartType,
+          data: yValues,
+          itemStyle: {
+            color: function() {
+              return '#' + Math.floor(Math.random()*16777215).toString(16);
             }
           }
         }
-      } else {
-        // Infer from data directly if no schema
-        fields.forEach(field => {
-          const value = preview.data[0][field];
-          if (typeof value === 'number') {
-            numeric.push(field);
-          } else {
-            categorical.push(field);
-          }
-        });
-      }
-      
-      setCategoricalFields(categorical);
-      setNumericFields(numeric);
-      
-      // Set default X and Y axes
-      if (categorical.length > 0) {
-        setXAxisField(categorical[0]);
-      } else {
-        setXAxisField(fields[0]);
-      }
-      
-      if (numeric.length > 0) {
-        setYAxisField(numeric[0]);
-      } else if (fields.length > 1) {
-        setYAxisField(fields[1]);
-      } else if (fields.length === 1) {
-        setYAxisField(fields[0]);
-      }
-      
-      console.log("Categorical fields:", categorical);
-      console.log("Numeric fields:", numeric);
-      
-    } catch (err) {
-      console.error('Error fetching dataset preview:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load dataset');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [datasetId]);
+      ],
+      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    };
 
-  useEffect(() => {
-    fetchDataset();
-  }, [fetchDataset, datasetId]);
+    // Special configurations for different chart types
+    if (chartType === 'pie') {
+      const pieData = xValues.map((label, index) => ({
+        name: String(label),
+        value: yValues[index],
+      }));
 
-  const renderChart = () => {
-    if (!xAxisField || !yAxisField) {
-      return (
-        <div className="flex flex-col items-center justify-center h-[300px] text-center">
-          <AlertTriangle className="h-8 w-8 text-yellow-500 mb-2" />
-          <p className="text-gray-400">Please select X and Y axis fields to visualize the data</p>
-        </div>
-      );
+      options.series = [
+        {
+          name: yField,
+          type: 'pie',
+          radius: '60%',
+          center: ['50%', '50%'],
+          data: pieData,
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 10,
+              shadowOffsetX: 0,
+              shadowColor: 'rgba(0, 0, 0, 0.5)',
+            },
+          },
+        },
+      ];
+      delete options.xAxis;
+      delete options.yAxis;
     }
 
-    // Limit data points for better performance
-    const limitedData = data.slice(0, 50);
-    
-    switch (chartType) {
-      case 'bar':
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={limitedData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xAxisField} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey={yAxisField} fill="#8884d8" />
-            </BarChart>
-          </ResponsiveContainer>
-        );
-      case 'line':
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={limitedData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xAxisField} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey={yAxisField} stroke="#8884d8" />
-            </LineChart>
-          </ResponsiveContainer>
-        );
-      case 'pie':
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={limitedData}
-                nameKey={xAxisField}
-                dataKey={yAxisField}
-                cx="50%"
-                cy="50%"
-                outerRadius={80}
-                fill="#8884d8"
-                label
-              >
-                {limitedData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        );
-      case 'scatter':
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <ScatterChart>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xAxisField} />
-              <YAxis dataKey={yAxisField} />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-              <Legend />
-              <Scatter name="Data Points" data={limitedData} fill="#8884d8" />
-            </ScatterChart>
-          </ResponsiveContainer>
-        );
-      default:
-        return null;
-    }
+    return options;
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <Card className="glass-card">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <Loader2 className="h-12 w-12 animate-spin text-purple-500" />
-          <p className="mt-4 text-gray-400">Loading visualization...</p>
-        </CardContent>
-      </Card>
+      <div className={`flex items-center justify-center ${heightClass}`}>
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-2" />
+          <p className="text-sm text-muted-foreground">Loading visualization...</p>
+        </div>
+      </div>
     );
   }
 
-  if (error) {
+  if (error || !chartData || chartData.length === 0) {
     return (
-      <Card className="glass-card">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <AlertTriangle className="h-12 w-12 text-yellow-500" />
-          <h3 className="text-xl font-medium mt-4">Error Visualizing Data</h3>
-          <p className="mt-2 text-gray-400">{error}</p>
-          <Button onClick={fetchDataset} variant="outline" className="mt-4">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Retry
-          </Button>
-        </CardContent>
-      </Card>
+      <div className={`flex items-center justify-center ${heightClass}`}>
+        <div className="text-center">
+          <p className="text-red-400 mb-2">No data available for visualization</p>
+          <p className="text-sm text-muted-foreground">
+            {error || 'Unable to generate chart from the dataset'}
+          </p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card className="glass-card">
-      <CardContent className="p-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <div className="flex items-center">
-            <BarChartIcon className="mr-2 h-5 w-5 text-purple-500" />
-            <h3 className="text-lg font-medium">Data Visualization</h3>
-          </div>
-          
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant={chartType === 'bar' ? 'default' : 'outline'}
-              onClick={() => setChartType('bar')}
-            >
-              Bar
-            </Button>
-            <Button
-              size="sm"
-              variant={chartType === 'line' ? 'default' : 'outline'}
-              onClick={() => setChartType('line')}
-            >
-              Line
-            </Button>
-            <Button
-              size="sm"
-              variant={chartType === 'pie' ? 'default' : 'outline'}
-              onClick={() => setChartType('pie')}
-            >
-              Pie
-            </Button>
-            <Button
-              size="sm"
-              variant={chartType === 'scatter' ? 'default' : 'outline'}
-              onClick={() => setChartType('scatter')}
-            >
-              Scatter
-            </Button>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <Label htmlFor="x-axis">X-Axis Field</Label>
-            <Select value={xAxisField} onValueChange={setXAxisField}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select X-Axis Field" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableFields.map((field) => (
-                  <SelectItem key={field} value={field} className={categoricalFields.includes(field) ? 'text-blue-500' : ''}>
-                    {field} {categoricalFields.includes(field) ? '(Category)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div>
-            <Label htmlFor="y-axis">Y-Axis Field</Label>
-            <Select value={yAxisField} onValueChange={setYAxisField}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Y-Axis Field" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableFields.map((field) => (
-                  <SelectItem key={field} value={field} className={numericFields.includes(field) ? 'text-green-500' : ''}>
-                    {field} {numericFields.includes(field) ? '(Numeric)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        
-        {renderChart()}
-      </CardContent>
+    <Card className="overflow-hidden bg-background/50 backdrop-blur-sm border-purple-500/20">
+      <div className={`w-full ${heightClass} p-4`}>
+        <ReactECharts
+          option={getChartOption()}
+          style={{ height: '100%', width: '100%' }}
+          className="backdrop-blur-sm"
+        />
+      </div>
     </Card>
   );
 };

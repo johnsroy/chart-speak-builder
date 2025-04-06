@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Database, Loader2, BarChart2, Eye, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,7 +29,7 @@ const UserDatasetLibrary: React.FC = () => {
   const loadDatasets = async () => {
     setIsLoading(true);
     try {
-      const data = await dataService.getAllDatasets();
+      const data = await dataService.getDatasets();
       setDatasets(data);
       setError(null);
     } catch (err) {
