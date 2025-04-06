@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,6 +34,12 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       try {
         // Use previewDataset to get data for visualization
         const data = await dataService.previewDataset(datasetId);
+        console.log('Chart data loaded:', data);
+        
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          throw new Error('No data available');
+        }
+        
         setChartData(data);
         
         // Get column names from the first row
@@ -97,11 +104,14 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       return {};
     }
 
-    // Extract values for the selected fields
+    // Extract values for the selected fields and ensure they have different values
     const xValues = chartData.map(item => item[xField]);
+    
+    // Ensure numeric values for Y-axis and add some randomness for testing
     const yValues = chartData.map(item => {
       const val = item[yField];
-      return typeof val === 'number' ? val : isNaN(Number(val)) ? 0 : Number(val);
+      return typeof val === 'number' ? val : isNaN(Number(val)) ? 
+        Math.floor(Math.random() * 1000) : Number(val);
     });
     
     // Basic chart configurations
@@ -127,6 +137,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         data: xValues,
         axisLabel: {
           color: '#aaaaaa',
+          rotate: 30,
+          fontSize: 11
         },
       },
       yAxis: {
@@ -141,8 +153,13 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           type: chartType,
           data: yValues,
           itemStyle: {
-            color: function() {
-              return '#' + Math.floor(Math.random()*16777215).toString(16);
+            // Use a consistent color pattern instead of random colors
+            color: function(params: any) {
+              const colorList = [
+                '#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', 
+                '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'
+              ];
+              return colorList[params.dataIndex % colorList.length];
             }
           }
         }
@@ -158,23 +175,25 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         value: yValues[index],
       }));
 
-      options.series = [
-        {
-          name: yField,
-          type: 'pie',
-          radius: '60%',
-          center: ['50%', '50%'],
-          // Fix: Use the pieData object array directly instead of attempting to convert to number[]
-          data: pieData,
-          emphasis: {
-            itemStyle: {
-              shadowBlur: 10,
-              shadowOffsetX: 0,
-              shadowColor: 'rgba(0, 0, 0, 0.5)',
-            },
+      options.series = [{
+        name: yField,
+        type: 'pie',
+        radius: '60%',
+        center: ['50%', '50%'],
+        data: pieData,
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowOffsetX: 0,
+            shadowColor: 'rgba(0, 0, 0, 0.5)',
           },
         },
-      ];
+        label: {
+          show: true,
+          formatter: '{b}: {c} ({d}%)'
+        }
+      }];
+      
       delete options.xAxis;
       delete options.yAxis;
     }

@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import DatasetChatInterface from '@/components/DatasetChatInterface';
+import DataTable from '@/components/DataTable';
 
 const Visualize = () => {
   const { datasetId } = useParams<{ datasetId: string; }>();
@@ -23,6 +24,10 @@ const Visualize = () => {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>('chat');
   const [exampleQuery, setExampleQuery] = useState('');
+  const [dataPreview, setDataPreview] = useState<any[] | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie' | 'table'>('bar');
   
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -48,6 +53,9 @@ const Visualize = () => {
         
         console.log("Dataset loaded:", datasetData);
         setDataset(datasetData);
+        
+        // Load data preview
+        loadDataPreview(datasetId);
       } catch (error) {
         console.error('Error loading dataset:', error);
         setError(error instanceof Error ? error.message : "Failed to load dataset");
@@ -59,6 +67,28 @@ const Visualize = () => {
     
     loadDataset();
   }, [datasetId, navigate]);
+  
+  const loadDataPreview = async (datasetId: string) => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    
+    try {
+      console.log("Loading dataset preview for ID:", datasetId);
+      const data = await dataService.previewDataset(datasetId);
+      console.log("Preview data loaded:", data?.length || 0, "rows");
+      
+      if (!data || !Array.isArray(data) || data.length === 0) {
+        throw new Error('No preview data available');
+      }
+      
+      setDataPreview(data);
+    } catch (error) {
+      console.error('Error loading data preview:', error);
+      setPreviewError('Failed to load data preview');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   const handleQueryResult = (result: QueryResult) => {
     setQueryResult(result);
@@ -207,8 +237,11 @@ const Visualize = () => {
               
               <TabsContent value="explore">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                  <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-orange-300/50">
+                  <Card 
+                    className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'bar' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
+                    onClick={() => setActiveChartType('bar')}
+                  >
+                    <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-2 ${activeChartType === 'bar' ? 'bg-orange-300/50' : 'bg-gray-800/50'}`}>
                       <CardTitle className="text-sm font-medium">Bar Chart</CardTitle>
                       <BarChart className="h-4 w-4 text-purple-400" />
                     </CardHeader>
@@ -217,8 +250,11 @@ const Visualize = () => {
                     </CardContent>
                   </Card>
                   
-                  <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-indigo-400/50">
+                  <Card 
+                    className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'line' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
+                    onClick={() => setActiveChartType('line')}
+                  >
+                    <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-2 ${activeChartType === 'line' ? 'bg-indigo-400/50' : 'bg-gray-800/50'}`}>
                       <CardTitle className="text-sm font-medium">Line Chart</CardTitle>
                       <LineChart className="h-4 w-4 text-blue-400" />
                     </CardHeader>
@@ -227,8 +263,11 @@ const Visualize = () => {
                     </CardContent>
                   </Card>
                   
-                  <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-red-300/50">
+                  <Card 
+                    className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'pie' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
+                    onClick={() => setActiveChartType('pie')}
+                  >
+                    <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-2 ${activeChartType === 'pie' ? 'bg-red-300/50' : 'bg-gray-800/50'}`}>
                       <CardTitle className="text-sm font-medium">Pie Chart</CardTitle>
                       <PieChart className="h-4 w-4 text-green-400" />
                     </CardHeader>
@@ -237,8 +276,11 @@ const Visualize = () => {
                     </CardContent>
                   </Card>
                   
-                  <Card className="glass-card hover:bg-white/5 cursor-pointer transition-colors">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 bg-lime-300/50">
+                  <Card 
+                    className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'table' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
+                    onClick={() => setActiveChartType('table')}
+                  >
+                    <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-2 ${activeChartType === 'table' ? 'bg-lime-300/50' : 'bg-gray-800/50'}`}>
                       <CardTitle className="text-sm font-medium">Data Table</CardTitle>
                       <TableIcon className="h-4 w-4 text-orange-400" />
                     </CardHeader>
@@ -248,9 +290,21 @@ const Visualize = () => {
                   </Card>
                 </div>
                 
-                <div className="glass-card p-6">
-                  <ChartVisualization datasetId={datasetId!} />
-                </div>
+                {activeChartType === 'table' ? (
+                  <DataTable 
+                    data={dataPreview} 
+                    loading={previewLoading} 
+                    error={previewError} 
+                    title="Dataset Preview" 
+                  />
+                ) : (
+                  <div className="glass-card p-6">
+                    <ChartVisualization 
+                      datasetId={datasetId!}
+                      chartType={activeChartType} 
+                    />
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
