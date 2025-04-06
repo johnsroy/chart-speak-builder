@@ -6,11 +6,25 @@ import { useDatasets } from '@/hooks/useDatasets';
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home, Trash2, AlertCircle } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { dataService } from '@/services/dataService';
+
+const findDuplicateDatasets = (datasets) => {
+  const fileMap = new Map();
+  
+  datasets.forEach(dataset => {
+    if (fileMap.has(dataset.file_name)) {
+      fileMap.set(dataset.file_name, [...fileMap.get(dataset.file_name), dataset]);
+    } else {
+      fileMap.set(dataset.file_name, [dataset]);
+    }
+  });
+  
+  return Array.from(fileMap).filter(([_, datasets]) => datasets.length > 1);
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -18,8 +32,25 @@ const Dashboard = () => {
   const { datasets, isLoading, loadDatasets } = useDatasets();
   const [filterType, setFilterType] = useState<string | null>(null);
   const [deleteDatasetId, setDeleteDatasetId] = useState<string | null>(null);
+  const [duplicateWarnings, setDuplicateWarnings] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingDataset, setDeletingDataset] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading && datasets.length > 0) {
+      const duplicates = findDuplicateDatasets(datasets);
+      if (duplicates.length > 0) {
+        setDuplicateWarnings(true);
+        toast({
+          title: "Duplicate Datasets Detected",
+          description: `You have ${duplicates.length} files with duplicate uploads. Consider removing duplicates.`,
+          duration: 5000
+        });
+      } else {
+        setDuplicateWarnings(false);
+      }
+    }
+  }, [datasets, isLoading]);
 
   useEffect(() => {
     const setupAuth = async () => {
@@ -38,7 +69,6 @@ const Dashboard = () => {
   }, [isAuthenticated, user, adminLogin]);
 
   useEffect(() => {
-    // Listen for the dataset upload success event
     const handleUploadSuccess = (event: Event) => {
       const customEvent = event as CustomEvent<{ datasetId: string }>;
       console.log("Detected dataset upload success:", customEvent.detail.datasetId);
@@ -81,7 +111,6 @@ const Dashboard = () => {
 
   const filteredDatasets = filterType 
     ? datasets.filter(dataset => {
-        // Custom filter logic based on file type
         const fileExt = dataset.file_name.split('.').pop()?.toLowerCase();
         if (filterType === 'csv') return fileExt === 'csv';
         if (filterType === 'excel') return fileExt === 'xlsx' || fileExt === 'xls';
@@ -89,6 +118,19 @@ const Dashboard = () => {
         return true;
       })
     : datasets;
+  
+  const uniqueDatasets = filteredDatasets.reduce((acc, current) => {
+    const existingDataset = acc.find(item => item.file_name === current.file_name);
+    
+    if (!existingDataset) {
+      acc.push(current);
+    } else if (new Date(current.updated_at) > new Date(existingDataset.updated_at)) {
+      const index = acc.indexOf(existingDataset);
+      acc[index] = current;
+    }
+    
+    return acc;
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
@@ -118,6 +160,20 @@ const Dashboard = () => {
           </div>
         </div>
         
+        {duplicateWarnings && (
+          <div className="mb-6 p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
+            <div>
+              <h3 className="font-medium mb-1">Duplicate Datasets Detected</h3>
+              <p className="text-sm text-gray-300">
+                You have multiple uploads of the same files. Consider removing duplicates to save space and 
+                avoid confusion. When uploading files with the same name, you'll now be asked if you want 
+                to overwrite the existing file.
+              </p>
+            </div>
+          </div>
+        )}
+        
         <Tabs defaultValue="all" className="space-y-4">
           <TabsList>
             <TabsTrigger value="all" onClick={() => setFilterType(null)}>All</TabsTrigger>
@@ -141,10 +197,10 @@ const Dashboard = () => {
                   </Card>
                 ))}
               </div>
-            ) : filteredDatasets.length > 0 ? (
+            ) : uniqueDatasets.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDatasets.map(dataset => (
-                  <Card key={dataset.id} className="glass-card hover:bg-white/5 transition-colors cursor-pointer" onClick={() => navigate(`/visualize/${dataset.id}`)}>
+                {uniqueDatasets.map(dataset => (
+                  <Card key={dataset.id} className="glass-card hover:bg-white/5 transition-colors cursor-pointer overflow-hidden" onClick={() => navigate(`/visualize/${dataset.id}`)}>
                     <CardHeader className="relative">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
@@ -172,8 +228,8 @@ const Dashboard = () => {
                         </DropdownMenuContent>
                       </DropdownMenu>
                       
-                      <CardTitle>{dataset.name}</CardTitle>
-                      <CardDescription>
+                      <CardTitle className="truncate pr-6">{dataset.name}</CardTitle>
+                      <CardDescription className="truncate">
                         {dataset.file_name} • {(dataset.file_size / (1024 * 1024)).toFixed(2)} MB
                       </CardDescription>
                     </CardHeader>
@@ -202,7 +258,7 @@ const Dashboard = () => {
                         </div>
                       </div>
                     </CardContent>
-                    <CardFooter>
+                    <CardFooter className="truncate">
                       <p className="text-xs text-gray-400">
                         Last updated {formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}
                       </p>

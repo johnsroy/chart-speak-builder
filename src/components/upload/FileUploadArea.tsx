@@ -1,8 +1,18 @@
 
 import React, { useEffect } from 'react';
-import { Upload, AlertTriangle } from 'lucide-react';
+import { Upload, AlertTriangle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { 
+  AlertDialog, 
+  AlertDialogContent, 
+  AlertDialogHeader, 
+  AlertDialogTitle, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogCancel, 
+  AlertDialogAction 
+} from '@/components/ui/alert-dialog';
 
 interface FileUploadAreaProps {
   dragActive: boolean;
@@ -21,6 +31,9 @@ interface FileUploadAreaProps {
   retryUpload: () => void;
   handleUpload: () => void;
   uploadedDatasetId?: string | null;
+  showOverwriteConfirm?: boolean;
+  handleOverwriteConfirm?: () => void;
+  handleOverwriteCancel?: () => void;
 }
 
 const FileUploadArea: React.FC<FileUploadAreaProps> = ({
@@ -39,7 +52,10 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   uploadError,
   retryUpload,
   handleUpload,
-  uploadedDatasetId
+  uploadedDatasetId,
+  showOverwriteConfirm = false,
+  handleOverwriteConfirm = () => {},
+  handleOverwriteCancel = () => {}
 }) => {
   // Dispatch custom event when upload is successful
   useEffect(() => {
@@ -178,6 +194,32 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
           </Button>
         </div>
       )}
+
+      <AlertDialog open={showOverwriteConfirm} onOpenChange={() => {}}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              File Already Exists
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              A dataset with the file name "{selectedFile?.name}" already exists. 
+              Would you like to overwrite it with this new file?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleOverwriteCancel}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleOverwriteConfirm}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              Overwrite File
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -1,18 +1,10 @@
+
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Progress } from '@/components/ui/progress';
-import { Upload, Database, FileType, BarChart2, AlertTriangle, Loader2, ExternalLink, Download } from 'lucide-react';
 import FileUploadArea from './FileUploadArea';
-import CloudStoragePanel from './CloudStoragePanel';
-import VisualizeDatasetPanel from './VisualizeDatasetPanel';
+import UserDatasetLibrary from '../user/UserDatasetLibrary';
 import DatasetVisualizationCard from './DatasetVisualizationCard';
+import CloudStoragePanel from './CloudStoragePanel';
 import RedirectDialog from './RedirectDialog';
-import UserDatasetLibrary from './UserDatasetLibrary';
-import UploadSuccessDialog from './UploadSuccessDialog';
 
 interface UploadTabContentProps {
   activeTab: string;
@@ -24,7 +16,7 @@ interface UploadTabContentProps {
   datasetName: string;
   setDatasetName: (name: string) => void;
   datasetDescription: string;
-  setDatasetDescription: (desc: string) => void;
+  setDatasetDescription: (description: string) => void;
   schemaPreview: Record<string, string> | null;
   isUploading: boolean;
   uploadProgress: number;
@@ -39,10 +31,13 @@ interface UploadTabContentProps {
   uploadedDatasetId: string | null;
   showVisualizeAfterUpload: boolean;
   setShowVisualizeAfterUpload: (show: boolean) => void;
+  showRedirectDialog: boolean;
+  setShowRedirectDialog: (show: boolean) => void;
   selectedStorage: string | null;
   setSelectedStorage: (storage: string | null) => void;
-  showRedirectDialog?: boolean;
-  setShowRedirectDialog?: (show: boolean) => void;
+  showOverwriteConfirm?: boolean;
+  handleOverwriteConfirm?: () => void;
+  handleOverwriteCancel?: () => void;
 }
 
 const UploadTabContent: React.FC<UploadTabContentProps> = ({
@@ -70,108 +65,79 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
   uploadedDatasetId,
   showVisualizeAfterUpload,
   setShowVisualizeAfterUpload,
+  showRedirectDialog, 
+  setShowRedirectDialog,
   selectedStorage,
   setSelectedStorage,
-  showRedirectDialog = false,
-  setShowRedirectDialog = () => {}
+  showOverwriteConfirm = false,
+  handleOverwriteConfirm = () => {},
+  handleOverwriteCancel = () => {}
 }) => {
-  const navigate = useNavigate();
+  return (
+    <div className="space-y-6">
+      {activeTab === 'upload' && (
+        <FileUploadArea
+          dragActive={dragActive}
+          handleDrag={handleDrag}
+          handleDrop={handleDrop}
+          handleFileInput={handleFileInput}
+          selectedFile={selectedFile}
+          datasetName={datasetName}
+          setDatasetName={setDatasetName}
+          datasetDescription={datasetDescription}
+          setDatasetDescription={setDatasetDescription}
+          schemaPreview={schemaPreview}
+          isUploading={isUploading}
+          uploadProgress={uploadProgress}
+          uploadError={uploadError}
+          retryUpload={retryUpload}
+          handleUpload={handleUpload}
+          uploadedDatasetId={uploadedDatasetId}
+          showOverwriteConfirm={showOverwriteConfirm}
+          handleOverwriteConfirm={handleOverwriteConfirm}
+          handleOverwriteCancel={handleOverwriteCancel}
+        />
+      )}
 
-  const renderTabContent = () => {
-    if (activeTab === 'upload') {
-      return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <FileUploadArea
-            dragActive={dragActive}
-            handleDrag={handleDrag}
-            handleDrop={handleDrop}
-            handleFileInput={handleFileInput}
-            selectedFile={selectedFile}
-            datasetName={datasetName}
-            setDatasetName={setDatasetName}
-            datasetDescription={datasetDescription}
-            setDatasetDescription={setDatasetDescription}
-            schemaPreview={schemaPreview}
-            isUploading={isUploading}
-            uploadProgress={uploadProgress}
-            uploadError={uploadError}
-            retryUpload={retryUpload}
-            handleUpload={handleUpload}
-          />
-          
-          {uploadedDatasetId && showVisualizeAfterUpload ? (
-            <DatasetVisualizationCard 
-              datasetId={uploadedDatasetId}
-              onHideClick={() => setShowVisualizeAfterUpload(false)}
-              onExploreClick={() => {
-                setActiveTab('visualize');
-                setSelectedDatasetId(uploadedDatasetId);
-              }}
-            />
-          ) : (
-            <CloudStoragePanel
-              selectedStorage={selectedStorage}
-              setSelectedStorage={setSelectedStorage}
-            />
-          )}
-        </div>
-      );
-    } else if (activeTab === 'visualize') {
-      return (
-        <VisualizeDatasetPanel
-          isLoading={isLoading}
+      {activeTab === 'library' && (
+        <UserDatasetLibrary />
+      )}
+
+      {activeTab === 'visualize' && (
+        <DatasetVisualizationCard 
           datasets={datasets}
+          isLoading={isLoading}
           selectedDatasetId={selectedDatasetId}
           setSelectedDatasetId={setSelectedDatasetId}
-          onUploadClick={() => setActiveTab('upload')}
-          onDatasetDeleted={() => {
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('dataset-deleted'));
-            }
-          }}
+          setActiveTab={setActiveTab}
         />
-      );
-    } else if (activeTab === 'library') {
-      return <UserDatasetLibrary />;
-    } else if (activeTab === 'transform') {
-      return (
-        <div className="glass-card p-6">
-          <div className="text-center py-10">
-            <ExternalLink className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-            <h3 className="text-xl font-medium mb-2">Data Transformation</h3>
-            <p className="text-gray-400 mb-4">Transform your data with advanced operations</p>
-            <p className="text-sm text-gray-500 mb-6">Coming soon in the next version</p>
-          </div>
-        </div>
-      );
-    } else {
-      return (
-        <div className="glass-card p-6">
-          <div className="text-center py-10">
-            <Download className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-            <h3 className="text-xl font-medium mb-2">Export & Share</h3>
-            <p className="text-gray-400 mb-4">Export your visualizations or share them with others</p>
-            <p className="text-sm text-gray-500 mb-6">Coming soon in the next version</p>
-          </div>
-        </div>
-      );
-    }
-  };
+      )}
 
-  return (
-    <>
-      {renderTabContent()}
+      {activeTab === 'transform' && (
+        <CloudStoragePanel 
+          selectedStorage={selectedStorage}
+          setSelectedStorage={setSelectedStorage}
+        />
+      )}
+
+      {activeTab === 'export' && (
+        <div className="glass-card p-6">
+          <h2 className="text-xl font-medium mb-4 text-left">Export & Share</h2>
+          <p className="text-gray-300">
+            Export your visualizations and insights to share with others.
+            Coming soon.
+          </p>
+        </div>
+      )}
+
       <RedirectDialog 
         open={showRedirectDialog} 
-        onOpenChange={setShowRedirectDialog} 
-      />
-      <UploadSuccessDialog
-        open={showRedirectDialog}
         onOpenChange={setShowRedirectDialog}
         datasetId={uploadedDatasetId}
-        datasetName={datasetName}
+        showVisualize={showVisualizeAfterUpload}
+        setShowVisualize={setShowVisualizeAfterUpload}
       />
-    </>
+    </div>
   );
 };
 

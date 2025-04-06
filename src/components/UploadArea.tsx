@@ -34,6 +34,7 @@ const UploadArea = () => {
     uploadedDatasetId,
     showVisualizeAfterUpload,
     showRedirectDialog,
+    showOverwriteConfirm,
     setDatasetName,
     setDatasetDescription,
     setShowVisualizeAfterUpload,
@@ -42,7 +43,9 @@ const UploadArea = () => {
     handleDrop,
     handleFileInput,
     handleUpload,
-    retryUpload
+    retryUpload,
+    handleOverwriteConfirm,
+    handleOverwriteCancel
   } = useFileUpload();
 
   const {
@@ -195,6 +198,21 @@ const UploadArea = () => {
     }
   };
 
+  const handleOverwriteConfirmClick = async () => {
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000";
+      handleOverwriteConfirm(true, userIdForUpload);
+    } catch (error) {
+      console.error("Overwrite confirmation failed:", error);
+      toast({
+        title: "Overwrite failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <div className="container mx-auto py-12">
       <div className="text-center mb-12">
@@ -291,6 +309,9 @@ const UploadArea = () => {
         setShowRedirectDialog={setShowRedirectDialog}
         selectedStorage={selectedStorage}
         setSelectedStorage={setSelectedStorage}
+        showOverwriteConfirm={showOverwriteConfirm}
+        handleOverwriteConfirm={handleOverwriteConfirmClick}
+        handleOverwriteCancel={handleOverwriteCancel}
       />
 
       <StorageConnectionDialog

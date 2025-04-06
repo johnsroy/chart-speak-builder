@@ -181,28 +181,34 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         value: yValues[index],
       }));
 
-      options.series = [{
-        name: yField,
-        type: 'pie',
-        radius: '60%',
-        center: ['50%', '50%'],
-        // Fix the type issue by explicitly typing the data array correctly
-        data: pieData as any,  // Type assertion to avoid TypeScript error
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowOffsetX: 0,
-            shadowColor: 'rgba(0, 0, 0, 0.5)',
-          },
+      return {
+        title: options.title,
+        tooltip: {
+          trigger: 'item',
+          formatter: '{a} <br/>{b}: {c} ({d}%)'
         },
-        label: {
-          show: true,
-          formatter: '{b}: {c} ({d}%)'
-        }
-      }];
-      
-      delete options.xAxis;
-      delete options.yAxis;
+        backgroundColor: options.backgroundColor,
+        series: [
+          {
+            name: yField,
+            type: 'pie',
+            radius: '60%',
+            center: ['50%', '50%'],
+            data: pieData,
+            emphasis: {
+              itemStyle: {
+                shadowBlur: 10,
+                shadowOffsetX: 0,
+                shadowColor: 'rgba(0, 0, 0, 0.5)',
+              },
+            },
+            label: {
+              show: true,
+              formatter: '{b}: {c} ({d}%)'
+            }
+          }
+        ]
+      };
     }
 
     return options;
