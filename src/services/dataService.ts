@@ -3,6 +3,24 @@ import { supabase } from '@/lib/supabase';
 import { toast as sonnerToast } from "sonner";
 
 /**
+ * Dataset type definition
+ */
+export interface Dataset {
+  id: string;
+  name: string;
+  description?: string;
+  file_name: string;
+  file_size: number;
+  storage_type: string;
+  storage_path: string;
+  row_count: number;
+  column_schema: Record<string, string>;
+  user_id: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
  * Service for handling data operations
  */
 export const dataService = {

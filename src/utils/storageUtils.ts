@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { toast } from "sonner";
 
@@ -173,7 +172,7 @@ export const testBucketPermission = async (bucketName: string): Promise<boolean>
  */
 export const callStorageManager = async (action: string): Promise<any> => {
   try {
-    console.log(`Calling storage manager: ${supabase.functions.url}/${action}`);
+    console.log(`Calling storage manager: ${action}`);
     
     const { data, error } = await supabase.functions.invoke('storage-manager', {
       body: { action },
