@@ -180,7 +180,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         type: 'pie',
         radius: '60%',
         center: ['50%', '50%'],
-        data: pieData,
+        data: pieData,  // Using pieData directly instead of assigning to data property
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
