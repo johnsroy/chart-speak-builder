@@ -7,7 +7,7 @@ import { useDatasets } from '@/hooks/useDatasets';
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -36,6 +36,7 @@ const Dashboard = () => {
   const [duplicateWarnings, setDuplicateWarnings] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingDataset, setDeletingDataset] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!isLoading && datasets.length > 0) {
@@ -109,6 +110,19 @@ const Dashboard = () => {
     }
   };
 
+  const handleRefreshDatasets = async () => {
+    setRefreshing(true);
+    try {
+      await loadDatasets();
+      toast.success("Datasets refreshed");
+    } catch (error) {
+      console.error("Error refreshing datasets:", error);
+      toast.error("Failed to refresh datasets");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const filteredDatasets = filterType 
     ? datasets.filter(dataset => {
         const fileExt = dataset.file_name.split('.').pop()?.toLowerCase();
@@ -142,6 +156,20 @@ const Dashboard = () => {
           </div>
           
           <div className="flex gap-3 mt-4 md:mt-0">
+            <Button 
+              variant="outline" 
+              className="flex items-center text-gray-300 hover:text-white"
+              onClick={handleRefreshDatasets}
+              disabled={refreshing}
+            >
+              {refreshing ? (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Refresh
+            </Button>
+            
             <Button 
               variant="ghost" 
               className="flex items-center text-gray-300 hover:text-white" 

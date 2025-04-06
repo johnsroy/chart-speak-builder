@@ -1,142 +1,192 @@
 
 import { supabase } from '@/lib/supabase';
+import { toast } from "sonner";
 
 /**
- * Verifies if all required storage buckets exist
- * @returns Promise resolving to a boolean indicating if all buckets exist
+ * Verifies that all required storage buckets exist
+ * @returns A promise resolving to true if all buckets exist, false otherwise
  */
 export const verifyStorageBuckets = async (): Promise<boolean> => {
   try {
-    // Get existing buckets first
-    const { data: existingBuckets, error: listError } = await supabase.storage.listBuckets();
+    const { data: buckets, error } = await supabase.storage.listBuckets();
     
-    if (listError) {
-      console.error("Failed to list buckets:", listError);
+    if (error) {
+      console.error("Error listing buckets:", error.message);
       return false;
     }
     
-    const existingBucketNames = existingBuckets?.map(b => b.name) || [];
     const requiredBuckets = ['datasets', 'secure', 'cold_storage'];
+    const existingBuckets = buckets?.map(bucket => bucket.name) || [];
     
-    console.log("Existing buckets:", existingBucketNames);
+    console.log("Existing buckets:", existingBuckets);
     
-    // Check if all required buckets exist
-    const allBucketsExist = requiredBuckets.every(b => existingBucketNames.includes(b));
+    const missingBuckets = requiredBuckets.filter(
+      bucketName => !existingBuckets.includes(bucketName)
+    );
     
-    if (!allBucketsExist) {
-      console.log("Missing buckets:", requiredBuckets.filter(b => !existingBucketNames.includes(b)));
-    }
+    console.log("Missing buckets:", missingBuckets);
     
-    return allBucketsExist;
+    return missingBuckets.length === 0;
   } catch (error) {
-    console.error("Error verifying storage buckets:", error);
+    console.error("Error verifying buckets:", error);
     return false;
   }
 };
 
 /**
- * Creates the required storage buckets if they don't exist
- * @returns Promise resolving to a boolean indicating if all buckets were created successfully
+ * Creates required storage buckets directly using the Supabase API
+ * @returns A promise resolving to true if all buckets were created, false otherwise
  */
 export const createStorageBuckets = async (): Promise<boolean> => {
   try {
-    // For reliability, use the edge function approach instead
-    return await callStorageManager('force-create-buckets')
-      .then(result => result.success)
-      .catch(_ => false);
+    const requiredBuckets = ['datasets', 'secure', 'cold_storage'];
+    const existingBuckets = await getBucketNames();
+    const results = [];
+    
+    for (const bucketName of requiredBuckets) {
+      if (!existingBuckets.includes(bucketName)) {
+        try {
+          const { error } = await supabase.storage.createBucket(bucketName, {
+            public: true
+          });
+          
+          results.push({
+            bucketName,
+            success: !error,
+            error: error?.message
+          });
+          
+          if (error) {
+            console.error(`Error creating bucket ${bucketName}:`, error.message);
+          } else {
+            console.log(`Successfully created bucket: ${bucketName}`);
+          }
+        } catch (bucketError) {
+          console.error(`Exception creating bucket ${bucketName}:`, bucketError);
+          results.push({
+            bucketName,
+            success: false,
+            error: bucketError.message
+          });
+        }
+      } else {
+        results.push({
+          bucketName,
+          success: true,
+          message: "Bucket already exists"
+        });
+      }
+    }
+    
+    return results.every(result => result.success);
   } catch (error) {
-    console.error("Error creating storage buckets:", error);
+    console.error("Error creating buckets:", error);
     return false;
   }
 };
 
 /**
- * Calls the storage-manager edge function for various operations
- * @param operation The operation to perform
- * @returns Promise resolving to the result of the operation
+ * Gets the names of all existing buckets
+ * @returns Array of bucket names
  */
-export const callStorageManager = async (operation: string) => {
+const getBucketNames = async (): Promise<string[]> => {
   try {
-    // Construct the URL for the edge function
-    const supabaseUrl = 'https://rehadpogugijylybwmoe.supabase.co';
-    const functionUrl = `${supabaseUrl}/functions/v1/storage-manager/${operation}`;
-    console.log(`Calling storage manager: ${functionUrl}`);
+    const { data: buckets, error } = await supabase.storage.listBuckets();
     
-    // Call the edge function without requiring authentication for maximum reliability
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({})
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Storage manager ${operation} failed:`, errorText);
-      return { success: false, error: errorText };
+    if (error) {
+      console.error("Error listing buckets:", error.message);
+      return [];
     }
     
-    const result = await response.json();
-    console.log(`Storage manager ${operation} result:`, result);
-    return result;
+    return buckets?.map(bucket => bucket.name) || [];
   } catch (error) {
-    console.error(`Error calling storage manager ${operation}:`, error);
-    return { success: false, error: String(error) };
+    console.error("Error getting bucket names:", error);
+    return [];
   }
 };
 
 /**
- * Attempts to create storage buckets using multiple methods, with fallbacks
- * @returns Promise resolving to a boolean indicating if buckets were created successfully
+ * Sets up storage buckets
  */
 export const setupStorageBuckets = async () => {
-  console.log("Setting up storage buckets...");
-  
   try {
-    // Try the edge function directly for maximum reliability
-    const result = await callStorageManager('force-create-buckets');
+    console.log("Setting up storage buckets...");
+    
+    // Try to use the edge function first
+    const result = await callStorageManager('setup');
+    
     if (result.success) {
-      return { success: true, message: "Buckets successfully created via edge function" };
+      return result;
     }
     
-    // Fall back to direct API method if edge function fails
-    const bucketsCreated = await createStorageBuckets();
-    if (bucketsCreated) {
-      return { success: true, message: "Buckets successfully created via API" };
-    }
+    // Fall back to direct API approach
+    const success = await createStorageBuckets();
     
-    return { success: false, message: "Failed to create buckets using all available methods" };
+    return {
+      success,
+      message: success ? "Storage buckets created via API" : "Failed to create storage buckets"
+    };
   } catch (error) {
-    console.error("Error in setupStorageBuckets:", error);
-    return { success: false, message: String(error) };
+    console.error("Failed to set up storage buckets:", error);
+    return {
+      success: false,
+      message: `Error: ${error.message}`
+    };
   }
 };
 
 /**
- * Tests permission by uploading a small test file
- * @param userId User ID to test permissions with
- * @returns Promise resolving to a boolean indicating if permission test passed
+ * Tests if a bucket has write permission by attempting to upload a test file
+ * @param bucketName Name of the bucket to test
+ * @returns Promise resolving to true if write permission exists
  */
-export const testBucketPermission = async (userId: string): Promise<boolean> => {
+export const testBucketPermission = async (bucketName: string): Promise<boolean> => {
   try {
-    const testBlob = new Blob(["test"], { type: "text/plain" });
-    const testFile = new File([testBlob], "test-permission.txt");
+    // Create a small test file
+    const testContent = new Uint8Array([1, 2, 3, 4]);
+    const testPath = `test-${Date.now()}.bin`;
     
-    const { data: permissionTest, error: permissionError } = await supabase.storage
-      .from('datasets')
-      .upload(`${userId}/test-permission.txt`, testFile);
-    
-    if (permissionError) {
-      console.error("Storage permission test failed:", permissionError);
+    // Try to upload
+    const { error: uploadError } = await supabase.storage
+      .from(bucketName)
+      .upload(testPath, testContent);
+      
+    if (uploadError) {
+      console.error(`No write permission for bucket ${bucketName}:`, uploadError);
       return false;
     }
     
-    console.log("Storage permission test passed");
-    await supabase.storage.from('datasets').remove([`${userId}/test-permission.txt`]);
+    // Clean up
+    await supabase.storage.from(bucketName).remove([testPath]);
+    
     return true;
-  } catch (permTestErr) {
-    console.error("Permission test failed:", permTestErr);
+  } catch (error) {
+    console.error(`Error testing bucket ${bucketName} permissions:`, error);
     return false;
+  }
+};
+
+/**
+ * Calls the storage-manager edge function
+ * @param action The action to call
+ * @returns Promise resolving to the function result
+ */
+export const callStorageManager = async (action: string): Promise<any> => {
+  try {
+    console.log(`Calling storage manager: ${supabase.functions.url}/${action}`);
+    
+    const { data, error } = await supabase.functions.invoke('storage-manager', {
+      body: { action },
+    });
+    
+    if (error) {
+      console.error(`Storage manager ${action} failed:`, error);
+      return { success: false, message: error.message };
+    }
+    
+    return data;
+  } catch (error) {
+    console.error(`Storage manager ${action} failed:`, error);
+    return { success: false, message: error.message };
   }
 };
