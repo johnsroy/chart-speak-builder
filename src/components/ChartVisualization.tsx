@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -165,6 +164,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           type: 'pie',
           radius: '60%',
           center: ['50%', '50%'],
+          // Fix: Use the pieData object array directly instead of attempting to convert to number[]
           data: pieData,
           emphasis: {
             itemStyle: {
