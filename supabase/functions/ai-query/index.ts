@@ -102,7 +102,7 @@ Return ONLY a JSON object with the following structure:
     if (model === 'anthropic' && anthropicApiKey) {
       console.log('Using Claude 3.7 API for analysis');
       
-      // Call Anthropic API
+      // Call Anthropic API - Fixed format to match Claude API requirements
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -113,8 +113,8 @@ Return ONLY a JSON object with the following structure:
         body: JSON.stringify({
           model: 'claude-3-sonnet-20240229',
           max_tokens: 1000,
+          system: systemPrompt, // Use system as a top-level parameter, not in messages
           messages: [
-            { role: 'system', content: systemPrompt },
             { role: 'user', content: query }
           ],
           temperature: 0.2

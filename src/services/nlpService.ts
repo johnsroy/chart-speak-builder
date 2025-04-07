@@ -67,6 +67,7 @@ export const processNLQuery = async (
       });
       
       if (response.error) {
+        console.error('AI query error:', response.error);
         throw new Error(`AI analysis failed: ${response.error.message}`);
       }
       
@@ -87,6 +88,11 @@ export const processNLQuery = async (
       // Ensure model_used is set
       if (!result.model_used) {
         result.model_used = model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o';
+      }
+      
+      // Make sure data is included in the result
+      if (!result.data && previewData) {
+        result.data = previewData;
       }
       
       return result;
