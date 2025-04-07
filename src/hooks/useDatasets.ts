@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,48 +13,8 @@ export const useDatasets = () => {
   const { toast } = useToast();
   const { isAuthenticated } = useAuth();
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadDatasets();
-    }
-  }, [isAuthenticated]);
-  
-  // Listen for dataset events
-  useEffect(() => {
-    const handleDatasetDeleted = (event: any) => {
-      console.log('Dataset deleted event received:', event.detail?.datasetId);
-      loadDatasets();
-      
-      // If the deleted dataset was selected, reset selection
-      if (event.detail?.datasetId && event.detail.datasetId === selectedDatasetId) {
-        setSelectedDatasetId(null);
-      }
-    };
-    
-    const handleDatasetUploaded = (event: any) => {
-      console.log('Dataset uploaded event received');
-      loadDatasets();
-      
-      // If there's a datasetId in the event, select it
-      if (event.detail?.datasetId) {
-        setSelectedDatasetId(event.detail.datasetId);
-      }
-    };
-    
-    // Add event listeners
-    window.addEventListener('dataset-deleted', handleDatasetDeleted);
-    window.addEventListener('dataset-upload-success', handleDatasetUploaded);
-    window.addEventListener('upload:success', handleDatasetUploaded);
-    
-    // Clean up
-    return () => {
-      window.removeEventListener('dataset-deleted', handleDatasetDeleted);
-      window.removeEventListener('dataset-upload-success', handleDatasetUploaded);
-      window.removeEventListener('upload:success', handleDatasetUploaded);
-    };
-  }, [selectedDatasetId]);
-
-  const loadDatasets = async () => {
+  // Extract loadDatasets as a useCallback to prevent recreation on each render
+  const loadDatasets = useCallback(async () => {
     setIsLoading(true);
     try {
       // Get all datasets
@@ -81,7 +41,55 @@ export const useDatasets = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedDatasetId, toast]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadDatasets();
+    }
+  }, [isAuthenticated, loadDatasets]);
+  
+  // Listen for dataset events
+  useEffect(() => {
+    const handleDatasetDeleted = (event: any) => {
+      console.log('Dataset deleted event received:', event.detail?.datasetId);
+      
+      // If the deleted dataset was selected, reset selection
+      if (event.detail?.datasetId && event.detail.datasetId === selectedDatasetId) {
+        setSelectedDatasetId(null);
+      }
+      
+      // Update datasets list by removing the deleted dataset
+      setDatasets(prevDatasets => 
+        prevDatasets.filter(dataset => dataset.id !== event.detail?.datasetId)
+      );
+      
+      // Also reload datasets to ensure we have the latest data
+      loadDatasets();
+    };
+    
+    const handleDatasetUploaded = (event: any) => {
+      console.log('Dataset uploaded event received');
+      loadDatasets();
+      
+      // If there's a datasetId in the event, select it
+      if (event.detail?.datasetId) {
+        setSelectedDatasetId(event.detail.datasetId);
+      }
+    };
+    
+    // Add event listeners
+    window.addEventListener('dataset-deleted', handleDatasetDeleted);
+    window.addEventListener('dataset-upload-success', handleDatasetUploaded);
+    window.addEventListener('upload:success', handleDatasetUploaded);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('dataset-deleted', handleDatasetDeleted);
+      window.removeEventListener('dataset-upload-success', handleDatasetUploaded);
+      window.removeEventListener('upload:success', handleDatasetUploaded);
+    };
+  }, [selectedDatasetId, loadDatasets]);
 
   return {
     datasets,

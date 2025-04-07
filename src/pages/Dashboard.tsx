@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,19 +17,22 @@ import DeleteDatasetDialog from '@/components/upload/DeleteDatasetDialog';
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, adminLogin } = useAuth();
-  const { datasets, isLoading, loadDatasets } = useDatasets();
+  const { datasets: allDatasets, isLoading, loadDatasets } = useDatasets();
   const [filterType, setFilterType] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
   const [duplicateWarnings, setDuplicateWarnings] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [datasets, setDatasets] = useState<any[]>([]);
 
+  // Update local datasets when allDatasets changes
   useEffect(() => {
-    if (!isLoading && datasets.length > 0) {
-      const uniqueDatasets = getUniqueDatasetsByFilename(datasets);
-      setDuplicateWarnings(uniqueDatasets.length < datasets.length);
+    if (!isLoading) {
+      const uniqueDatasets = getUniqueDatasetsByFilename(allDatasets);
+      setDatasets(uniqueDatasets);
+      setDuplicateWarnings(uniqueDatasets.length < allDatasets.length);
     }
-  }, [datasets, isLoading]);
+  }, [allDatasets, isLoading]);
 
   useEffect(() => {
     const setupAuth = async () => {
@@ -46,12 +50,14 @@ const Dashboard = () => {
     setupAuth();
   }, [isAuthenticated, user, adminLogin]);
 
+  // Event handler for dataset deletion
+  const handleDatasetDeleted = useCallback(() => {
+    // Refresh datasets after deletion
+    loadDatasets();
+  }, [loadDatasets]);
+
   useEffect(() => {
     const handleUploadSuccess = () => {
-      loadDatasets();
-    };
-
-    const handleDatasetDeleted = () => {
       loadDatasets();
     };
 
@@ -64,7 +70,7 @@ const Dashboard = () => {
       window.removeEventListener('upload:success', handleUploadSuccess);
       window.removeEventListener('dataset-deleted', handleDatasetDeleted);
     };
-  }, [loadDatasets]);
+  }, [loadDatasets, handleDatasetDeleted]);
 
   const handleNewDataset = () => {
     navigate("/upload");
@@ -90,18 +96,16 @@ const Dashboard = () => {
       setRefreshing(false);
     }
   };
-
-  const uniqueDatasets = getUniqueDatasetsByFilename(datasets);
   
   const filteredDatasets = filterType 
-    ? uniqueDatasets.filter(dataset => {
+    ? datasets.filter(dataset => {
         const fileExt = dataset.file_name.split('.').pop()?.toLowerCase();
         if (filterType === 'csv') return fileExt === 'csv';
         if (filterType === 'excel') return fileExt === 'xlsx' || fileExt === 'xls';
         if (filterType === 'json') return fileExt === 'json';
         return true;
       })
-    : uniqueDatasets;
+    : datasets;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
@@ -264,7 +268,7 @@ const Dashboard = () => {
         onOpenChange={setDeleteDialogOpen}
         datasetId={datasetToDelete?.id || null}
         datasetName={datasetToDelete?.name}
-        onDeleted={loadDatasets}
+        onDeleted={handleDatasetDeleted}
       />
     </div>
   );
