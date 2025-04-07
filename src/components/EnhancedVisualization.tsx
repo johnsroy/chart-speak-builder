@@ -1,10 +1,11 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Info } from 'lucide-react';
+import { Loader2, Info, Percent, Hash } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { QueryResult } from '@/services/types/queryTypes';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { 
   BarChart as RechartsBarChart,
   LineChart as RechartsLineChart,
@@ -22,6 +23,8 @@ interface EnhancedVisualizationProps {
   showTitle?: boolean;
 }
 
+type DisplayMode = 'values' | 'percentages';
+
 const COLORS = [
   '#8884d8', '#83a6ed', '#8dd1e1', '#82ca9d', 
   '#a4de6c', '#d0ed57', '#ffc658', '#ff8042',
@@ -36,6 +39,8 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   className = "",
   showTitle = true
 }) => {
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('values');
+
   if (!result) {
     return (
       <Card className={`flex justify-center items-center p-6 h-60 glass-card ${className}`}>
@@ -68,6 +73,9 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
       </Card>
     );
   }
+  
+  // Calculate total for percentage calculations
+  const total = chartData.reduce((acc, item) => acc + item.value, 0);
 
   return (
     <Card className={`glass-card overflow-hidden ${className}`}>
@@ -89,9 +97,28 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
         </CardHeader>
       )}
       <CardContent className={`${showTitle ? 'pt-4' : 'pt-6'} pb-6`}>
+        {(chartType === 'bar' || chartType === 'pie') && (
+          <div className="mb-4 flex justify-end">
+            <ToggleGroup 
+              type="single" 
+              value={displayMode}
+              onValueChange={(value) => value && setDisplayMode(value as DisplayMode)}
+              className="border rounded-md"
+            >
+              <ToggleGroupItem value="values" className="flex items-center gap-1">
+                <Hash className="h-3.5 w-3.5" />
+                <span className="text-xs">Values</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="percentages" className="flex items-center gap-1">
+                <Percent className="h-3.5 w-3.5" />
+                <span className="text-xs">Percentages</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        )}
         <div className="w-full" style={{ height: `${height}px` }}>
           <ResponsiveContainer width="100%" height="100%">
-            {renderChart(chartType, chartData, xAxis, yAxis)}
+            {renderChart(chartType, chartData, xAxis, yAxis, displayMode, total)}
           </ResponsiveContainer>
         </div>
         {result.explanation && (
@@ -105,7 +132,14 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
 };
 
 // Helper function to render the appropriate chart type
-const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?: string) => {
+const renderChart = (
+  chartType: string, 
+  chartData: any[], 
+  xAxis?: string, 
+  yAxis?: string,
+  displayMode: DisplayMode = 'values',
+  total: number = 0
+) => {
   switch (chartType) {
     case 'bar':
       return (
@@ -126,6 +160,13 @@ const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?
           <RechartsTooltip 
             contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
             labelStyle={{ color: '#eee' }}
+            formatter={(value: any, name: any) => {
+              if (displayMode === 'percentages') {
+                const percentage = ((value / total) * 100).toFixed(1);
+                return [`${percentage}%`, name];
+              }
+              return [value, name];
+            }}
           />
           <Legend wrapperStyle={{ paddingTop: 10 }} />
           <Bar 
@@ -133,6 +174,22 @@ const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?
             name={yAxis} 
             fill="url(#colorGradient)" 
             radius={[4, 4, 0, 0]} 
+            label={({x, y, width, value}) => {
+              const displayValue = displayMode === 'percentages' 
+                ? `${((value / total) * 100).toFixed(1)}%` 
+                : value;
+              return (
+                <text 
+                  x={x + width / 2} 
+                  y={y - 10} 
+                  fill="#ccc" 
+                  textAnchor="middle"
+                  fontSize={11}
+                >
+                  {displayValue}
+                </text>
+              );
+            }}
           />
           <defs>
             <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
@@ -177,27 +234,63 @@ const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?
     case 'pie':
       return (
         <RechartsPieChart
-          margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
+          margin={{ top: 30, right: 30, left: 30, bottom: 30 }}
         >
           <RechartsTooltip 
             contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
             labelStyle={{ color: '#eee' }}
-            formatter={(value, name) => [`${value}`, `${name}`]}
+            formatter={(value, name) => {
+              if (displayMode === 'percentages') {
+                const percentage = ((value / total) * 100).toFixed(1);
+                return [`${percentage}%`, `${name}`];
+              }
+              return [`${value}`, `${name}`];
+            }}
           />
-          <Legend layout="vertical" verticalAlign="middle" align="right" />
+          <Legend 
+            layout="horizontal" 
+            verticalAlign="bottom" 
+            align="center"
+            wrapperStyle={{ paddingTop: 20 }}
+          />
           <Pie
             data={chartData}
             cx="50%"
             cy="50%"
-            labelLine={false}
-            outerRadius={80}
+            labelLine={true}
+            outerRadius={100}
             fill="#8884d8"
             dataKey="value"
             nameKey="name"
-            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+            label={({name, percent, value}) => {
+              const displayValue = displayMode === 'percentages'
+                ? `${(percent * 100).toFixed(1)}%`
+                : value;
+              
+              // Only show label for segments that are large enough
+              return percent > 0.05 ? (
+                <text 
+                  x={0} 
+                  y={0} 
+                  textAnchor="middle" 
+                  fill="#fff"
+                  fontSize={12}
+                  fontWeight="bold"
+                >
+                  {displayValue}
+                </text>
+              ) : null;
+            }}
+            labelPosition={60}
+            isAnimationActive={true}
           >
             {chartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              <Cell 
+                key={`cell-${index}`} 
+                fill={COLORS[index % COLORS.length]}
+                stroke="#444"
+                strokeWidth={1}
+              />
             ))}
           </Pie>
         </RechartsPieChart>
