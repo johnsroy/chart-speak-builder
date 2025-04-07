@@ -77,24 +77,21 @@ export const DataTable: React.FC<DataTableProps> = ({
           return;
         }
         
-        // Check if we have preview data in session storage
+        // Check if we have preview data in the dataset object
         let previewDataFound = false;
         
         // Try to get preview data from dataset if available
-        if (dataset && dataset.preview_key) {
+        if (dataset && dataset.preview_data) {
           try {
-            const previewDataStr = sessionStorage.getItem(dataset.preview_key);
-            if (previewDataStr) {
-              const previewData = JSON.parse(previewDataStr);
-              if (Array.isArray(previewData) && previewData.length > 0) {
-                setData(previewData);
-                setColumns(Object.keys(previewData[0] || {}));
-                previewDataFound = true;
-                console.log("Loaded preview data from session storage key:", dataset.preview_key);
-              }
+            const previewData = dataset.preview_data;
+            if (Array.isArray(previewData) && previewData.length > 0) {
+              setData(previewData);
+              setColumns(Object.keys(previewData[0] || {}));
+              previewDataFound = true;
+              console.log("Using provided preview data from dataset object");
             }
           } catch (err) {
-            console.warn("Failed to load preview data from session storage:", err);
+            console.warn("Failed to use provided preview data:", err);
           }
         }
         
@@ -118,18 +115,37 @@ export const DataTable: React.FC<DataTableProps> = ({
         // Check if we have a last uploaded dataset ID in session storage
         try {
           const lastUploadedId = sessionStorage.getItem('last_uploaded_dataset');
-          const previewKey = sessionStorage.getItem('current_upload_preview_key');
           
-          if (lastUploadedId && previewKey) {
-            const previewDataStr = sessionStorage.getItem(previewKey);
-            if (previewDataStr) {
-              const previewData = JSON.parse(previewDataStr);
-              if (Array.isArray(previewData) && previewData.length > 0) {
-                setData(previewData);
-                setColumns(Object.keys(previewData[0] || {}));
-                setError(null);
-                console.log("Recovered using preview data from session storage");
+          if (lastUploadedId) {
+            // Try to load preview data from multiple possible storage keys
+            const possibleKeys = [
+              `preview_${lastUploadedId}`,
+              `upload_preview_${lastUploadedId}`,
+            ];
+            
+            let recoveredData = null;
+            
+            for (const key of possibleKeys) {
+              const previewDataStr = sessionStorage.getItem(key);
+              if (previewDataStr) {
+                try {
+                  const previewData = JSON.parse(previewDataStr);
+                  if (Array.isArray(previewData) && previewData.length > 0) {
+                    recoveredData = previewData;
+                    break;
+                  }
+                } catch (parseErr) {
+                  console.warn(`Failed to parse preview data for key ${key}:`, parseErr);
+                }
               }
+            }
+            
+            // If we found data in any of the keys, use it
+            if (recoveredData) {
+              setData(recoveredData);
+              setColumns(Object.keys(recoveredData[0] || {}));
+              setError(null);
+              console.log("Recovered using preview data from session storage");
             }
           }
         } catch (recoveryErr) {

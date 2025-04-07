@@ -367,12 +367,21 @@ export const dataService = {
       try {
         const dataset = await dataService.getDataset(datasetId);
         
-        if (dataset?.preview_key) {
-          const previewData = sessionStorage.getItem(dataset.preview_key);
-          if (previewData) {
-            console.log("Found preview data in session storage");
-            data = JSON.parse(previewData);
-            return data.slice(0, 200);
+        // Try to find preview data in session storage with various possible keys
+        if (dataset) {
+          const possibleKeys = [
+            `preview_${Date.now()}_${dataset.file_name}`,
+            `preview_${dataset.id}`,
+            `upload_preview_${dataset.id}`
+          ];
+          
+          for (const key of possibleKeys) {
+            const previewData = sessionStorage.getItem(key);
+            if (previewData) {
+              console.log(`Found preview data in session storage with key: ${key}`);
+              data = JSON.parse(previewData);
+              return data.slice(0, 200);
+            }
           }
         }
       } catch (sessionStorageError) {
