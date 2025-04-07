@@ -2,7 +2,7 @@
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 
-// Helper function to process AI query
+// Processing NL query 
 export const processNLQuery = async (
   datasetId: string,
   query: string
@@ -27,6 +27,72 @@ export const processNLQuery = async (
       columns: [],
       error: error instanceof Error ? error.message : 'An unknown error occurred',
     };
+  }
+};
+
+// NLP service with additional helper functions
+export const nlpService = {
+  processQuery: async (query: string, datasetId: string, model: 'openai' | 'anthropic' = 'openai'): Promise<QueryResult> => {
+    try {
+      console.log(`Processing query using ${model} model: "${query}"`);
+      // Process query through Edge function
+      const result = await processNLQuery(datasetId, query);
+      return result;
+    } catch (error) {
+      console.error('Error processing query:', error);
+      throw error;
+    }
+  },
+
+  getRecommendationsForDataset: (dataset: any): string[] => {
+    // Generate dataset-specific query recommendations
+    const recommendations = [
+      "Show me a summary of the main trends",
+      "Create a breakdown by category",
+      "Compare the top values in this dataset",
+      "Show the distribution across regions",
+      "What patterns can you find in this data?"
+    ];
+    
+    // If we have dataset schema, make more specific recommendations
+    if (dataset && dataset.column_schema) {
+      const columns = Object.keys(dataset.column_schema);
+      
+      // Look for date columns to suggest time analysis
+      const dateColumns = columns.filter(col => 
+        dataset.column_schema[col] === 'date' || 
+        col.toLowerCase().includes('date') || 
+        col.toLowerCase().includes('time') ||
+        col.toLowerCase().includes('year')
+      );
+      
+      if (dateColumns.length > 0) {
+        recommendations.push(`Show trends over time using ${dateColumns[0]}`);
+      }
+      
+      // Look for categorical columns to suggest breakdowns
+      const categoryColumns = columns.filter(col => 
+        dataset.column_schema[col] === 'string' && 
+        !col.toLowerCase().includes('id') &&
+        !col.toLowerCase().includes('name')
+      );
+      
+      if (categoryColumns.length > 0) {
+        recommendations.push(`Show distribution by ${categoryColumns[0]}`);
+      }
+      
+      // Look for numeric columns to suggest aggregations
+      const numericColumns = columns.filter(col => 
+        dataset.column_schema[col] === 'number' || 
+        dataset.column_schema[col] === 'integer'
+      );
+      
+      if (numericColumns.length > 0) {
+        recommendations.push(`What's the average ${numericColumns[0]} by category?`);
+      }
+    }
+    
+    return recommendations;
   }
 };
 

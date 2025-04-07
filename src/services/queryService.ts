@@ -4,11 +4,21 @@ import { QueryResult } from './types/queryTypes';
 
 export interface QueryConfig {
   datasetId: string;
+  chartType?: string;
   dimensions: string[];
   metrics: string[];
   filters?: FilterCondition[];
-  chartType?: string;
   limit?: number;
+  measures?: Array<{field: string, aggregation: string}>;
+  chart_type?: string; // For backward compatibility
+}
+
+export interface SavedQuery {
+  name: string;
+  dataset_id: string;
+  query_type: string;
+  query_text: string;
+  query_config: any;
 }
 
 export interface FilterCondition {
@@ -39,13 +49,16 @@ export const queryService = {
     }
   },
 
-  saveQuery: async (name: string, config: QueryConfig): Promise<{ id: string }> => {
+  saveQuery: async (query: SavedQuery): Promise<{ id: string }> => {
     try {
       const { data, error } = await supabase
         .from('saved_queries')
         .insert({
-          name,
-          config,
+          name: query.name,
+          config: query.query_config,
+          query_type: query.query_type,
+          query_text: query.query_text,
+          dataset_id: query.dataset_id,
           user_id: (await supabase.auth.getUser()).data.user?.id,
         })
         .select('id')

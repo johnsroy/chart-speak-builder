@@ -14,7 +14,7 @@ export const setupMockSupabaseFunctions = () => {
   }
   
   // Mock the invoke function
-  supabase.functions.invoke = async (functionName: string, options: any = {}) => {
+  supabase.functions.invoke = async <T = any>(functionName: string, options: any = {}) => {
     console.log(`Mock invoking function: ${functionName}`, options);
     
     // Simulate network delay
@@ -33,34 +33,37 @@ export const setupMockSupabaseFunctions = () => {
               data: chartData.barChart,
               columns: ['category', 'value'],
               chart_type: 'bar',
+              chartType: 'bar', // Add this for component compatibility
               x_axis: 'category',
               y_axis: 'value',
               chart_title: 'Sample Bar Chart'
             },
             error: null
-          };
+          } as unknown as { data: T; error: null };
         case 'pie':
           return {
             data: {
               data: chartData.pieChart,
               columns: ['segment', 'value'],
               chart_type: 'pie',
+              chartType: 'pie',
               chart_title: 'Sample Pie Chart'
             },
             error: null
-          };
+          } as unknown as { data: T; error: null };
         case 'line':
           return {
             data: {
               data: chartData.lineChart,
               columns: ['date', 'value'],
               chart_type: 'line',
+              chartType: 'line',
               x_axis: 'date',
               y_axis: 'value',
               chart_title: 'Sample Line Chart'
             },
             error: null
-          };
+          } as unknown as { data: T; error: null };
         default:
           return {
             data: {
@@ -68,7 +71,7 @@ export const setupMockSupabaseFunctions = () => {
               columns: []
             },
             error: 'Unsupported chart type'
-          };
+          } as unknown as { data: T; error: string };
       }
     }
     
@@ -80,13 +83,14 @@ export const setupMockSupabaseFunctions = () => {
           data: chartData.barChart,
           columns: ['product_category', 'sales'],
           chart_type: 'bar',
+          chartType: 'bar',
           x_axis: 'product_category',
           y_axis: 'sales',
           chart_title: 'Sales by Product Category',
           explanation: `I analyzed your query "${query}" and determined that a bar chart showing sales by product category would best represent this data.`
         },
         error: null
-      };
+      } as unknown as { data: T; error: null };
     }
     
     // Default fallback
@@ -95,7 +99,7 @@ export const setupMockSupabaseFunctions = () => {
       error: {
         message: `Mock function ${functionName} not implemented`
       }
-    };
+    } as unknown as { data: T; error: { message: string } };
   };
 };
 
@@ -113,13 +117,13 @@ export const testDataQuery = async (queryType: string): Promise<QueryResult> => 
     let config;
     switch (queryType) {
       case 'barChart':
-        config = sampleQueries.barChart;
+        config = sampleQueries.barChart.query_config;
         break;
       case 'pieChart':
-        config = sampleQueries.pieChart;
+        config = sampleQueries.pieChart.query_config;
         break;
       case 'lineChart':
-        config = sampleQueries.lineChart;
+        config = sampleQueries.lineChart.query_config;
         break;
       default:
         throw new Error(`Invalid query type: ${queryType}`);

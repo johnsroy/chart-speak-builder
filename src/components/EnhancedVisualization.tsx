@@ -14,9 +14,8 @@ import {
   Cell 
 } from 'recharts';
 import { BarChart, LineChart, PieChart, ScatterChart } from 'recharts';
-import { QueryResult } from '@/services/nlpService';
+import { QueryResult } from '@/services/types/queryTypes';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { COLOR_PALETTES, generateChartColors } from '@/utils/chartUtils';
 import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon } from 'lucide-react';
 
 interface EnhancedVisualizationProps {
@@ -28,13 +27,16 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
     return <div>No visualization data available</div>;
   }
 
-  const { data, chartType, explanation, chartConfig } = result;
+  // Use either chartType or chart_type property
+  const chartType = result.chartType || result.chart_type || 'bar';
+  const { data, explanation } = result;
+  const chartConfig = result.chartConfig || {};
   
   if (!data || data.length === 0) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>{chartConfig?.title || 'No Data'}</CardTitle>
+          <CardTitle>{chartConfig?.title || result.chart_title || 'No Data'}</CardTitle>
           <CardDescription>No data available for visualization</CardDescription>
         </CardHeader>
         <CardContent>
@@ -49,16 +51,16 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
   // Get all properties from the first item
   const firstItem = data[0];
   // Figure out which property to use for x-axis (name or category) if not specified
-  const xAxisField = chartConfig?.xAxis || Object.keys(firstItem)[0];
+  const xAxisField = chartConfig?.xAxis || result.x_axis || Object.keys(firstItem)[0];
   
   // Figure out which property to use for y-axis (value or amount) if not specified
   // Prefer numeric fields
-  const yAxisField = chartConfig?.yAxis || Object.keys(firstItem).find(key => 
+  const yAxisField = chartConfig?.yAxis || result.y_axis || Object.keys(firstItem).find(key => 
     typeof firstItem[key] === 'number' && key !== xAxisField
   ) || Object.keys(firstItem)[1];
 
   // Generate colors
-  const chartColors = generateChartColors(data.length);
+  const chartColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe', '#00C49F', '#FFBB28', '#FF8042'];
 
   // Common tooltip props
   const tooltipProps = {
@@ -219,7 +221,7 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ result })
       <CardHeader className="flex flex-row items-center space-y-0 gap-2">
         {getChartIcon()}
         <div>
-          <CardTitle>{chartConfig?.title || 'Data Visualization'}</CardTitle>
+          <CardTitle>{chartConfig?.title || result.chart_title || 'Data Visualization'}</CardTitle>
           {chartConfig?.subtitle && <CardDescription>{chartConfig.subtitle}</CardDescription>}
         </div>
       </CardHeader>

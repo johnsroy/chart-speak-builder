@@ -1,6 +1,6 @@
 
 import { Dataset } from "@/services/types/datasetTypes";
-import { QueryConfig, SavedQuery } from "@/services/queryService";
+import { SavedQuery } from "@/services/queryService";
 
 /**
  * Sample dataset for testing
@@ -54,10 +54,12 @@ export const sampleQueries: Record<string, SavedQuery> = {
     query_type: "ui_builder",
     query_text: "",
     query_config: {
-      dataset_id: "test-dataset-123",
+      datasetId: "test-dataset-123",
+      chartType: "bar",
       chart_type: "bar",
       measures: [{ field: "sales", aggregation: "sum" }],
-      dimensions: [{ field: "month" }],
+      dimensions: ["month"],
+      metrics: ["sales"],
       limit: 12
     }
   },
@@ -67,10 +69,12 @@ export const sampleQueries: Record<string, SavedQuery> = {
     query_type: "ui_builder",
     query_text: "",
     query_config: {
-      dataset_id: "test-dataset-123",
+      datasetId: "test-dataset-123",
+      chartType: "pie",
       chart_type: "pie",
       measures: [{ field: "sales", aggregation: "sum" }],
-      dimensions: [{ field: "region" }],
+      dimensions: ["region"],
+      metrics: ["sales"],
       limit: 4
     }
   },
@@ -80,10 +84,12 @@ export const sampleQueries: Record<string, SavedQuery> = {
     query_type: "ui_builder",
     query_text: "",
     query_config: {
-      dataset_id: "test-dataset-123",
+      datasetId: "test-dataset-123",
+      chartType: "line",
       chart_type: "line",
       measures: [{ field: "customers", aggregation: "sum" }],
-      dimensions: [{ field: "month" }],
+      dimensions: ["month"],
+      metrics: ["customers"],
       limit: 12
     }
   },
@@ -93,10 +99,12 @@ export const sampleQueries: Record<string, SavedQuery> = {
     query_type: "natural_language",
     query_text: "Show me sales by product category",
     query_config: {
-      dataset_id: "test-dataset-123",
+      datasetId: "test-dataset-123",
+      chartType: "bar",
       chart_type: "bar",
       measures: [],
-      dimensions: []
+      dimensions: [],
+      metrics: []
     }
   }
 };
@@ -107,6 +115,7 @@ export const sampleQueries: Record<string, SavedQuery> = {
 export const sampleAIResponses = {
   salesByCategory: {
     chart_type: "bar",
+    chartType: "bar",
     x_axis: "product_category",
     y_axis: "sales",
     chart_title: "Sales by Product Category",
@@ -120,6 +129,7 @@ export const sampleAIResponses = {
   },
   monthlySales: {
     chart_type: "line",
+    chartType: "line",
     x_axis: "month",
     y_axis: "sales",
     chart_title: "Monthly Sales Trends",

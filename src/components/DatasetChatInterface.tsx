@@ -1,10 +1,10 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Send, BarChart, LineChart, PieChart, Download } from 'lucide-react';
 import { Card, CardContent } from "@/components/ui/card";
-import { nlpService, QueryResult } from '@/services/nlpService';
+import { QueryResult } from '@/services/types/queryTypes';
+import { nlpService } from '@/services/nlpService';
 import { useToast } from '@/hooks/use-toast';
 import EnhancedVisualization from './EnhancedVisualization';
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,20 +40,17 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const bottomRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Fetch dataset and generate recommendations
   useEffect(() => {
     const fetchDatasetAndRecommendations = async () => {
       try {
         const datasetData = await dataService.getDataset(datasetId);
         setDataset(datasetData);
         
-        // Generate dataset-specific recommendations
         const suggestedQueries = nlpService.getRecommendationsForDataset(datasetData);
         setRecommendations(suggestedQueries);
         
       } catch (error) {
         console.error('Error fetching dataset details:', error);
-        // Use general recommendations if dataset fetch fails
         setRecommendations([
           "Show me a summary of the main trends",
           "Create a breakdown by category",
@@ -67,7 +64,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     fetchDatasetAndRecommendations();
   }, [datasetId]);
 
-  // Welcome message when chat is first opened
   useEffect(() => {
     if (messages.length === 0) {
       setMessages([{
@@ -79,7 +75,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     }
   }, [datasetName, messages.length]);
 
-  // Scroll to bottom whenever messages change
   useEffect(() => {
     if (bottomRef.current) {
       bottomRef.current.scrollIntoView({
@@ -105,7 +100,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     setIsLoading(true);
     
     try {
-      // Process query with NLP service
       const result = await nlpService.processQuery(inputText, datasetId, activeModel);
       
       const aiResponse: Message = {
@@ -148,7 +142,11 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     }
   };
 
-  const getChartTypeIcon = (chartType?: string) => {
+  const getChartTypeIcon = (result?: QueryResult) => {
+    if (!result) return <BarChart className="h-4 w-4 text-purple-400" />;
+    
+    const chartType = result.chartType || result.chart_type || 'bar';
+    
     switch (chartType) {
       case 'bar':
         return <BarChart className="h-4 w-4 text-purple-400" />;
@@ -231,12 +229,11 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                     
                     <p className="text-sm">{message.content}</p>
                     
-                    {/* Show visualization if result exists */}
                     {message.result && (
                       <div className="mt-4">
                         <div className="flex justify-between items-center mb-2">
                           <div className="flex items-center">
-                            {getChartTypeIcon(message.result.chartType)}
+                            {getChartTypeIcon(message.result)}
                             <span className="ml-1 text-xs font-medium">
                               {message.result.chartType.charAt(0).toUpperCase() + message.result.chartType.slice(1)} Chart
                             </span>
