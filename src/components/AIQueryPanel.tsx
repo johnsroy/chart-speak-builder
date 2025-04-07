@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,14 +12,14 @@ import { dataService } from '@/services/dataService';
 interface AIQueryPanelProps {
   datasetId: string;
   onQueryResult: (result: QueryResult) => void;
-  useDirectAccess?: boolean; // Add the missing prop
-  dataPreview?: any[]; // Add dataPreview prop
+  useDirectAccess?: boolean;
+  dataPreview?: any[];
 }
 
 const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
   datasetId,
   onQueryResult,
-  useDirectAccess = false, // Set default value
+  useDirectAccess = false,
   dataPreview = []
 }) => {
   const [query, setQuery] = useState('');
@@ -29,6 +28,7 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
   const [datasetSchema, setDatasetSchema] = useState<any>(null);
   const [isLoadingSchema, setIsLoadingSchema] = useState(true);
   const [schemaError, setSchemaError] = useState<string | null>(null);
+  const [localDataPreview, setLocalDataPreview] = useState<any[] | null>(null);
   
   const { toast } = useToast();
 
@@ -50,6 +50,14 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
           console.warn("Dataset found but schema is missing:", dataset);
           setSchemaError("Dataset schema is unavailable");
         }
+
+        if (useDirectAccess && (!dataPreview || dataPreview.length === 0) && !localDataPreview) {
+          const preview = await dataService.previewDataset(datasetId);
+          if (preview && Array.isArray(preview) && preview.length > 0) {
+            console.log(`Loaded ${preview.length} rows of preview data for direct access`);
+            setLocalDataPreview(preview);
+          }
+        }
       } catch (error) {
         console.error('Error loading dataset schema:', error);
         setSchemaError(`Failed to load dataset schema: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -59,7 +67,7 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
     };
     
     loadDatasetInfo();
-  }, [datasetId]);
+  }, [datasetId, dataPreview, useDirectAccess]);
 
   const handleQuerySubmit = async () => {
     if (!query.trim()) {
@@ -83,9 +91,11 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
     setIsLoading(true);
     try {
       console.log(`Processing query for dataset: ${datasetId} using model: ${activeModel}`);
-      // Use processQuery method from nlpService
+      
       const result = await nlpService.processQuery(query, datasetId, activeModel);
+      
       onQueryResult(result);
+      
       toast({
         title: "Query processed successfully",
         description: "Check out the visualization below."
@@ -107,12 +117,10 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
     const columns = Object.keys(datasetSchema);
     if (columns.length === 0) return "Analyze this dataset";
 
-    // Check for common columns to generate more meaningful suggestions
     const hasCategoricalColumn = columns.some(col => datasetSchema[col] === 'string' || col.toLowerCase().includes('category') || col.toLowerCase().includes('type'));
     const hasDateColumn = columns.some(col => datasetSchema[col] === 'date' || col.toLowerCase().includes('date') || col.toLowerCase().includes('year'));
     const hasNumericColumn = columns.some(col => datasetSchema[col] === 'number' || datasetSchema[col] === 'integer');
 
-    // Generate relevant query based on schema
     if (hasCategoricalColumn && hasNumericColumn) {
       const categoryCol = columns.find(col => datasetSchema[col] === 'string' || col.toLowerCase().includes('category') || col.toLowerCase().includes('type'));
       return `Show me a breakdown by ${categoryCol || 'category'}`;
@@ -125,7 +133,6 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
     }
   };
 
-  // Display error state if schema loading fails
   if (schemaError && !isLoadingSchema) {
     return (
       <Card className="glass-card">
@@ -238,3 +245,7 @@ const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
 };
 
 export default AIQueryPanel;
+
+function generateSuggestedQuery() {
+  return "Tell me about this dataset";
+}

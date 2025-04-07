@@ -1,15 +1,18 @@
 
+/**
+ * Query result definition for AI and direct queries
+ */
 export interface QueryResult {
-  data: any[];
-  columns: string[] | Array<{name: string, type: string}>; // Updated to support both string[] and object array
-  error?: string;
-  chartType: string;
-  chart_type?: string;
-  xAxis: string;
-  x_axis?: string;
-  yAxis: string;
-  y_axis?: string;
+  data?: any[];
+  columns?: Array<{name: string, type: string}> | string[];
+  chartType?: string;
+  chart_type?: string; // For backward compatibility
+  xAxis?: string;
+  x_axis?: string; // For backward compatibility
+  yAxis?: string;
+  y_axis?: string; // For backward compatibility
   chart_title?: string;
   explanation?: string;
+  error?: string;
   query_id?: string;
 }
