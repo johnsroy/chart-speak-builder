@@ -1,7 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from './components/ui/toaster';
 import { Toaster as SonnerToaster } from 'sonner';
 import NavBar from './components/NavBar';
@@ -33,37 +32,35 @@ function App() {
   }
 
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <Router>
-        <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
-          <NavBar />
-          <main className="container mx-auto px-4 py-8">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              
-              {/* Add Test Route */}
-              <Route path="/test" element={<TestAnalysisTools />} />
-              
-              {/* Protected routes */}
-              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
-              <Route path="/visualize/:datasetId" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
-              <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
-              <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
-              <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+    <Router>
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
+        <NavBar />
+        <main className="container mx-auto px-4 py-8">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            
+            {/* Add Test Route */}
+            <Route path="/test" element={<TestAnalysisTools />} />
+            
+            {/* Protected routes */}
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
+            <Route path="/visualize/:datasetId" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
+            <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+            <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
+            <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 
-              {/* Auth routes */}
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-            </Routes>
-          </main>
-        </div>
-        <Toaster />
-        <SonnerToaster position="top-right" richColors />
-      </Router>
-    </ThemeProvider>
+            {/* Auth routes */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+          </Routes>
+        </main>
+      </div>
+      <Toaster />
+      <SonnerToaster position="top-right" richColors />
+    </Router>
   );
 }
 

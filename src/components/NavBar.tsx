@@ -9,14 +9,14 @@ import {
   Beaker as BeakerIcon,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
 const NavBar = () => {
-  const { user, signOut } = useAuth();
+  const { user, logout: signOut } = useAuth();
   const navigate = useNavigate();
 
   const navigationItems = [
