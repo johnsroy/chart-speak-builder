@@ -1,195 +1,211 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { query, dataset_id, dataset_name, column_schema, model = 'openai' } = await req.json();
-
-    if (!query || !dataset_id) {
-      return new Response(
-        JSON.stringify({ 
-          error: "Missing required parameters: query and dataset_id are required" 
-        }),
-        { 
-          headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-          status: 400 
-        }
-      );
+    const { datasetId, query, model = 'openai' } = await req.json();
+    
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    
+    console.log(`Processing NL query for dataset ${datasetId} using ${model} model`);
+    
+    if (!datasetId) {
+      throw new Error('Dataset ID is required');
     }
-
-    // Get the appropriate API key based on the model
-    const apiKey = model === 'anthropic' 
-      ? Deno.env.get("ANTHROPIC_API_KEY")
-      : Deno.env.get("OPENAI_API_KEY");
     
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: `${model === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key not configured` }),
-        { 
-          headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-          status: 500 
-        }
-      );
+    if (!query || query.trim() === '') {
+      throw new Error('Query text is required');
     }
-
-    // Get the column types information
-    const columnsInfo = column_schema ? 
-      Object.entries(column_schema).map(([name, type]) => `${name} (${type})`).join(", ") : 
-      "No column information available";
-
-    // Construct system prompt
-    const systemContent = `You are an AI data analyst specialized in analyzing datasets. 
-    You will receive queries about a dataset named "${dataset_name}" with columns: ${columnsInfo}.
-    Your task is to analyze the query and provide a JSON response with instructions on how to visualize this data. 
-    Think carefully about what chart type would be most appropriate for the query.
     
-    For the response, provide a JSON object with the following fields:
-    - chart_type: The type of chart to use (bar, line, pie, scatter)
-    - x_axis: The column to use for the x-axis 
-    - y_axis: The column to use for the y-axis
-    - chart_title: A descriptive title for the chart
-    - chart_subtitle (optional): A subtitle providing context
-    - explanation: A brief explanation of the data insights
-    - x_axis_title (optional): Label for x-axis
-    - y_axis_title (optional): Label for y-axis
+    // Connect to Supabase
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const supabase = createClient(supabaseUrl, supabaseKey);
     
-    Format your response as valid JSON only, nothing else.`;
-
-    // Choose endpoint and parameters based on the model
-    let apiEndpoint, requestBody;
-    
-    if (model === 'anthropic') {
-      apiEndpoint = "https://api.anthropic.com/v1/messages";
-      requestBody = JSON.stringify({
-        model: "claude-3-sonnet-20240229",
-        messages: [
-          { role: "user", content: systemContent + "\n\n" + query }
-        ],
-        max_tokens: 1024,
-        temperature: 0.5
-      });
-    } else {
-      apiEndpoint = "https://api.openai.com/v1/chat/completions";
-      requestBody = JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: systemContent },
-          { role: "user", content: query }
-        ],
-        temperature: 0.5,
-      });
+    // Get dataset info
+    const { data: dataset, error: datasetError } = await supabase
+      .from('datasets')
+      .select('*')
+      .eq('id', datasetId)
+      .single();
+      
+    if (datasetError) {
+      throw new Error(`Failed to find dataset: ${datasetError.message}`);
     }
-
-    // Send request to appropriate API
-    const response = await fetch(apiEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": model === 'anthropic' ? `Bearer ${apiKey}` : `Bearer ${apiKey}`,
-        ...(model === 'anthropic' ? { "Anthropic-Version": "2023-06-01" } : {})
-      },
-      body: requestBody
+    
+    // Get the dataset data preview
+    const { data: preview, error: previewError } = await supabase.functions.invoke('data-processor', {
+      body: { action: 'preview', dataset_id: datasetId }
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-      console.error(`${model === 'anthropic' ? 'Anthropic' : 'OpenAI'} API error:`, error);
-      throw new Error(`${model === 'anthropic' ? 'Anthropic' : 'OpenAI'} API error: ${response.status} ${error}`);
-    }
-
-    const result = await response.json();
     
-    // Extract and parse the response content based on the model
-    let analysisResult;
-    try {
-      const content = model === 'anthropic' 
-        ? result.content[0].text
-        : result.choices[0].message.content;
-      // Try to parse the JSON response
-      analysisResult = JSON.parse(content);
-    } catch (e) {
-      console.error("Error parsing AI response:", e);
-      throw new Error("Failed to parse AI response");
+    if (previewError) {
+      throw new Error(`Failed to get dataset preview: ${previewError.message}`);
     }
+    
+    // Prepare the data for analysis
+    const dataToAnalyze = preview?.data || [];
+    const schema = dataset.column_schema || {};
+    const columnNames = Object.keys(schema);
+    
+    console.log(`Got ${dataToAnalyze.length} rows and ${columnNames.length} columns for analysis`);
+    
+    // Create a prompt for the AI
+    const systemPrompt = `
+You are an expert data analyst assistant that helps analyze datasets and suggest visualizations.
+Your task is to interpret natural language queries about data and provide visualization recommendations.
 
-    // Generate dummy data for demonstration (in a real app, you'd use real data)
-    const mockData = generateMockData(
-      analysisResult.chart_type,
-      analysisResult.x_axis,
-      analysisResult.y_axis,
-      column_schema
-    );
+Dataset Information:
+- Name: ${dataset.name || 'Unnamed Dataset'}
+- Description: ${dataset.description || 'No description provided'}
+- Available Columns: ${columnNames.join(', ')}
+- Schema: ${JSON.stringify(schema)}
+- Sample Data: ${JSON.stringify(dataToAnalyze.slice(0, 3))}
 
-    // Return the analysis result with mock data
+Instructions:
+1. Analyze the user's query to understand what visualization they want.
+2. Determine the most appropriate chart type (bar, line, pie, scatter, etc.) based on the query and data.
+3. Select appropriate columns for x-axis and y-axis based on the data types.
+4. Provide a descriptive title and brief explanation for the visualization.
+5. Never include your reasoning or explanations in the response - ONLY return a JSON object.
+
+Return ONLY a JSON object with the following structure:
+{
+  "chart_type": "bar|line|pie|scatter",
+  "x_axis": "column_name",
+  "y_axis": "column_name",
+  "chart_title": "Descriptive title",
+  "explanation": "Brief explanation of what the visualization shows"
+}
+`;
+
+    // Detect which API to use
+    let aiResponse;
+    
+    if (model === 'anthropic' && anthropicApiKey) {
+      console.log('Using Claude API for analysis');
+      
+      // Call Anthropic API
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicApiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-sonnet-20240229',
+          max_tokens: 1000,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: query }
+          ]
+        })
+      });
+      
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(`Claude API error: ${responseData.error?.message || JSON.stringify(responseData)}`);
+      }
+      
+      const claudeResponse = responseData.content[0].text;
+      
+      // Extract JSON from Claude's response
+      try {
+        aiResponse = JSON.parse(claudeResponse.match(/\{.*\}/s)[0]);
+      } catch (err) {
+        console.error('Error parsing Claude JSON response:', err);
+        throw new Error('Invalid response format from Claude API');
+      }
+    } 
+    else if (openaiApiKey) {
+      console.log('Using OpenAI API for analysis');
+      
+      // Call OpenAI API
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openaiApiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: query }
+          ],
+          temperature: 0.3,
+        })
+      });
+      
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${responseData.error?.message || JSON.stringify(responseData)}`);
+      }
+      
+      const openaiResponse = responseData.choices[0].message.content;
+      
+      // Extract JSON from OpenAI's response
+      try {
+        aiResponse = JSON.parse(openaiResponse);
+      } catch (err) {
+        console.error('Error parsing OpenAI JSON response:', err);
+        throw new Error('Invalid response format from OpenAI API');
+      }
+    } 
+    else {
+      throw new Error('No API keys available for AI analysis');
+    }
+    
+    // Validate AI response
+    if (!aiResponse.chart_type || !aiResponse.x_axis || !aiResponse.y_axis) {
+      throw new Error('Invalid AI response format - missing required fields');
+    }
+    
+    // Return the complete response with data
+    const result = {
+      chart_type: aiResponse.chart_type,
+      x_axis: aiResponse.x_axis,
+      y_axis: aiResponse.y_axis,
+      chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
+      explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
+      data: dataToAnalyze,
+      columns: columnNames
+    };
+    
+    console.log(`Analysis complete: Chart type=${result.chart_type}, x=${result.x_axis}, y=${result.y_axis}`);
+    
+    return new Response(JSON.stringify(result), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error in AI query function:', error);
+    
+    // Provide a more detailed error response
     return new Response(
       JSON.stringify({
-        ...analysisResult,
-        data: mockData,
-        columns: ["x_value", "y_value"]
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-
-  } catch (error) {
-    console.error("Error processing AI query:", error);
-    
-    return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : "An unknown error occurred" 
+        error: error.message || 'An unknown error occurred',
+        data: [],
+        columns: []
       }),
       { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, 
-        status: 500 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400
       }
     );
   }
 });
-
-// Helper function to generate mock data for demonstration
-function generateMockData(chartType: string, xAxis: string, yAxis: string, columnSchema: any) {
-  const data = [];
-  
-  // Generate sample values based on the column type
-  const xAxisType = columnSchema?.[xAxis] || "string";
-  const yAxisType = columnSchema?.[yAxis] || "number";
-  
-  // Categories for categorical data
-  const categories = ["Category A", "Category B", "Category C", "Category D", "Category E"];
-  
-  for (let i = 0; i < 5; i++) {
-    let xValue;
-    
-    // Generate appropriate x-axis values based on type
-    if (xAxisType === "date") {
-      // Generate dates within the last month
-      const date = new Date();
-      date.setDate(date.getDate() - i * 7);
-      xValue = date.toISOString().split('T')[0];
-    } else if (xAxisType === "number" || xAxisType === "integer") {
-      xValue = i * 10;
-    } else {
-      // Default to categorical
-      xValue = categories[i];
-    }
-    
-    // Generate y-axis values (typically numeric)
-    const yValue = Math.floor(Math.random() * 100) + 10;
-    
-    data.push({
-      [xAxis]: xValue,
-      [yAxis]: yValue
-    });
-  }
-  
-  return data;
-}

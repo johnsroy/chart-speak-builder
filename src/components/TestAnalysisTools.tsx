@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { mockSupabaseClient, testNLPQuery, testDataQuery, processUploadedFile } from '@/utils/test/mockServices';
 import { setupMockSupabaseFunctions, restoreMockSupabaseFunctions } from '@/utils/test/mockServices';
-import { Loader2, Send, BarChart, LineChart, PieChart, UploadCloud } from 'lucide-react';
+import { Loader2, Send, BarChart, LineChart, PieChart, UploadCloud, FileText, RefreshCw } from 'lucide-react';
 import EnhancedVisualization from './EnhancedVisualization';
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 const TestAnalysisTools = () => {
   const [inputText, setInputText] = useState<string>('');
@@ -79,7 +80,7 @@ const TestAnalysisTools = () => {
     setDebugInfo('Processing NLP query...');
     
     try {
-      console.log(`Sending NLP query: "${inputText}"`);
+      console.log(`Sending NLP query: "${inputText}" with processed data:`, processedData?.length || 0);
       // Use uploaded data if available, otherwise use sample data
       const result = await testNLPQuery(inputText, processedData);
       console.log('NLP query result:', result);
@@ -126,14 +127,31 @@ const TestAnalysisTools = () => {
     }
   };
 
+  const clearData = () => {
+    setUploadedFile(null);
+    setProcessedData(null);
+    setDataColumns([]);
+    setQueryResult(null);
+    setDebugInfo('Data cleared');
+    toast.info("Data and results cleared");
+  };
+
   return (
     <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">Test Analysis Tools</h1>
       
       {/* File upload section */}
-      <Card className="mb-6">
+      <Card className="mb-6 border border-purple-500/30 bg-black/50">
         <CardHeader>
-          <CardTitle>Upload Data for Testing</CardTitle>
+          <CardTitle className="flex items-center">
+            <FileText className="h-5 w-5 mr-2" />
+            Upload Data for Testing
+            {processedData && (
+              <Badge variant="outline" className="ml-2 bg-green-900/50">
+                {processedData.length} rows
+              </Badge>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-2">
@@ -156,6 +174,17 @@ const TestAnalysisTools = () => {
               )}
               {isProcessingFile ? 'Processing...' : 'Upload'}
             </Button>
+
+            {processedData && (
+              <Button 
+                variant="outline" 
+                onClick={clearData}
+                className="bg-red-900/50 hover:bg-red-800"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Clear
+              </Button>
+            )}
           </div>
           
           {uploadedFile && (
@@ -189,7 +218,7 @@ const TestAnalysisTools = () => {
         </TabsList>
         
         <TabsContent value="test-nlp" className="space-y-4">
-          <Card>
+          <Card className="border border-purple-500/30 bg-black/50">
             <CardHeader>
               <CardTitle>Natural Language Queries</CardTitle>
             </CardHeader>
@@ -217,7 +246,7 @@ const TestAnalysisTools = () => {
                   value={inputText} 
                   onChange={e => setInputText(e.target.value)} 
                   onKeyDown={handleKeyPress} 
-                  placeholder="Ask a question about your dataset..." 
+                  placeholder={processedData ? "Ask a question about your data..." : "Upload data first or try a sample query"} 
                   disabled={isLoading} 
                   className="flex-1" 
                 />
@@ -230,35 +259,58 @@ const TestAnalysisTools = () => {
               </div>
               
               <div className="flex flex-wrap gap-2 mt-4">
-                {['Show sales by region', 'Compare monthly trends', 'What are the top products?', 'Show distribution by category'].map((query) => (
-                  <Button 
-                    key={query}
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setInputText(query)}
-                  >
-                    {query}
-                  </Button>
-                ))}
+                {dataColumns.length > 0 ? (
+                  // Dynamic query suggestions based on data columns
+                  <>
+                    {dataColumns.some(col => typeof col === 'string' && col.toLowerCase().includes('sales')) && (
+                      <Button variant="outline" size="sm" onClick={() => setInputText("Show sales trends")}>
+                        Show sales trends
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => setInputText(`Compare ${dataColumns[0]} distribution`)}>
+                      Compare {dataColumns[0]} distribution
+                    </Button>
+                    {dataColumns.length > 1 && (
+                      <Button variant="outline" size="sm" onClick={() => setInputText(`Show ${dataColumns[1]} by ${dataColumns[0]}`)}>
+                        Show {dataColumns[1]} by {dataColumns[0]}
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => setInputText("Create a pie chart")}>
+                      Create a pie chart
+                    </Button>
+                  </>
+                ) : (
+                  // Default query suggestions
+                  ['Show sales by region', 'Compare monthly trends', 'What are the top products?', 'Show distribution by category'].map((query) => (
+                    <Button 
+                      key={query}
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setInputText(query)}
+                    >
+                      {query}
+                    </Button>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
         
         <TabsContent value="test-presets" className="space-y-4">
-          <Card>
+          <Card className="border border-purple-500/30 bg-black/50">
             <CardHeader>
               <CardTitle>Preset Visualizations</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => handlePresetQuery('barChart')} disabled={isLoading}>
+                <Button onClick={() => handlePresetQuery('barChart')} disabled={isLoading} className="bg-violet-700 hover:bg-violet-600">
                   <BarChart className="h-4 w-4 mr-2" /> Bar Chart
                 </Button>
-                <Button onClick={() => handlePresetQuery('lineChart')} disabled={isLoading}>
+                <Button onClick={() => handlePresetQuery('lineChart')} disabled={isLoading} className="bg-blue-700 hover:bg-blue-600">
                   <LineChart className="h-4 w-4 mr-2" /> Line Chart
                 </Button>
-                <Button onClick={() => handlePresetQuery('pieChart')} disabled={isLoading}>
+                <Button onClick={() => handlePresetQuery('pieChart')} disabled={isLoading} className="bg-amber-700 hover:bg-amber-600">
                   <PieChart className="h-4 w-4 mr-2" /> Pie Chart
                 </Button>
               </div>
@@ -267,15 +319,20 @@ const TestAnalysisTools = () => {
         </TabsContent>
       </Tabs>
       
-      <div className="mb-4 p-4 bg-gray-800 rounded-md">
+      <div className="mb-4 p-4 bg-gray-800/50 rounded-md border border-gray-700">
         <h3 className="text-sm font-medium mb-2">Debug Info:</h3>
-        <pre className="text-xs">{debugInfo}</pre>
+        <pre className="text-xs text-gray-300 whitespace-pre-wrap">{debugInfo}</pre>
       </div>
       
       {queryResult && (
-        <Card className="mt-4">
+        <Card className="mt-4 border border-purple-500/30 bg-black/50">
           <CardHeader>
-            <CardTitle>Visualization Result</CardTitle>
+            <CardTitle>
+              {queryResult.chart_title || 'Visualization Result'}
+            </CardTitle>
+            {queryResult.explanation && (
+              <p className="text-sm text-gray-300">{queryResult.explanation}</p>
+            )}
           </CardHeader>
           <CardContent>
             <EnhancedVisualization result={queryResult} />
