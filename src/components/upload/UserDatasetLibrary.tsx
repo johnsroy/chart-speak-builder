@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Database, Loader2, BarChart2, Eye, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -5,48 +6,39 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { dataService } from '@/services/dataService';
 import { useNavigate } from 'react-router-dom';
+import { Dataset } from '@/services/types/datasetTypes';
 
-const UserDatasetLibrary: React.FC = () => {
-  const [datasets, setDatasets] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface UserDatasetLibraryProps {
+  datasets: Dataset[];
+  isLoading: boolean;
+  selectedDatasetId: string | null;
+  setSelectedDatasetId: (id: string | null) => void;
+  onVisualizeClick?: () => void;
+}
+
+const UserDatasetLibrary: React.FC<UserDatasetLibraryProps> = ({ 
+  datasets,
+  isLoading,
+  selectedDatasetId,
+  setSelectedDatasetId,
+  onVisualizeClick
+}) => {
   const { toast } = useToast();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    loadDatasets();
-    
-    // Add event listener for dataset changes
-    window.addEventListener('dataset-deleted', loadDatasets);
-    window.addEventListener('dataset-upload-success', loadDatasets);
-    
-    return () => {
-      window.removeEventListener('dataset-deleted', loadDatasets);
-      window.removeEventListener('dataset-upload-success', loadDatasets);
-    };
-  }, []);
+  const [error, setError] = useState<string | null>(null);
 
   const loadDatasets = async () => {
-    setIsLoading(true);
-    try {
-      const data = await dataService.getDatasets();
-      setDatasets(data);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to load datasets:', err);
-      setError('Failed to load datasets. Please try again.');
-      toast({
-        title: 'Error',
-        description: 'Failed to load datasets',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    // This function is kept for compatibility but we're now using props
+    // Current implementation is managed by the parent component
   };
 
   const handleViewDataset = (datasetId: string) => {
-    navigate(`/visualize/${datasetId}`);
+    if (onVisualizeClick) {
+      setSelectedDatasetId(datasetId);
+      onVisualizeClick();
+    } else {
+      navigate(`/visualize/${datasetId}`);
+    }
   };
 
   const handleDeleteDataset = async (datasetId: string) => {
@@ -56,7 +48,10 @@ const UserDatasetLibrary: React.FC = () => {
         title: 'Success',
         description: 'Dataset deleted successfully',
       });
-      loadDatasets();
+      
+      // Dispatch event to refresh datasets in parent components
+      const deleteEvent = new CustomEvent('dataset-deleted');
+      window.dispatchEvent(deleteEvent);
     } catch (err) {
       console.error('Failed to delete dataset:', err);
       toast({
