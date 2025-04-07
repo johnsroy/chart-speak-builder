@@ -291,7 +291,7 @@ const UploadArea = () => {
         setDatasetName={setDatasetName}
         datasetDescription={datasetDescription}
         setDatasetDescription={setDatasetDescription}
-        schemaPreview={schemaPreview}
+        schemaPreview={schemaPreview as any[]} // Fix: Cast to any[] to resolve the type error
         isUploading={isUploading}
         uploadProgress={uploadProgress}
         uploadError={uploadError}

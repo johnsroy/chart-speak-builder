@@ -92,6 +92,20 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
             handleDrop={handleDrop}
             handleFileInput={handleFileInput}
             selectedFile={selectedFile}
+            datasetName={datasetName}
+            setDatasetName={setDatasetName}
+            datasetDescription={datasetDescription}
+            setDatasetDescription={setDatasetDescription}
+            schemaPreview={schemaPreview ? schemaPreview : null}
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            uploadError={uploadError}
+            retryUpload={retryUpload}
+            handleUpload={handleUpload}
+            uploadedDatasetId={uploadedDatasetId}
+            showOverwriteConfirm={showOverwriteConfirm}
+            handleOverwriteConfirm={handleOverwriteConfirm}
+            handleOverwriteCancel={handleOverwriteCancel}
           />
           
           {selectedFile && (
@@ -216,7 +230,7 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
       
       {activeTab === "transform" && (
         <VisualizeDatasetPanel
-          datasetId={selectedDatasetId || undefined}
+          datasets={selectedDatasetId ? [{ id: selectedDatasetId }] : []}
           showVisualize={showVisualizeAfterUpload}
           setShowVisualize={setShowVisualizeAfterUpload}
         />

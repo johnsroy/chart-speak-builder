@@ -86,7 +86,7 @@ const Upload = () => {
             <p className="text-xl text-gray-300 max-w-3xl mx-auto mb-12">
               Drag and drop your CSV, Excel, or connect to your cloud storage to start generating insights.
             </p>
-            <div className="glass-card p-2 mx-auto max-w-4xl">
+            <div className="mx-auto max-w-4xl">
               <UploadArea />
             </div>
           </div>
