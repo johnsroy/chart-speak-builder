@@ -30,7 +30,17 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
     try {
       await dataService.deleteDataset(datasetId);
       toast.success("Dataset deleted successfully");
+      
+      // Dispatch custom event for dataset deletion
+      const event = new CustomEvent('dataset-deleted', {
+        detail: { datasetId }
+      });
+      window.dispatchEvent(event);
+      
+      // Call the onDeleted callback to refresh the list
       onDeleted();
+      
+      // Close the dialog
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to delete dataset:", error);

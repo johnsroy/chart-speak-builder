@@ -21,11 +21,18 @@ export const useDatasets = () => {
   
   // Listen for dataset events
   useEffect(() => {
-    const handleDatasetDeleted = () => {
+    const handleDatasetDeleted = (event: any) => {
+      console.log('Dataset deleted event received:', event.detail?.datasetId);
       loadDatasets();
+      
+      // If the deleted dataset was selected, reset selection
+      if (event.detail?.datasetId && event.detail.datasetId === selectedDatasetId) {
+        setSelectedDatasetId(null);
+      }
     };
     
     const handleDatasetUploaded = (event: any) => {
+      console.log('Dataset uploaded event received');
       loadDatasets();
       
       // If there's a datasetId in the event, select it
@@ -45,7 +52,7 @@ export const useDatasets = () => {
       window.removeEventListener('dataset-upload-success', handleDatasetUploaded);
       window.removeEventListener('upload:success', handleDatasetUploaded);
     };
-  }, []);
+  }, [selectedDatasetId]);
 
   const loadDatasets = async () => {
     setIsLoading(true);

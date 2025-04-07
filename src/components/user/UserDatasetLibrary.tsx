@@ -3,12 +3,13 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Database, HardDrive, PieChart, FileBarChart, RefreshCw } from 'lucide-react';
+import { Loader2, Database, HardDrive, PieChart, FileBarChart, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import { Dataset } from '@/services/types/datasetTypes';
 import { formatByteSize } from '@/utils/storageUtils';
+import DeleteDatasetDialog from '@/components/upload/DeleteDatasetDialog';
 
 const UserDatasetLibrary = () => {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -21,6 +22,8 @@ const UserDatasetLibrary = () => {
     storageTypes: string[];
     totalFields: number;
   }>({ totalSize: 0, datasetCount: 0, formattedSize: '0 B', storageTypes: [], totalFields: 0 });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
   
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -49,26 +52,12 @@ const UserDatasetLibrary = () => {
     }
   };
   
-  const handleDeleteDataset = async (datasetId: string) => {
-    if (!datasetId) return;
-    
-    try {
-      await dataService.deleteDataset(datasetId);
-      
-      // Update the datasets list after deletion
-      setDatasets(prev => prev.filter(dataset => dataset.id !== datasetId));
-      
-      // Update storage stats
-      if (user?.id) {
-        const stats = await dataService.getStorageStats(user.id);
-        setStorageStats(stats);
-      }
-      
-      toast.success('Dataset deleted successfully');
-    } catch (error) {
-      console.error('Error deleting dataset:', error);
-      toast.error('Failed to delete dataset');
-    }
+  const handleDeleteClick = (dataset: Dataset) => {
+    setDatasetToDelete({
+      id: dataset.id,
+      name: dataset.name
+    });
+    setDeleteDialogOpen(true);
   };
   
   const handleRefreshData = async () => {
@@ -145,7 +134,7 @@ const UserDatasetLibrary = () => {
           </div>
         ) : (
           datasets.map((dataset) => (
-            <Card key={dataset.id} className="hover:shadow-lg transition-shadow">
+            <Card key={dataset.id} className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden" onClick={() => navigate(`/visualize/${dataset.id}`)}>
               <CardHeader className="pb-2">
                 <CardTitle className="truncate text-base" title={dataset.name}>
                   {dataset.name}
@@ -165,15 +154,23 @@ const UserDatasetLibrary = () => {
                 </div>
                 <div className="flex gap-2 justify-end">
                   <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => handleDeleteDataset(dataset.id)}
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(dataset);
+                    }}
+                    className="text-red-500 hover:text-red-700 hover:bg-red-100/10"
                   >
+                    <Trash2 className="h-4 w-4 mr-1" />
                     Delete
                   </Button>
                   <Button 
                     size="sm" 
-                    onClick={() => navigate(`/visualize/${dataset.id}`)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/visualize/${dataset.id}`);
+                    }}
                   >
                     <PieChart className="h-4 w-4 mr-1" />
                     Visualize
@@ -184,6 +181,15 @@ const UserDatasetLibrary = () => {
           ))
         )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <DeleteDatasetDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        datasetId={datasetToDelete?.id || null}
+        datasetName={datasetToDelete?.name}
+        onDeleted={loadData}
+      />
     </div>
   );
 };
