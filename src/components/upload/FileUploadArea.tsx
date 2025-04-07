@@ -60,6 +60,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   // Dispatch custom event when upload is successful
   useEffect(() => {
     if (uploadedDatasetId) {
+      console.log("Dispatching upload:success event with dataset ID:", uploadedDatasetId);
       // Dispatch a custom event that the upload page can listen for
       const event = new CustomEvent('upload:success', { 
         detail: { datasetId: uploadedDatasetId } 

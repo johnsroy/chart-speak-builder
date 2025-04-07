@@ -95,6 +95,10 @@ export const useFileUpload = () => {
           description: "A file with the same name already exists. You can upload it with a new name or overwrite the existing file.",
           variant: "warning"
         });
+        
+        // Show overwrite confirmation immediately
+        setDatasetToOverwrite(existingWithSameName.id);
+        setShowOverwriteConfirm(true);
       }
       
       previewSchemaInference(file);
@@ -154,7 +158,7 @@ export const useFileUpload = () => {
       return;
     }
 
-    // Check if file with same name exists
+    // Check if file with same name exists and prompt for overwrite
     const duplicateDataset = existingDatasets.find(dataset => dataset.file_name === selectedFile.name);
     if (duplicateDataset) {
       setDatasetToOverwrite(duplicateDataset.id);
@@ -205,10 +209,18 @@ export const useFileUpload = () => {
         });
         
         // Dispatch a custom event for upload success that other components can listen for
+        console.log("Dispatching dataset-upload-success event with dataset ID:", dataset.id);
         const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
           detail: { datasetId: dataset.id }
         });
         window.dispatchEvent(uploadSuccessEvent);
+        
+        // Also dispatch the upload:success event directly for the Upload page
+        console.log("Dispatching upload:success event with dataset ID:", dataset.id);
+        const uploadEvent = new CustomEvent('upload:success', {
+          detail: { datasetId: dataset.id }
+        });
+        window.dispatchEvent(uploadEvent);
         
         return dataset;
       } catch (error) {
@@ -247,6 +259,7 @@ export const useFileUpload = () => {
       try {
         // Delete the existing dataset
         await dataService.deleteDataset(datasetToOverwrite);
+        toast.success("Previous version of the file deleted");
         
         // Now upload the new dataset
         await handleUpload(isAuthenticated, userId);

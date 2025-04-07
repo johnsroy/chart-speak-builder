@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -132,6 +133,7 @@ const Dashboard = () => {
       })
     : datasets;
   
+  // Ensure we only show the most recent version of each file name
   const uniqueDatasets = filteredDatasets.reduce((acc, current) => {
     const existingIndex = acc.findIndex(item => item.file_name === current.file_name);
     
@@ -227,7 +229,7 @@ const Dashboard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {uniqueDatasets.map(dataset => (
                   <Card key={dataset.id} className="glass-card hover:bg-white/5 transition-colors cursor-pointer overflow-hidden" onClick={() => navigate(`/visualize/${dataset.id}`)}>
-                    <CardHeader className="relative">
+                    <CardHeader className="relative pb-2">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
                           <Button variant="ghost" size="icon" className="absolute right-4 top-4">
@@ -254,8 +256,10 @@ const Dashboard = () => {
                         </DropdownMenuContent>
                       </DropdownMenu>
                       
-                      <CardTitle className="truncate pr-6">{dataset.name}</CardTitle>
-                      <CardDescription className="truncate">
+                      <CardTitle className="text-base truncate pr-10" title={dataset.name}>
+                        {dataset.name}
+                      </CardTitle>
+                      <CardDescription className="truncate text-xs" title={dataset.file_name}>
                         {dataset.file_name} • {(dataset.file_size / (1024 * 1024)).toFixed(2)} MB
                       </CardDescription>
                     </CardHeader>
@@ -284,7 +288,7 @@ const Dashboard = () => {
                         </div>
                       </div>
                     </CardContent>
-                    <CardFooter className="truncate">
+                    <CardFooter className="truncate pt-0">
                       <p className="text-xs text-gray-400">
                         Last updated {formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}
                       </p>

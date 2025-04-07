@@ -33,10 +33,15 @@ const Upload = () => {
         
         if (newProgress >= 100) {
           clearInterval(progressInterval);
-          // Redirect to dashboard after processing is complete
+          // Redirect to visualize page with dataset ID after processing completes
+          toast.success("Dataset processing complete!", {
+            description: "Redirecting you to visualization page..."
+          });
           navigate(`/visualize/${event.detail.datasetId}`);
         }
       }, interval);
+
+      return () => clearInterval(progressInterval);
     };
     
     // Add event listener
