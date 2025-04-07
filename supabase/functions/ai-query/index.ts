@@ -47,42 +47,25 @@ serve(async (req) => {
       throw new Error(`Failed to find dataset: ${datasetError.message}`);
     }
     
-    // Get the dataset data preview
-    let dataToAnalyze = previewData;
+    // Ensure we have data to analyze
+    if (!previewData || previewData.length === 0) {
+      console.error('No preview data provided');
+      throw new Error('Dataset preview data is required for analysis');
+    }
+
+    // Get schema info
     let schema = dataset.column_schema || {};
     
-    // If no preview data was passed, try to get it from the data-processor
-    if (!dataToAnalyze || dataToAnalyze.length === 0) {
-      try {
-        const { data: preview, error: previewError } = await supabase.functions.invoke('data-processor', {
-          body: { action: 'preview', dataset_id: datasetId }
-        });
-        
-        if (previewError) {
-          console.error('Failed to get dataset preview:', previewError);
-        } else if (preview && preview.data) {
-          dataToAnalyze = preview.data;
-          if (!schema || Object.keys(schema).length === 0) {
-            schema = preview.schema || {};
-          }
-        }
-      } catch (error) {
-        console.error('Error calling data-processor:', error);
-      }
-    }
-    
-    // If we still don't have data, create some fallback data
-    if (!dataToAnalyze || dataToAnalyze.length === 0) {
-      console.log('No data available, creating fallback data');
-      dataToAnalyze = createFallbackData(dataset.name || 'Dataset');
-      schema = inferSchema(dataToAnalyze[0] || {});
+    // If no schema provided, infer it from the preview data
+    if (!schema || Object.keys(schema).length === 0) {
+      schema = inferSchema(previewData[0] || {});
     }
     
     const columnNames = Object.keys(schema).length > 0 
       ? Object.keys(schema) 
-      : Object.keys(dataToAnalyze[0] || {});
+      : Object.keys(previewData[0] || {});
     
-    console.log(`Got ${dataToAnalyze.length} rows and ${columnNames.length} columns for analysis`);
+    console.log(`Got ${previewData.length} rows and ${columnNames.length} columns for analysis`);
     
     // Create a prompt for the AI
     const systemPrompt = `
@@ -94,7 +77,7 @@ Dataset Information:
 - Description: ${dataset.description || 'No description provided'}
 - Available Columns: ${columnNames.join(', ')}
 - Schema: ${JSON.stringify(schema)}
-- Sample Data: ${JSON.stringify(dataToAnalyze.slice(0, 3))}
+- Sample Data: ${JSON.stringify(previewData.slice(0, 3))}
 
 Instructions:
 1. Analyze the user's query to understand what visualization they want.
@@ -202,8 +185,7 @@ Return ONLY a JSON object with the following structure:
     // Validate AI response
     if (!aiResponse.chart_type || !aiResponse.x_axis || !aiResponse.y_axis) {
       console.error('Invalid AI response format:', aiResponse);
-      // Create fallback response with sensible defaults
-      aiResponse = createFallbackResponse(dataToAnalyze, query);
+      throw new Error('AI returned incomplete analysis results');
     }
     
     // Get user ID from dataset
@@ -247,7 +229,7 @@ Return ONLY a JSON object with the following structure:
           yAxis: aiResponse.y_axis, 
           chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
           explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
-          data: dataToAnalyze,
+          data: previewData,
           columns: columnNames,
           query_id: savedQuery?.id
         };
@@ -272,7 +254,7 @@ Return ONLY a JSON object with the following structure:
       yAxis: aiResponse.y_axis, 
       chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
       explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
-      data: dataToAnalyze,
+      data: previewData,
       columns: columnNames
     };
     
@@ -288,8 +270,6 @@ Return ONLY a JSON object with the following structure:
     return new Response(
       JSON.stringify({
         error: error.message || 'An unknown error occurred',
-        data: [],
-        columns: []
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -298,88 +278,6 @@ Return ONLY a JSON object with the following structure:
     );
   }
 });
-
-// Helper function to create fallback data
-function createFallbackData(datasetName: string) {
-  const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
-  const years = [2020, 2021, 2022, 2023, 2024];
-  const products = ['Product X', 'Product Y', 'Product Z'];
-  const regions = ['North', 'South', 'East', 'West'];
-  
-  const data = [];
-  
-  for (const category of categories) {
-    for (const year of years.slice(0, 3)) {
-      for (const region of regions.slice(0, 2)) {
-        const product = products[Math.floor(Math.random() * products.length)];
-        
-        data.push({
-          Category: category,
-          Year: year,
-          Region: region,
-          Product: product,
-          Value: Math.floor(Math.random() * 1000),
-          Revenue: Math.floor(Math.random() * 10000) / 100,
-          Count: Math.floor(Math.random() * 100),
-          Growth: Math.floor(Math.random() * 40) - 20
-        });
-      }
-    }
-  }
-  
-  return data.slice(0, 100); // Limit to 100 rows for performance
-}
-
-// Helper function to create a fallback AI response
-function createFallbackResponse(data: any[], query: string) {
-  // Extract column names
-  if (!data || data.length === 0) {
-    return {
-      chart_type: "bar",
-      x_axis: "Category",
-      y_axis: "Value",
-      chart_title: "Default Chart",
-      explanation: "This is a default visualization created when AI analysis failed."
-    };
-  }
-  
-  const sampleRow = data[0];
-  const keys = Object.keys(sampleRow);
-  
-  // Find a suitable categorical column for x-axis
-  const categoricalColumns = keys.filter(key => 
-    typeof sampleRow[key] === 'string' &&
-    !key.toLowerCase().includes('id')
-  );
-  
-  // Find a suitable numerical column for y-axis
-  const numericalColumns = keys.filter(key => 
-    typeof sampleRow[key] === 'number'
-  );
-  
-  const xAxis = categoricalColumns[0] || keys[0];
-  const yAxis = numericalColumns[0] || keys[1] || keys[0];
-  
-  // Determine a suitable chart type
-  let chartType = "bar";
-  if (query.toLowerCase().includes("time") || 
-      query.toLowerCase().includes("trend") ||
-      keys.some(key => key.toLowerCase().includes("date") || key.toLowerCase().includes("time") || key.toLowerCase().includes("year"))) {
-    chartType = "line";
-  } else if (query.toLowerCase().includes("distribution") || 
-             query.toLowerCase().includes("proportion") || 
-             query.toLowerCase().includes("pie")) {
-    chartType = "pie";
-  }
-  
-  return {
-    chart_type: chartType,
-    x_axis: xAxis,
-    y_axis: yAxis,
-    chart_title: `${yAxis} by ${xAxis}`,
-    explanation: `This chart shows the ${yAxis} across different ${xAxis} categories.`
-  };
-}
 
 // Helper function to infer schema from data
 function inferSchema(sample: Record<string, any>) {

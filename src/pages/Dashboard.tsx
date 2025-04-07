@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -134,13 +133,12 @@ const Dashboard = () => {
     : datasets;
   
   const uniqueDatasets = filteredDatasets.reduce((acc, current) => {
-    const existingDataset = acc.find(item => item.file_name === current.file_name);
+    const existingIndex = acc.findIndex(item => item.file_name === current.file_name);
     
-    if (!existingDataset) {
+    if (existingIndex === -1) {
       acc.push(current);
-    } else if (new Date(current.updated_at) > new Date(existingDataset.updated_at)) {
-      const index = acc.indexOf(existingDataset);
-      acc[index] = current;
+    } else if (new Date(current.updated_at) > new Date(acc[existingIndex].updated_at)) {
+      acc[existingIndex] = current;
     }
     
     return acc;

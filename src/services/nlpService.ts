@@ -24,7 +24,7 @@ export const processNLQuery = async (
       throw new Error(`Could not retrieve dataset: ${datasetError.message}`);
     }
     
-    // Get preview data first to ensure we have something to work with
+    // Get preview data to send to the AI function
     const previewResponse = await supabase.functions.invoke('data-processor', {
       body: { 
         action: 'preview', 
@@ -34,39 +34,22 @@ export const processNLQuery = async (
     
     if (previewResponse.error) {
       console.error('Error retrieving dataset preview:', previewResponse.error);
-      toast.error('Failed to retrieve dataset data');
       throw new Error(`Could not retrieve dataset preview: ${previewResponse.error.message}`);
     }
 
-    // Now call the AI query function with the dataset information
+    // Now call the AI query function with the dataset information and preview data
     const response = await supabase.functions.invoke('ai-query', {
       body: { 
         datasetId, 
         query,
         model,
-        // Pass along preview data as fallback
         previewData: previewResponse.data?.data || []
       }
     });
     
     if (response.error) {
       console.error('AI Query function error:', response.error);
-      toast.error('AI Query failed, using preview data as fallback');
-      
-      // Create fallback query result using preview data
-      const fallbackResult: QueryResult = {
-        data: previewResponse.data?.data || [],
-        columns: Object.keys((previewResponse.data?.data && previewResponse.data?.data[0]) || {}),
-        error: `AI analysis failed: ${response.error.message}`,
-        chartType: 'bar',
-        xAxis: Object.keys((previewResponse.data?.data && previewResponse.data?.data[0]) || {})[0] || 'category',
-        yAxis: Object.keys((previewResponse.data?.data && previewResponse.data?.data[0]) || {}).find(col => 
-          typeof previewResponse.data?.data[0][col] === 'number'
-        ) || 'value',
-        explanation: 'Showing dataset preview as AI analysis failed.'
-      };
-      
-      return fallbackResult;
+      throw new Error(`AI analysis failed: ${response.error.message}`);
     }
     
     console.log('AI query response:', response.data);
@@ -86,12 +69,7 @@ export const processNLQuery = async (
     return result;
   } catch (error) {
     console.error('Error in NLP query:', error);
-    toast.error('Error processing query');
-    return {
-      data: [],
-      columns: [],
-      error: error instanceof Error ? error.message : 'An unknown error occurred',
-    };
+    throw error;
   }
 };
 
