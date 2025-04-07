@@ -59,6 +59,12 @@ export const queryService = {
         data: [],
         columns: [],
         error: error instanceof Error ? error.message : 'An unknown error occurred',
+        chartType: 'bar', // Default chart type
+        xAxis: '', // Empty default
+        yAxis: '', // Empty default
+        chart_type: 'bar', // For backwards compatibility
+        x_axis: '',
+        y_axis: ''
       };
     }
   },
