@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Info, Percent, Hash, PieChart, BarChart as BarChartIcon, LineChart as LineChartIcon } from 'lucide-react';
@@ -186,6 +185,11 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
         {result.explanation && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800">
             <p className="text-sm text-muted-foreground">{result.explanation}</p>
+            {result.model_used && (
+              <div className="mt-2 text-xs text-right text-muted-foreground">
+                Generated using {result.model_used}
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -373,7 +377,6 @@ const renderChart = ({
             dataKey="value"
             nameKey="name"
             label={({name, percent, value, cx, cy, midAngle, innerRadius, outerRadius }) => {
-              // Only show label for segments that are large enough
               if (percent < 0.05) return null;
               
               const RADIAN = Math.PI / 180;
@@ -391,7 +394,7 @@ const renderChart = ({
                   fontSize={12}
                 >
                   {displayMode === 'percentages'
-                    ? formatPercentage(value, total)
+                    ? `${(percent * 100).toFixed(1)}%`
                     : formatChartValue(value)}
                 </text>
               );
@@ -400,21 +403,60 @@ const renderChart = ({
             onMouseLeave={onPieLeave}
             activeIndex={activeIndex !== null ? activeIndex : undefined}
             activeShape={(props) => {
-              const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+              const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, name, value } = props;
+              const percent = value / total;
+              
               return (
-                <Sector
-                  cx={cx}
-                  cy={cy}
-                  innerRadius={innerRadius}
-                  outerRadius={outerRadius + 10}
-                  startAngle={startAngle}
-                  endAngle={endAngle}
-                  fill={fill}
-                />
+                <>
+                  <Sector
+                    cx={cx}
+                    cy={cy}
+                    innerRadius={innerRadius}
+                    outerRadius={outerRadius + 10}
+                    startAngle={startAngle}
+                    endAngle={endAngle}
+                    fill={fill}
+                    opacity={0.9}
+                    stroke="#333"
+                    strokeWidth={1}
+                  />
+                  <Sector
+                    cx={cx}
+                    cy={cy}
+                    startAngle={startAngle}
+                    endAngle={endAngle}
+                    innerRadius={innerRadius - 4}
+                    outerRadius={innerRadius - 2}
+                    fill={fill}
+                  />
+                  <text
+                    x={cx}
+                    y={cy - 20}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="#fff"
+                    fontSize={16}
+                    fontWeight="bold"
+                  >
+                    {name}
+                  </text>
+                  <text
+                    x={cx}
+                    y={cy + 10}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="#fff"
+                    fontSize={14}
+                  >
+                    {displayMode === 'percentages'
+                      ? `${(percent * 100).toFixed(1)}%`
+                      : formatChartValue(value)}
+                  </text>
+                </>
               );
             }}
           >
-            {chartData.map((_, index) => (
+            {chartData.map((entry, index) => (
               <Cell 
                 key={`cell-${index}`} 
                 fill={colors[index % colors.length]}
@@ -467,15 +509,14 @@ const prepareChartData = (result: QueryResult) => {
       return [];
     }
     
-    // Extract and transform data for visualization
     return result.data
       .map(item => ({
         name: String(item[xAxis] || ''),
         value: Number(item[yAxis] || 0)
       }))
       .filter(item => !isNaN(item.value) && item.name)
-      .sort((a, b) => b.value - a.value) // Sort from highest to lowest value
-      .slice(0, 20); // Limit to 20 items maximum for readability
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 20);
   } catch (error) {
     console.error('Error preparing chart data:', error);
     return [];

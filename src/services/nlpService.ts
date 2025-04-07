@@ -84,6 +84,11 @@ export const processNLQuery = async (
         result.chartType = result.chart_type;
       }
       
+      // Ensure model_used is set
+      if (!result.model_used) {
+        result.model_used = model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o';
+      }
+      
       return result;
     } catch (aiQueryError) {
       console.warn('AI query edge function failed, falling back to local processing:', aiQueryError);

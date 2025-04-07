@@ -56,4 +56,3 @@ verify_jwt = false
 
 [functions.ai-query]
 verify_jwt = false
-
