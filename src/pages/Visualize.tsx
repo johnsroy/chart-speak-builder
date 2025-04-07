@@ -396,7 +396,7 @@ const Visualize = () => {
               <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
                 <TabsTrigger value="chat" className="flex items-center justify-center gap-2">
                   <MessageSquare className="h-4 w-4" />
-                  Chat (Claude 3.7)
+                  Talk to me
                 </TabsTrigger>
                 <TabsTrigger value="query" className="flex items-center justify-center gap-2">
                   <BrainCircuit className="h-4 w-4" />

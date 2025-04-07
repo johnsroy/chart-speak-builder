@@ -3,13 +3,12 @@ import React from "react";
 import {
   Home as HomeIcon,
   LayoutDashboard as LayoutDashboardIcon,
-  List as ListIcon,
   Settings as SettingsIcon,
   User as UserIcon,
   Beaker as BeakerIcon,
   BarChart3 as BarChartIcon,
   Database as DatabaseIcon,
-  BrainCircuit as BrainCircuitIcon,
+  MessageSquare as MessageSquareIcon,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -48,9 +47,9 @@ const NavBar = () => {
       adminOnly: false,
     },
     {
-      name: "AI Query",
+      name: "Talk to me",
       path: "/analyze",
-      icon: <BrainCircuitIcon className="h-5 w-5" />,
+      icon: <MessageSquareIcon className="h-5 w-5" />,
       adminOnly: false,
     },
     {

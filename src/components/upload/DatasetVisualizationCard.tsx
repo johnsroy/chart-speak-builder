@@ -1,12 +1,17 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import ChartVisualization from '@/components/ChartVisualization';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart, TableIcon } from 'lucide-react';
+import { 
+  BarChart, TableIcon, LineChart, PieChart, CircleDot, AreaChart,
+  Circle, CircleDashed, BarChartBig, BarChartHorizontal, ChevronDown
+} from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { dataService } from '@/services/dataService';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ChartType, getSuitableChartTypes, getChartTypeName } from '@/utils/chartSuggestionUtils';
 
 export interface DatasetVisualizationCardProps {
   datasetId?: string;
@@ -31,10 +36,12 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
 }) => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'chart' | 'table'>('chart');
+  const [selectedChartType, setSelectedChartType] = useState<ChartType>('bar');
   const [dataPreview, setDataPreview] = useState<any[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const [suitableChartTypes, setSuitableChartTypes] = useState<ChartType[]>(['bar', 'line', 'pie', 'table']);
 
   // Determine which dataset ID to use
   const effectiveDatasetId = datasetId || externalSelectedId || internalSelectedId;
@@ -42,7 +49,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   const isLoading = externalLoading || false;
 
   React.useEffect(() => {
-    if (activeView === 'table' && effectiveDatasetId && !dataPreview) {
+    if ((activeView === 'table' || activeView === 'chart') && effectiveDatasetId && !dataPreview) {
       loadDataPreview(effectiveDatasetId);
     }
   }, [activeView, effectiveDatasetId]);
@@ -58,6 +65,19 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
       }
     }
   }, [datasets, effectiveDatasetId, externalSetSelectedId, isMultiDataset]);
+
+  // Determine suitable chart types based on data
+  useEffect(() => {
+    if (dataPreview && dataPreview.length > 0) {
+      const suggestedTypes = getSuitableChartTypes(dataPreview);
+      setSuitableChartTypes(suggestedTypes);
+      
+      // If current chart type is not suitable, change to a suitable one
+      if (!suggestedTypes.includes(selectedChartType) && suggestedTypes.length > 0) {
+        setSelectedChartType(suggestedTypes[0]);
+      }
+    }
+  }, [dataPreview, selectedChartType]);
 
   const loadDataPreview = async (datasetId: string) => {
     setPreviewLoading(true);
@@ -84,7 +104,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     if (onExploreClick) {
       onExploreClick();
     } else if (effectiveDatasetId) {
-      navigate(`/visualize/${effectiveDatasetId}`);
+      navigate(`/visualize/${effectiveDatasetId}?view=chat`);
     }
   };
 
@@ -103,6 +123,22 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
       setInternalSelectedId(id);
     }
     setDataPreview(null); // Reset preview when changing dataset
+  };
+  
+  const getChartIcon = (chartType: ChartType) => {
+    switch (chartType) {
+      case 'bar': return <BarChart className="h-4 w-4 mr-2" />;
+      case 'line': return <LineChart className="h-4 w-4 mr-2" />;
+      case 'pie': return <PieChart className="h-4 w-4 mr-2" />;
+      case 'scatter': return <CircleDot className="h-4 w-4 mr-2" />;
+      case 'area': return <AreaChart className="h-4 w-4 mr-2" />;
+      case 'bubble': return <Circle className="h-4 w-4 mr-2" />;
+      case 'column': return <BarChartBig className="h-4 w-4 mr-2" />;
+      case 'donut': return <CircleDashed className="h-4 w-4 mr-2" />;
+      case 'stacked': return <BarChartHorizontal className="h-4 w-4 mr-2" />;
+      case 'table': return <TableIcon className="h-4 w-4 mr-2" />;
+      default: return <BarChart className="h-4 w-4 mr-2" />;
+    }
   };
 
   // Handle the case where we're asked to visualize with no dataset
@@ -144,7 +180,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
             <div className="flex justify-between items-center mb-4">
               <TabsList>
                 <TabsTrigger value="chart" className="flex items-center gap-1">
-                  <BarChart className="h-4 w-4" />
+                  {getChartIcon(selectedChartType)}
                   Chart View
                 </TabsTrigger>
                 <TabsTrigger value="table" className="flex items-center gap-1">
@@ -152,10 +188,45 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
                   Table View
                 </TabsTrigger>
               </TabsList>
+              
+              {activeView === 'chart' && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="ml-4 flex items-center gap-2 bg-white/10">
+                      {getChartIcon(selectedChartType)}
+                      {getChartTypeName(selectedChartType)}
+                      <ChevronDown className="h-4 w-4 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-56 p-2 bg-gray-900/90 backdrop-blur-md border border-purple-500/30"
+                  >
+                    {suitableChartTypes.map((chartType) => (
+                      <DropdownMenuItem
+                        key={chartType}
+                        onClick={() => setSelectedChartType(chartType)} 
+                        className={`flex items-center hover:bg-purple-500/20 ${
+                          chartType === selectedChartType ? 'bg-purple-500/30' : ''
+                        }`}
+                      >
+                        {getChartIcon(chartType)}
+                        {getChartTypeName(chartType)}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
             
             <TabsContent value="chart">
-              {effectiveDatasetId && <ChartVisualization datasetId={effectiveDatasetId} />}
+              {effectiveDatasetId && (
+                <ChartVisualization 
+                  datasetId={effectiveDatasetId} 
+                  chartType={selectedChartType}
+                  data={dataPreview}
+                />
+              )}
             </TabsContent>
             
             <TabsContent value="table">
@@ -181,7 +252,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
               Hide Visualization
             </Button>
             <Button onClick={handleExploreClick}>
-              Explore More
+              Talk to me
             </Button>
           </div>
         </>

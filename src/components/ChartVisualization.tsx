@@ -7,10 +7,11 @@ import ReactECharts from 'echarts-for-react';
 import { dataService } from '@/services/dataService';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { ChartType } from '@/utils/chartSuggestionUtils';
 
 interface ChartVisualizationProps {
   datasetId: string;
-  chartType?: 'bar' | 'line' | 'pie' | 'scatter';
+  chartType?: ChartType;
   xAxis?: string;
   yAxis?: string;
   heightClass?: string;
@@ -221,7 +222,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     
     console.log(`Chart data prepared: ${xValues.length} points`);
     
-    const options = {
+    const baseOptions = {
       title: {
         text: `${yField} by ${xField}`,
         textStyle: {
@@ -253,62 +254,214 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           color: '#aaaaaa',
         },
       },
-      series: [
-        {
-          name: yField,
-          type: chartType,
-          data: yValues,
-          itemStyle: {
-            color: function(params: any) {
-              const colorList = [
-                '#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', 
-                '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'
-              ];
-              return colorList[params.dataIndex % colorList.length];
-            }
-          }
-        }
-      ],
       backgroundColor: 'rgba(0, 0, 0, 0.2)',
     };
+    
+    // Different chart type configurations
+    switch (chartType) {
+      case 'pie':
+      case 'donut': {
+        const pieData: PieDataItem[] = xValues.map((label, index) => ({
+          name: String(label),
+          value: yValues[index],
+        }));
 
-    if (chartType === 'pie') {
-      const pieData: PieDataItem[] = xValues.map((label, index) => ({
-        name: String(label),
-        value: yValues[index],
-      }));
-
-      return {
-        title: options.title,
-        tooltip: {
-          trigger: 'item',
-          formatter: '{a} <br/>{b}: {c} ({d}%)'
-        },
-        backgroundColor: options.backgroundColor,
-        series: [
-          {
-            name: yField,
-            type: 'pie',
-            radius: '60%',
-            center: ['50%', '50%'],
-            data: pieData,
-            emphasis: {
-              itemStyle: {
-                shadowBlur: 10,
-                shadowOffsetX: 0,
-                shadowColor: 'rgba(0, 0, 0, 0.5)',
+        return {
+          title: baseOptions.title,
+          tooltip: {
+            trigger: 'item',
+            formatter: '{a} <br/>{b}: {c} ({d}%)'
+          },
+          backgroundColor: baseOptions.backgroundColor,
+          series: [
+            {
+              name: yField,
+              type: 'pie',
+              radius: chartType === 'donut' ? ['40%', '70%'] : '60%',
+              center: ['50%', '50%'],
+              data: pieData,
+              emphasis: {
+                itemStyle: {
+                  shadowBlur: 10,
+                  shadowOffsetX: 0,
+                  shadowColor: 'rgba(0, 0, 0, 0.5)',
+                },
               },
-            },
-            label: {
-              show: true,
-              formatter: '{b}: {c} ({d}%)'
+              label: {
+                show: true,
+                formatter: '{b}: {c} ({d}%)'
+              }
             }
+          ]
+        };
+      }
+      
+      case 'scatter':
+        return {
+          ...baseOptions,
+          series: [
+            {
+              name: yField,
+              type: 'scatter',
+              data: chartData.map(item => [item[xField], item[yField]]),
+              itemStyle: {
+                color: '#9b87f5'
+              }
+            }
+          ]
+        };
+        
+      case 'line':
+        return {
+          ...baseOptions,
+          series: [
+            {
+              name: yField,
+              type: 'line',
+              data: yValues,
+              itemStyle: {
+                color: '#9b87f5'
+              },
+              lineStyle: {
+                width: 2,
+                color: '#9b87f5'
+              }
+            }
+          ]
+        };
+        
+      case 'area':
+        return {
+          ...baseOptions,
+          series: [
+            {
+              name: yField,
+              type: 'line',
+              data: yValues,
+              areaStyle: {
+                color: {
+                  type: 'linear',
+                  x: 0,
+                  y: 0,
+                  x2: 0,
+                  y2: 1,
+                  colorStops: [
+                    { offset: 0, color: '#9b87f5' },
+                    { offset: 1, color: 'rgba(155, 135, 245, 0.1)' }
+                  ]
+                }
+              },
+              itemStyle: {
+                color: '#9b87f5'
+              },
+              lineStyle: {
+                width: 2,
+                color: '#9b87f5'
+              }
+            }
+          ]
+        };
+        
+      case 'column':
+        return {
+          ...baseOptions,
+          series: [
+            {
+              name: yField,
+              type: 'bar',
+              data: yValues,
+              itemStyle: {
+                color: function(params: any) {
+                  const colorList = [
+                    '#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', 
+                    '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'
+                  ];
+                  return colorList[params.dataIndex % colorList.length];
+                }
+              }
+            }
+          ]
+        };
+        
+      case 'stacked': {
+        // For stacked bars, we need to group by a category
+        // Find a potential category field different from xField
+        const categoryField = Object.keys(chartData[0]).find(key => 
+          key !== xField && key !== yField && typeof chartData[0][key] === 'string'
+        ) || xField; // Default to xField if no other category found
+        
+        // Group data by the xField and categoryField
+        const grouped: Record<string, Record<string, number>> = {};
+        chartData.forEach(item => {
+          const xValue = String(item[xField]);
+          const categoryValue = String(item[categoryField]);
+          if (!grouped[xValue]) {
+            grouped[xValue] = {};
           }
-        ]
-      };
+          if (!grouped[xValue][categoryValue]) {
+            grouped[xValue][categoryValue] = 0;
+          }
+          grouped[xValue][categoryValue] += Number(item[yField]) || 0;
+        });
+        
+        // Extract unique categories
+        const categories = [...new Set(chartData.map(item => String(item[categoryField])))];
+        
+        // Prepare series data
+        const series = categories.map(category => ({
+          name: category,
+          type: 'bar',
+          stack: 'total',
+          label: {
+            show: false
+          },
+          emphasis: {
+            focus: 'series'
+          },
+          data: xValues.map(x => grouped[x][category] || 0)
+        }));
+        
+        return {
+          ...baseOptions,
+          legend: {
+            textStyle: {
+              color: '#aaaaaa'
+            }
+          },
+          series
+        };
+      }
+        
+      // Default to bar chart
+      default:
+        return {
+          ...baseOptions,
+          series: [
+            {
+              name: yField,
+              type: chartType === 'bubble' ? 'scatter' : 'bar',
+              data: chartType === 'bubble' ?
+                chartData.map((item, i) => {
+                  const size = Math.max(10, Math.min(50, Math.random() * 40 + 10)); // Random size for demo
+                  return [item[xField], item[yField], size];
+                }) : 
+                yValues,
+              itemStyle: {
+                color: function(params: any) {
+                  const colorList = [
+                    '#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', 
+                    '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'
+                  ];
+                  return colorList[params.dataIndex % colorList.length];
+                }
+              },
+              symbolSize: chartType === 'bubble' ? function(data) {
+                return data[2];
+              } : 10
+            }
+          ]
+        };
     }
-
-    return options;
   };
   
   // Function to retry loading data
