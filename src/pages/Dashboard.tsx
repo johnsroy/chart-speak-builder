@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -10,29 +9,24 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { dataService } from '@/services/dataService';
 import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
+import DeleteDatasetDialog from '@/components/upload/DeleteDatasetDialog';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, adminLogin } = useAuth();
   const { datasets, isLoading, loadDatasets } = useDatasets();
   const [filterType, setFilterType] = useState<string | null>(null);
-  const [deleteDatasetId, setDeleteDatasetId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
   const [duplicateWarnings, setDuplicateWarnings] = useState<boolean>(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deletingDataset, setDeletingDataset] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!isLoading && datasets.length > 0) {
       const uniqueDatasets = getUniqueDatasetsByFilename(datasets);
-      if (uniqueDatasets.length < datasets.length) {
-        setDuplicateWarnings(true);
-      } else {
-        setDuplicateWarnings(false);
-      }
+      setDuplicateWarnings(uniqueDatasets.length < datasets.length);
     }
   }, [datasets, isLoading]);
 
@@ -53,18 +47,22 @@ const Dashboard = () => {
   }, [isAuthenticated, user, adminLogin]);
 
   useEffect(() => {
-    const handleUploadSuccess = (event: any) => {
-      const customEvent = event as CustomEvent<{ datasetId: string }>;
-      console.log("Detected dataset upload success:", customEvent.detail.datasetId);
+    const handleUploadSuccess = () => {
+      loadDatasets();
+    };
+
+    const handleDatasetDeleted = () => {
       loadDatasets();
     };
 
     window.addEventListener('dataset-upload-success', handleUploadSuccess);
     window.addEventListener('upload:success', handleUploadSuccess);
+    window.addEventListener('dataset-deleted', handleDatasetDeleted);
 
     return () => {
       window.removeEventListener('dataset-upload-success', handleUploadSuccess);
       window.removeEventListener('upload:success', handleUploadSuccess);
+      window.removeEventListener('dataset-deleted', handleDatasetDeleted);
     };
   }, [loadDatasets]);
 
@@ -72,27 +70,12 @@ const Dashboard = () => {
     navigate("/upload");
   };
 
-  const handleDeleteDataset = async (id: string) => {
-    setDeleteDatasetId(id);
-    setShowDeleteConfirm(true);
-  };
-
-  const confirmDeleteDataset = async () => {
-    if (!deleteDatasetId) return;
-    
-    try {
-      setDeletingDataset(true);
-      await dataService.deleteDataset(deleteDatasetId);
-      toast.success("Dataset deleted successfully");
-      loadDatasets();
-    } catch (error) {
-      console.error("Error deleting dataset:", error);
-      toast.error("Failed to delete dataset");
-    } finally {
-      setShowDeleteConfirm(false);
-      setDeleteDatasetId(null);
-      setDeletingDataset(false);
-    }
+  const handleDeleteClick = (dataset: any) => {
+    setDatasetToDelete({
+      id: dataset.id,
+      name: dataset.name || dataset.file_name
+    });
+    setDeleteDialogOpen(true);
   };
 
   const handleRefreshDatasets = async () => {
@@ -108,7 +91,6 @@ const Dashboard = () => {
     }
   };
 
-  // Get unique datasets (most recent version of each file)
   const uniqueDatasets = getUniqueDatasetsByFilename(datasets);
   
   const filteredDatasets = filterType 
@@ -209,7 +191,7 @@ const Dashboard = () => {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={e => {
                             e.stopPropagation();
-                            handleDeleteDataset(dataset.id);
+                            handleDeleteClick(dataset);
                           }} className="text-red-500">
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
@@ -277,36 +259,13 @@ const Dashboard = () => {
         </Tabs>
       </div>
       
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the dataset and all associated visualizations.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={confirmDeleteDataset} 
-              className="bg-red-500 hover:bg-red-600"
-              disabled={deletingDataset}
-            >
-              {deletingDataset ? (
-                <>
-                  <span className="mr-2">Deleting</span>
-                  <Trash2 className="h-4 w-4 animate-pulse" />
-                </>
-              ) : (
-                <>
-                  <span className="mr-2">Delete</span>
-                  <Trash2 className="h-4 w-4" />
-                </>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteDatasetDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        datasetId={datasetToDelete?.id || null}
+        datasetName={datasetToDelete?.name}
+        onDeleted={loadDatasets}
+      />
     </div>
   );
 };
