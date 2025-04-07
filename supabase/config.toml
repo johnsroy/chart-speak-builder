@@ -224,3 +224,6 @@ scopes = ["user:read", "meeting:read", "meeting:write"]
 
 [functions.storage-manager]
 verify_jwt = false
+
+[functions.admin-setup]
+verify_jwt = false

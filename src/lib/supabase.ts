@@ -21,8 +21,26 @@ const initializeApp = async () => {
     if (typeof window !== 'undefined') {
       console.log("Initializing app and creating storage buckets...");
       
+      // First try to set up admin user since it doesn't depend on storage
+      try {
+        const { authService } = await import('@/services/authService');
+        await authService.setupAdminUser().catch(err => {
+          console.warn("Admin user setup had an issue, but we'll continue:", err.message);
+        });
+      } catch (authError) {
+        console.warn("Error setting up admin user, but continuing:", authError);
+      }
+      
       // Import utilities only when needed to avoid circular dependencies
       const { verifyStorageBuckets, createStorageBuckets, callStorageManager } = await import('@/utils/storageUtils');
+      
+      // Check if storage buckets already exist, if they do, we can skip the creation process
+      const bucketsExist = await verifyStorageBuckets().catch(() => false);
+      
+      if (bucketsExist) {
+        console.log("All required storage buckets already exist");
+        return;
+      }
       
       let storageSetupSuccess = false;
       let retryCount = 0;
@@ -31,7 +49,11 @@ const initializeApp = async () => {
       while (!storageSetupSuccess && retryCount <= maxRetries) {
         try {
           // First try direct API approach to create buckets
-          const bucketsCreated = await createStorageBuckets();
+          console.log("Attempting direct bucket creation via API...");
+          const bucketsCreated = await createStorageBuckets().catch(err => {
+            console.warn("Error in direct bucket creation:", err.message);
+            return false;
+          });
           
           if (bucketsCreated) {
             console.log("Successfully created storage buckets via API");
@@ -40,8 +62,11 @@ const initializeApp = async () => {
             console.log("Direct bucket creation failed, trying edge function...");
             
             try {
-              // Try the edge function
-              const forceCreateResult = await callStorageManager('force-create-buckets');
+              // Try the edge function with properly formatted request
+              const forceCreateResult = await callStorageManager('force-create-buckets').catch(err => {
+                console.warn("Error calling storage manager:", err.message);
+                return null;
+              });
               
               if (forceCreateResult && forceCreateResult.success) {
                 console.log("Successfully created storage buckets via edge function:", forceCreateResult);
@@ -58,7 +83,7 @@ const initializeApp = async () => {
                 }
               }
             } catch (edgeFunctionError) {
-              console.error("Edge function approach failed:", edgeFunctionError);
+              console.warn("Edge function approach failed:", edgeFunctionError);
             }
             
             if (!storageSetupSuccess) {
@@ -70,12 +95,12 @@ const initializeApp = async () => {
                   storageSetupSuccess = true;
                 }
               } catch (setupError) {
-                console.error("Setup fallback failed:", setupError);
+                console.warn("Setup fallback failed:", setupError);
               }
             }
           }
         } catch (attemptError) {
-          console.error(`Storage setup attempt ${retryCount + 1} failed:`, attemptError);
+          console.warn(`Storage setup attempt ${retryCount + 1} failed:`, attemptError);
         }
         
         retryCount++;
@@ -89,14 +114,7 @@ const initializeApp = async () => {
       
       if (!storageSetupSuccess) {
         console.warn("All storage setup attempts failed. Proceeding without storage initialization.");
-      }
-      
-      // Initialize admin user
-      try {
-        const { authService } = await import('@/services/authService');
-        await authService.setupAdminUser();
-      } catch (authError) {
-        console.error("Error setting up admin user:", authError);
+        // We'll still continue with the app - the user can manually create buckets if needed
       }
       
       // Check and log the current session
@@ -104,16 +122,23 @@ const initializeApp = async () => {
       console.log("Current session after setup:", session ? "Present" : "Not present");
     }
   } catch (error) {
-    console.error("Failed to initialize app:", error);
+    console.warn("Failed to initialize app completely, but will continue:", error);
   }
 };
 
-// Run initialization immediately when imported to ensure buckets are created
+// Run initialization after a short delay to ensure everything is ready
+let initializeTimeout: ReturnType<typeof setTimeout> | null = null;
+
 if (typeof window !== 'undefined') {
-  // Schedule the initialization to run after a short delay to ensure everything is ready
-  setTimeout(() => {
-    initializeApp();
-  }, 500);
+  // Clear any existing timeout to prevent multiple initializations
+  if (initializeTimeout) clearTimeout(initializeTimeout);
+  
+  // Schedule the initialization with a delay
+  initializeTimeout = setTimeout(() => {
+    initializeApp().catch(err => {
+      console.warn("App initialization had some issues, but we'll continue:", err);
+    });
+  }, 1000);
 }
 
 // Expose these functions from the imported utilities to avoid breaking existing code

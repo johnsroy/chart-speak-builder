@@ -197,9 +197,17 @@ export const authService = {
       console.log("Setting up admin user");
       
       // Call the admin-setup edge function to ensure admin user exists with confirmed email
-      const response = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup');
+      const response = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.getSession() ? (await supabase.auth.getSession()).data.session?.access_token || '' : ''}`,
+        }
+      });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`HTTP error! Status: ${response.status}`, errorText);
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       

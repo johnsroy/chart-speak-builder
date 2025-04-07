@@ -116,7 +116,7 @@ export const setupStorageBuckets = async () => {
     // Try to use the edge function first
     const result = await callStorageManager('setup');
     
-    if (result.success) {
+    if (result && result.success) {
       return result;
     }
     
@@ -238,7 +238,7 @@ export const callStorageManager = async (action: string): Promise<any> => {
     
     const { data, error } = await supabase.functions.invoke('storage-manager', {
       method: 'POST',
-      body: { action },
+      body: { action }, // Properly formatted JSON body
       headers: {
         'Content-Type': 'application/json'
       }
@@ -252,6 +252,6 @@ export const callStorageManager = async (action: string): Promise<any> => {
     return data || { success: true };
   } catch (error) {
     console.error(`Storage manager ${action} failed:`, error);
-    return { success: false, message: error.message || "Unknown error" };
+    return { success: false, message: error instanceof Error ? error.message : "Unknown error" };
   }
 };
