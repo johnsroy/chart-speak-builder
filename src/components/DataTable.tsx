@@ -82,7 +82,7 @@ const DataTable: React.FC<DataTableProps> = ({
     } else {
       // Generic fallback data for other types
       for (let i = 0; i < 10; i++) {
-        const item = {
+        const item: Record<string, any> = {
           id: i + 1,
           name: `Sample Item ${i + 1}`,
           value: Math.floor(Math.random() * 100),
@@ -91,7 +91,7 @@ const DataTable: React.FC<DataTableProps> = ({
         };
         
         // Add some extra columns based on the dataset title
-        if (title && title.includes('Sales')) {
+        if (title && title.toLowerCase().includes('sales')) {
           item.revenue = (Math.random() * 10000).toFixed(2);
           item.profit = (Math.random() * 2000).toFixed(2);
           item.region = ['North', 'South', 'East', 'West', 'Central'][i % 5];

@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { parse as csvParse } from "https://deno.land/std@0.181.0/csv/parse.ts";
@@ -16,8 +15,21 @@ serve(async (req) => {
   }
   
   try {
+    console.log("Data processor function invoked");
+    
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    
+    if (!supabaseUrl || !supabaseServiceRole) {
+      console.error("Missing Supabase credentials");
+      return new Response(
+        JSON.stringify({ 
+          error: "Server configuration error",
+          success: false 
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      );
+    }
     
     // Create Supabase client with the service role key for admin access
     const supabase = createClient(supabaseUrl, supabaseServiceRole);
@@ -45,7 +57,7 @@ serve(async (req) => {
       );
     }
     
-    console.log(`Dataset found: ${dataset.name} Storage path: ${dataset.storage_path}`);
+    console.log(`Dataset found: ${dataset.name}, Storage path: ${dataset.storage_path}, Type: ${dataset.storage_type}`);
     
     if (action === 'delete') {
       // Delete file from storage
@@ -95,12 +107,29 @@ serve(async (req) => {
         // Handle Electric Vehicle Population Data specifically
         if (dataset.file_name.includes("Electric_Vehicle_Population_Data") || 
             dataset.name.includes("Electric Vehicle")) {
-          console.log("Generating EV population dataset");
+          console.log("Generating Electric Vehicle Population dataset");
+          const evData = generateElectricVehicleData(200);
+          
+          // Update the dataset with schema info if needed
+          if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
+            const evSchema = inferElectricVehicleSchema();
+            console.log("Updating dataset with EV schema");
+            
+            const { error: updateError } = await supabase
+              .from('datasets')
+              .update({ column_schema: evSchema })
+              .eq('id', dataset_id);
+              
+            if (updateError) {
+              console.error('Error updating EV schema:', updateError);
+            }
+          }
+          
           return new Response(
             JSON.stringify({
-              data: generateElectricVehicleData(200),
+              data: evData,
               schema: inferElectricVehicleSchema(),
-              count: 200,
+              count: evData.length,
               success: true,
               source: "ev_population_data"
             }),
@@ -111,19 +140,38 @@ serve(async (req) => {
         // For "local" storage type, we need to use a different approach
         // Generate sample data based on the file name
         if (dataset.storage_type === 'local') {
+          console.log("Dataset is stored locally, generating sample data based on file name");
+          const sampleData = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 200);
+          
+          // Update schema if needed
+          if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
+            const schema = inferSchemaFromFilename(dataset.file_name);
+            console.log("Updating dataset with inferred schema");
+            
+            const { error: updateError } = await supabase
+              .from('datasets')
+              .update({ column_schema: schema })
+              .eq('id', dataset_id);
+              
+            if (updateError) {
+              console.error('Error updating inferred schema:', updateError);
+            }
+          }
+          
           return new Response(
             JSON.stringify({
-              data: generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100),
+              data: sampleData,
               schema: dataset.column_schema || inferSchemaFromFilename(dataset.file_name),
-              count: 100,
+              count: sampleData.length,
               success: true,
-              source: "generated"
+              source: "generated_local"
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        // Download the dataset file
+        // Download the dataset file from storage
+        console.log(`Attempting to download file from ${dataset.storage_type} bucket: ${dataset.storage_path}`);
         let text = '';
         let fileData = null;
 
@@ -136,13 +184,15 @@ serve(async (req) => {
           console.error('File download error:', fileError);
           
           // Return fallback data
+          const fallbackData = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100);
           return new Response(
             JSON.stringify({
-              data: generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100),
+              data: fallbackData,
               schema: dataset.column_schema || inferSchemaFromFilename(dataset.file_name),
-              count: 100,
+              count: fallbackData.length,
               success: true,
-              source: "generated"
+              source: "generated_fallback",
+              error: `File download error: ${fileError.message}`
             }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
@@ -154,11 +204,13 @@ serve(async (req) => {
         }
         
         text = await fileData.text();
+        console.log(`Successfully downloaded file, size: ${text.length} characters`);
         
         // Parse the file based on its type
         let data = [];
         
-        if (dataset.file_name.endsWith('.csv')) {
+        if (dataset.file_name.toLowerCase().endsWith('.csv')) {
+          console.log("Processing CSV file");
           // Parse CSV - explicitly handle headers and data conversion
           try {
             const rows = text.split('\n');
@@ -215,7 +267,8 @@ serve(async (req) => {
               data = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100);
             }
           }
-        } else if (dataset.file_name.endsWith('.json')) {
+        } else if (dataset.file_name.toLowerCase().endsWith('.json')) {
+          console.log("Processing JSON file");
           // Parse JSON
           try {
             const parsedData = JSON.parse(text);
@@ -226,49 +279,52 @@ serve(async (req) => {
             data = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100);
           }
         } else {
-          // For unsupported formats, generate fallback data
+          console.log("Unsupported file format, generating fallback data");
           data = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100);
         }
         
         // Extract column schema if not already available
         if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
-          const sampleRow = data[0] || {};
-          const schema: Record<string, string> = {};
-          
-          for (const [key, value] of Object.entries(sampleRow)) {
-            if (typeof value === 'number') {
-              schema[key] = 'number';
-            } else if (typeof value === 'boolean') {
-              schema[key] = 'boolean';
-            } else if (typeof value === 'string') {
-              // Check if it's a date
-              if (!isNaN(Date.parse(value as string)) &&
-                  String(value).match(/^\d{4}-\d{2}-\d{2}/)) {
-                schema[key] = 'date';
-              } else {
-                schema[key] = 'string';
-              }
-            } else if (value === null) {
-              schema[key] = 'unknown';
-            } else {
-              schema[key] = 'object';
-            }
-          }
-          
-          // Update the dataset with the inferred schema
-          const { error: updateError } = await supabase
-            .from('datasets')
-            .update({ column_schema: schema })
-            .eq('id', dataset_id);
+          console.log("Extracting schema from data");
+          // Extract column schema if not already available
+          if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
+            const sampleRow = data[0] || {};
+            const schema: Record<string, string> = {};
             
-          if (updateError) {
-            console.error('Error updating schema:', updateError);
-          } else {
-            console.log('Successfully updated column schema:', schema);
-            dataset.column_schema = schema;
+            for (const [key, value] of Object.entries(sampleRow)) {
+              if (typeof value === 'number') {
+                schema[key] = 'number';
+              } else if (typeof value === 'boolean') {
+                schema[key] = 'boolean';
+              } else if (typeof value === 'string') {
+                if (!isNaN(Date.parse(value)) && String(value).match(/^\d{4}-\d{2}-\d{2}/)) {
+                  schema[key] = 'date';
+                } else {
+                  schema[key] = 'string';
+                }
+              } else if (value === null) {
+                schema[key] = 'unknown';
+              } else {
+                schema[key] = 'object';
+              }
+            }
+            
+            // Update the dataset with the inferred schema
+            const { error: updateError } = await supabase
+              .from('datasets')
+              .update({ column_schema: schema })
+              .eq('id', dataset_id);
+              
+            if (updateError) {
+              console.error('Error updating schema:', updateError);
+            } else {
+              console.log('Successfully updated column schema:', schema);
+              dataset.column_schema = schema;
+            }
           }
         }
         
+        console.log(`Returning ${data.length} rows of data`);
         // Return preview data and schema
         return new Response(
           JSON.stringify({
@@ -283,9 +339,10 @@ serve(async (req) => {
         console.error('Error processing file:', error);
         
         // Return fallback data even on error
+        const fallbackData = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 50);
         return new Response(
           JSON.stringify({
-            data: generateFallbackDataFromFilename(dataset.file_name, dataset.name, 50),
+            data: fallbackData,
             schema: dataset.column_schema || inferSchemaFromFilename(dataset.file_name),
             count: 50,
             success: true,
@@ -487,7 +544,7 @@ function inferSchemaFromFilename(filename: string): Record<string, string> {
   const schema: Record<string, string> = {};
   const lowerFilename = filename.toLowerCase();
   
-  if (lowerFilename.includes('vehicle') || lowerFilename.includes('car') || lowerFilename.includes('auto')) {
+  if (lowerFilename.includes('vehicle') || lowerFilename.includes('car') || lowerFilename.includes('electric')) {
     // Vehicle dataset schema
     schema.id = 'number';
     schema.make = 'string';
@@ -666,4 +723,3 @@ function generateFallbackDataFromFilename(filename: string, datasetName: string,
   
   return data;
 }
-

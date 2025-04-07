@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle, RefreshCcw } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import { dataService } from '@/services/dataService';
 import { useToast } from '@/hooks/use-toast';
@@ -44,6 +44,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
 
   useEffect(() => {
     if (initialData && initialData.length > 0) {
+      console.log("Using initial data for chart:", initialData.length, "rows");
       setChartData(initialData);
       setAvailableColumns(Object.keys(initialData[0]));
       setLoading(false);
@@ -55,7 +56,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       try {
         console.log(`Loading chart data for dataset ${datasetId}, attempt ${loadAttempts + 1}`);
         const data = await dataService.previewDataset(datasetId);
-        console.log('Chart data loaded:', data);
+        console.log('Chart data loaded:', data?.length || 0, 'rows');
         
         if (!data || !Array.isArray(data) || data.length === 0) {
           throw new Error('No data available');
@@ -101,6 +102,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
 
   const determineAxes = () => {
     if (!chartData || chartData.length === 0 || !availableColumns.length) {
+      console.log("Cannot determine axes: no chart data or columns available");
       return { xField: '', yField: '' };
     }
 
@@ -116,6 +118,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       yField = findBestYAxisField(chartData, availableColumns, xField);
     }
 
+    console.log(`Determined axes - X: ${xField}, Y: ${yField}`);
     return { xField, yField };
   };
   
@@ -188,14 +191,18 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
 
   const getChartOption = () => {
     if (!chartData || chartData.length === 0) {
+      console.log("No data available for chart options");
       return {};
     }
 
     const { xField, yField } = determineAxes();
     
     if (!xField || !yField) {
+      console.log("Missing xField or yField for chart options");
       return {};
     }
+
+    console.log(`Generating chart options for ${chartType} chart with X: ${xField}, Y: ${yField}`);
 
     // Extract x and y values, handling various data types
     const xValues = chartData.map(item => {
@@ -211,6 +218,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       const numVal = Number(val);
       return !isNaN(numVal) ? numVal : 0;
     });
+    
+    console.log(`Chart data prepared: ${xValues.length} points`);
     
     const options = {
       title: {
@@ -328,8 +337,22 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           <p className="text-sm text-muted-foreground mb-4">
             {error || 'Unable to generate chart from the dataset'}
           </p>
-          <Button variant="outline" onClick={handleRetry}>
+          <Button variant="outline" onClick={handleRetry} className="mr-2">
             Retry Loading Data
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              setError(null);
+              setLoadAttempts(0);
+              toast({
+                title: 'Debug Mode',
+                description: 'Chart component is using direct access: ' + useDirectAccess,
+              });
+            }}
+          >
+            <RefreshCcw className="h-4 w-4 mr-2" /> 
+            Force Refresh
           </Button>
         </div>
       </div>

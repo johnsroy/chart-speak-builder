@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 
@@ -35,13 +34,16 @@ export type { QueryResult };
 export const queryService = {
   executeQuery: async (config: QueryConfig): Promise<QueryResult> => {
     try {
+      console.log("Executing query with config:", config);
+      
       // Check if we should use direct data access
       if (config.useDirectAccess && config.dataPreview && Array.isArray(config.dataPreview)) {
-        console.log("Using direct data access for query execution");
+        console.log("Using direct data access for query execution with", config.dataPreview.length, "rows");
         return processQueryLocally(config);
       }
       
       // Otherwise use the edge function
+      console.log("Using edge function for query execution");
       const response = await supabase.functions.invoke('transform', {
         body: { config },
       });
@@ -58,6 +60,7 @@ export const queryService = {
 
       // Normalize the response to ensure property consistency
       const result = response.data as QueryResult;
+      console.log("Query executed successfully:", result);
       
       // Add property aliases for consistency
       if (result.x_axis && !result.xAxis) {
@@ -92,15 +95,17 @@ export const queryService = {
     }
   },
   
-  // Add the missing saveQuery method
   saveQuery: async (query: SavedQuery): Promise<{ id: string }> => {
     try {
+      console.log("Saving query:", query);
       const { data, error } = await supabase.from('queries').insert([query]).select('id').single();
       
       if (error) {
+        console.error("Error saving query:", error);
         throw new Error(error.message || 'Failed to save query');
       }
       
+      console.log("Query saved successfully with ID:", data.id);
       return { id: data.id };
     } catch (error) {
       console.error('Error saving query:', error);
@@ -117,9 +122,11 @@ export const queryService = {
  */
 function processQueryLocally(config: QueryConfig): QueryResult {
   try {
+    console.log("Processing query locally with data:", config.dataPreview?.length || 0, "rows");
     const { dataPreview, dimensions, metrics, filters, limit, chartType } = config;
     
     if (!dataPreview || !Array.isArray(dataPreview) || dataPreview.length === 0) {
+      console.error("No data available for local processing");
       throw new Error('No data available for processing');
     }
     
@@ -127,9 +134,12 @@ function processQueryLocally(config: QueryConfig): QueryResult {
     const xField = dimensions && dimensions.length > 0 ? dimensions[0] : Object.keys(dataPreview[0])[0];
     const yField = metrics && metrics.length > 0 ? metrics[0] : Object.keys(dataPreview[0])[1];
     
+    console.log(`Using fields for local processing - X: ${xField}, Y: ${yField}`);
+    
     // Apply filters if provided
     let filteredData = dataPreview;
     if (filters && filters.length > 0) {
+      console.log("Applying filters locally:", filters);
       filteredData = dataPreview.filter(row => {
         return filters.every(filter => {
           const { column, operator, value } = filter;
@@ -150,16 +160,19 @@ function processQueryLocally(config: QueryConfig): QueryResult {
           }
         });
       });
+      console.log("After filtering:", filteredData.length, "rows remain");
     }
     
     // Apply limit if provided
     if (limit && limit > 0) {
+      console.log(`Applying limit of ${limit} rows`);
       filteredData = filteredData.slice(0, limit);
     }
     
     // For aggregated charts like bar and pie, group by dimension
     // and aggregate the metric
     if (chartType === 'bar' || chartType === 'pie') {
+      console.log(`Aggregating data for ${chartType} chart`);
       const groupedData = filteredData.reduce((acc, row) => {
         const key = String(row[xField]);
         if (!acc[key]) {
@@ -168,9 +181,10 @@ function processQueryLocally(config: QueryConfig): QueryResult {
         acc[key][yField] += Number(row[yField]) || 0;
         acc[key].count += 1;
         return acc;
-      }, {});
+      }, {} as Record<string, any>);
       
       filteredData = Object.values(groupedData);
+      console.log("After aggregation:", filteredData.length, "data points");
     }
     
     // Extract column information - fixed to match expected types
@@ -178,9 +192,10 @@ function processQueryLocally(config: QueryConfig): QueryResult {
       .filter(key => key !== 'count') // Remove helper fields
       .map(key => ({ name: key, type: typeof filteredData[0][key] }));
     
+    console.log("Local processing complete");
     return {
       data: filteredData,
-      columns, // This is now correct as QueryResult accepts this type
+      columns,
       chartType: chartType || 'bar',
       xAxis: xField,
       yAxis: yField
