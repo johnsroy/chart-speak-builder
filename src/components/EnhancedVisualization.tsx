@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Info, Percent, Hash } from 'lucide-react';
@@ -59,10 +58,8 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
     );
   }
 
-  // Define chart type, defaulting to bar chart if not specified
   const chartType = result.chartType || result.chart_type || 'bar';
   
-  // Get axis names - use both naming conventions for compatibility
   const xAxis = result.xAxis || result.x_axis;
   const yAxis = result.yAxis || result.y_axis;
   
@@ -74,7 +71,6 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
     );
   }
   
-  // Calculate total for percentage calculations
   const total = chartData.reduce((acc, item) => acc + item.value, 0);
 
   return (
@@ -131,7 +127,6 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   );
 };
 
-// Helper function to render the appropriate chart type
 const renderChart = (
   chartType: string, 
   chartData: any[], 
@@ -162,7 +157,7 @@ const renderChart = (
             labelStyle={{ color: '#eee' }}
             formatter={(value: any, name: any) => {
               if (displayMode === 'percentages') {
-                const percentage = ((value / total) * 100).toFixed(1);
+                const percentage = ((Number(value) / total) * 100).toFixed(1);
                 return [`${percentage}%`, name];
               }
               return [value, name];
@@ -176,7 +171,7 @@ const renderChart = (
             radius={[4, 4, 0, 0]} 
             label={({x, y, width, value}) => {
               const displayValue = displayMode === 'percentages' 
-                ? `${((value / total) * 100).toFixed(1)}%` 
+                ? `${((Number(value) / total) * 100).toFixed(1)}%` 
                 : value;
               return (
                 <text 
@@ -241,7 +236,7 @@ const renderChart = (
             labelStyle={{ color: '#eee' }}
             formatter={(value, name) => {
               if (displayMode === 'percentages') {
-                const percentage = ((value / total) * 100).toFixed(1);
+                const percentage = ((Number(value) / total) * 100).toFixed(1);
                 return [`${percentage}%`, `${name}`];
               }
               return [`${value}`, `${name}`];
@@ -267,7 +262,6 @@ const renderChart = (
                 ? `${(percent * 100).toFixed(1)}%`
                 : value;
               
-              // Only show label for segments that are large enough
               return percent > 0.05 ? (
                 <text 
                   x={0} 
@@ -281,7 +275,6 @@ const renderChart = (
                 </text>
               ) : null;
             }}
-            labelPosition={60}
             isAnimationActive={true}
           >
             {chartData.map((entry, index) => (
@@ -311,15 +304,12 @@ const renderChart = (
   }
 };
 
-// Helper function to prepare chart data from various formats
 const prepareChartData = (result: QueryResult) => {
-  // If data is empty, return empty array
   if (!result.data || result.data.length === 0) {
     return [];
   }
   
   try {
-    // Get axis names from result (use either naming convention)
     const xAxis = result.xAxis || result.x_axis;
     const yAxis = result.yAxis || result.y_axis;
     
@@ -328,7 +318,6 @@ const prepareChartData = (result: QueryResult) => {
       return [];
     }
     
-    // Map the data to chart format
     return result.data.map(item => ({
       name: String(item[xAxis] || ''),
       value: Number(item[yAxis] || 0)
