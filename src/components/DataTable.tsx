@@ -18,12 +18,27 @@ import { Input } from '@/components/ui/input';
 import { Pagination } from '@/components/ui/pagination';
 import { formatFileSize } from '@/services/utils/fileUtils';
 
-interface DataTableProps {
+export interface DataTableProps {
   dataset?: Dataset | null;
   datasetId?: string;
+  data?: any[];
+  loading?: boolean; 
+  error?: string | null;
+  title?: string;
+  pageSize?: number;
+  onRefresh?: () => Promise<void>;
 }
 
-export const DataTable: React.FC<DataTableProps> = ({ dataset, datasetId }) => {
+export const DataTable: React.FC<DataTableProps> = ({ 
+  dataset, 
+  datasetId,
+  data: externalData,
+  loading: externalLoading,
+  error: externalError,
+  title,
+  pageSize = 10,
+  onRefresh
+}) => {
   const navigate = useNavigate();
   const [data, setData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
@@ -31,13 +46,26 @@ export const DataTable: React.FC<DataTableProps> = ({ dataset, datasetId }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rowsPerPage] = useState(10);
+  const [rowsPerPage] = useState(pageSize);
   
   // Get data from dataset
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
+    // If external data is provided, use that
+    if (externalData) {
+      setData(externalData);
+      setColumns(externalData.length > 0 ? Object.keys(externalData[0]) : []);
+      setIsLoading(false);
       setError(null);
+      return;
+    }
+
+    const loadData = async () => {
+      setIsLoading(externalLoading !== undefined ? externalLoading : true);
+      setError(externalError !== undefined ? externalError : null);
+      
+      if (externalLoading !== undefined) {
+        return;
+      }
       
       try {
         // Try to get data for the dataset
@@ -73,12 +101,12 @@ export const DataTable: React.FC<DataTableProps> = ({ dataset, datasetId }) => {
         // If no preview data was found, load from the API
         if (!previewDataFound) {
           console.log("No preview data found, loading from API...");
-          const result = await dataService.getDatasetData(id);
+          const result = await dataService.previewDataset(id);
           
-          if (result && Array.isArray(result.data)) {
-            console.log(`Loaded ${result.data.length} rows from API`);
-            setData(result.data);
-            setColumns(result.columns || (result.data[0] ? Object.keys(result.data[0]) : []));
+          if (result && Array.isArray(result)) {
+            console.log(`Loaded ${result.length} rows from API`);
+            setData(result);
+            setColumns(result[0] ? Object.keys(result[0]) : []);
           } else {
             throw new Error('Invalid data format received');
           }
@@ -113,7 +141,7 @@ export const DataTable: React.FC<DataTableProps> = ({ dataset, datasetId }) => {
     };
     
     loadData();
-  }, [datasetId, dataset]);
+  }, [datasetId, dataset, externalData, externalLoading, externalError]);
   
   // Filter data based on search term
   const filteredData = data.filter(row => {
@@ -178,11 +206,31 @@ export const DataTable: React.FC<DataTableProps> = ({ dataset, datasetId }) => {
     );
   };
   
+  const handleRefresh = async () => {
+    if (onRefresh) {
+      await onRefresh();
+    } else if (datasetId) {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const refreshedData = await dataService.previewDataset(datasetId);
+        if (refreshedData && Array.isArray(refreshedData)) {
+          setData(refreshedData);
+          setColumns(refreshedData[0] ? Object.keys(refreshedData[0]) : []);
+        }
+      } catch (err) {
+        setError(`Error refreshing data: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+  
   return (
     <Card className="w-full">
       <CardHeader>
         <div className="flex flex-col gap-y-2">
-          <CardTitle>Dataset Explorer</CardTitle>
+          <CardTitle>{title || (dataset && 'Dataset Explorer') || 'Data Table'}</CardTitle>
           {dataset && (
             <CardDescription>
               {dataset.name || 'Unnamed Dataset'} ({dataset.file_name || 'Unknown File'})
@@ -196,8 +244,17 @@ export const DataTable: React.FC<DataTableProps> = ({ dataset, datasetId }) => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-xs"
             />
-            <div className="text-sm text-muted-foreground">
-              Total rows: {filteredData.length}
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRefresh}
+              >
+                Refresh
+              </Button>
+              <div className="text-sm text-muted-foreground">
+                Total rows: {filteredData.length}
+              </div>
             </div>
           </div>
         </div>
@@ -208,7 +265,7 @@ export const DataTable: React.FC<DataTableProps> = ({ dataset, datasetId }) => {
         ) : error ? (
           <div className="py-8 text-center text-red-500">
             <div className="mb-2">{error}</div>
-            <Button onClick={() => window.location.reload()} variant="outline" size="sm">
+            <Button onClick={handleRefresh} variant="outline" size="sm">
               Retry
             </Button>
           </div>

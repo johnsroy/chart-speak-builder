@@ -161,6 +161,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
             <TabsContent value="table">
               <div className="mb-4">
                 <DataTable 
+                  datasetId={effectiveDatasetId}
                   data={dataPreview} 
                   loading={previewLoading} 
                   error={previewError}

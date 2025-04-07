@@ -12,8 +12,8 @@ import {
   getDatasetNameFromFile 
 } from '@/utils/uploadUtils';
 import { verifyStorageBuckets, setupStorageBuckets } from '@/utils/storageUtils';
-import { parseCSV } from '@/services/utils/fileUtils';
 import { supabase } from '@/lib/supabase';
+import { parseCSV } from '@/services/utils/fileUtils';
 
 /**
  * Custom hook for managing file uploads

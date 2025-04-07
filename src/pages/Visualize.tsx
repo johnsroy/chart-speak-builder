@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
@@ -27,7 +26,6 @@ const Visualize = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  // Set default active tab based on URL query parameter or default to 'explore'
   const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>(
     viewFromUrl === 'chat' ? 'chat' : 
     viewFromUrl === 'query' ? 'query' : 'explore'
@@ -36,19 +34,17 @@ const Visualize = () => {
   const [dataPreview, setDataPreview] = useState<any[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  // Set default chart type based on URL query parameter or default to 'table'
   const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie' | 'table'>(
     viewFromUrl === 'bar' ? 'bar' : 
     viewFromUrl === 'line' ? 'line' : 
     viewFromUrl === 'pie' ? 'pie' : 'table'
   );
   const [loadAttempts, setLoadAttempts] = useState(0);
-  const maxRetries = 5; // Increased max retries
-  
+  const maxRetries = 5;
+
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  // Update URL when tab or chart type changes
   useEffect(() => {
     const params = new URLSearchParams();
     
@@ -57,7 +53,6 @@ const Visualize = () => {
     } else if (activeChartType !== 'table') {
       params.set('view', activeChartType);
     } else {
-      // Explicitly set 'table' view in URL
       params.set('view', 'table');
     }
     
@@ -66,7 +61,6 @@ const Visualize = () => {
     window.history.replaceState({}, '', newUrl);
   }, [activeTab, activeChartType, location.pathname]);
 
-  // Update active chart type when view changes in URL
   useEffect(() => {
     if (viewFromUrl === 'table') {
       setActiveChartType('table');
@@ -101,7 +95,6 @@ const Visualize = () => {
         console.log("Dataset loaded:", datasetData);
         setDataset(datasetData);
         
-        // Load data preview using direct access fallback
         loadDataPreview(datasetId);
       } catch (error) {
         console.error('Error loading dataset:', error);
@@ -111,10 +104,9 @@ const Visualize = () => {
           console.log(`Retrying dataset load, attempt ${loadAttempts + 1} of ${maxRetries}`);
           setLoadAttempts(prev => prev + 1);
           
-          // Wait before retrying
           setTimeout(() => {
             loadDataset();
-          }, 1000 * (loadAttempts + 1)); // Exponential backoff
+          }, 1000 * (loadAttempts + 1));
           return;
         }
         
@@ -147,22 +139,18 @@ const Visualize = () => {
       console.error('Error loading data preview:', error);
       setPreviewError('Failed to load data preview');
       
-      // Try again with a different approach after a short delay
       setTimeout(async () => {
         try {
           console.log("Retrying data preview with fallback approach");
           
-          // Get the dataset to extract schema
           const dataset = await dataService.getDataset(datasetId);
           
           if (dataset?.column_schema) {
-            // Generate sample data from schema
             const sampleData = generateSampleData(dataset.column_schema, 50);
             console.log("Generated fallback sample data:", sampleData.length, "rows");
             setDataPreview(sampleData);
             setPreviewError(null);
           } else {
-            // Generate very basic sample data as last resort
             generateFallbackDataFromFilename(dataset?.file_name || '');
           }
         } catch (fallbackError) {
@@ -175,7 +163,6 @@ const Visualize = () => {
     }
   };
   
-  // Helper function to generate fallback data from filename
   const generateFallbackDataFromFilename = (filename: string) => {
     console.log("Generating fallback data based on filename:", filename);
     const lowerFilename = filename.toLowerCase();
@@ -183,7 +170,6 @@ const Visualize = () => {
     const rows = 50;
     
     if (lowerFilename.includes('vehicle') || lowerFilename.includes('car') || lowerFilename.includes('auto')) {
-      // Vehicle dataset
       sampleData = Array.from({ length: rows }, (_, i) => ({
         id: i + 1,
         make: ['Toyota', 'Honda', 'Ford', 'Tesla', 'BMW', 'Mercedes', 'Audi'][i % 7],
@@ -195,7 +181,6 @@ const Visualize = () => {
         mileage: Math.floor(Math.random() * 100000)
       }));
     } else if (lowerFilename.includes('sales') || lowerFilename.includes('revenue')) {
-      // Sales dataset
       sampleData = Array.from({ length: rows }, (_, i) => ({
         id: i + 1,
         product: `Product ${i % 10 + 1}`,
@@ -207,7 +192,6 @@ const Visualize = () => {
         region: ['North', 'South', 'East', 'West', 'Central'][i % 5]
       }));
     } else if (lowerFilename.includes('survey') || lowerFilename.includes('feedback')) {
-      // Survey dataset
       sampleData = Array.from({ length: rows }, (_, i) => ({
         id: i + 1,
         question: `Survey Question ${i % 5 + 1}`,
@@ -217,7 +201,6 @@ const Visualize = () => {
         date_submitted: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0]
       }));
     } else {
-      // Generic dataset
       sampleData = Array.from({ length: rows }, (_, i) => ({
         id: i + 1,
         name: `Item ${i + 1}`,
@@ -232,7 +215,6 @@ const Visualize = () => {
     setDataPreview(sampleData);
   };
   
-  // Helper function to generate sample data from schema
   const generateSampleData = (schema: Record<string, string>, count: number) => {
     const sampleData = [];
     const columns = Object.keys(schema);
@@ -274,7 +256,6 @@ const Visualize = () => {
 
   const handleDownload = () => {
     toast.success("Download started");
-    // In a real app, this would initiate a download of the visualization or data
   };
 
   const handleShare = () => {
@@ -292,7 +273,7 @@ const Visualize = () => {
     setError(null);
     setLoadAttempts(0);
   };
-  
+
   const handleRefreshData = async () => {
     if (datasetId) {
       setPreviewLoading(true);
@@ -509,6 +490,8 @@ const Visualize = () => {
                 
                 {activeChartType === 'table' ? (
                   <DataTable 
+                    datasetId={datasetId}
+                    dataset={dataset}
                     data={dataPreview} 
                     loading={previewLoading} 
                     error={previewError} 
