@@ -1,166 +1,117 @@
-
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import Logo from './Logo';
-import { Button } from '@/components/ui/button';
-import { Menu, X, LogOut } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
+import React from "react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  Home as HomeIcon,
+  LayoutDashboard as LayoutDashboardIcon,
+  List as ListIcon,
+  Settings as SettingsIcon,
+  User as UserIcon,
+  Beaker as BeakerIcon,
+} from "lucide-react";
+import { NavLink } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 
 const NavBar = () => {
-  const [scrolled, setScrolled] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { isAuthenticated, user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  
-  useEffect(() => {
-    const handleScroll = () => {
-      const isScrolled = window.scrollY > 10;
-      if (isScrolled !== scrolled) {
-        setScrolled(isScrolled);
-      }
-    };
-    
-    document.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      document.removeEventListener('scroll', handleScroll);
-    };
-  }, [scrolled]);
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
+  const navigationItems = [
+    {
+      name: "Home",
+      path: "/",
+      icon: <HomeIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+    {
+      name: "Test Tools",
+      path: "/test",
+      icon: <BeakerIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+    {
+      name: "Dashboard",
+      path: "/dashboard",
+      icon: <LayoutDashboardIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+    {
+      name: "Datasets",
+      path: "/upload",
+      icon: <ListIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+    {
+      name: "Account",
+      path: "/account",
+      icon: <UserIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+    {
+      name: "Settings",
+      path: "/settings",
+      icon: <SettingsIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+  ];
 
   return (
-    <nav className={`fixed top-0 left-0 w-full px-4 py-4 z-50 transition-all duration-300 ${
-      scrolled ? 'backdrop-blur-lg bg-black/20 border-b border-white/10' : ''
-    }`}>
-      <div className="mx-auto container flex items-center justify-between">
-        <Logo />
-        
-        <div className="hidden md:flex space-x-8 items-center">
-          <NavLink href="#features">Features</NavLink>
-          <NavLink href="#benefits">Benefits</NavLink>
-          <NavLink href="#how-it-works">How It Works</NavLink>
-          <NavLink href="#testimonials">Testimonials</NavLink>
-        </div>
-        
-        <div className="md:hidden">
-          <button 
-            onClick={() => setIsMenuOpen(!isMenuOpen)} 
-            className="p-2 rounded-md bg-white/10 backdrop-blur-md"
-          >
-            {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
-        </div>
-        
-        <div className="hidden md:flex items-center gap-3">
-          {isAuthenticated ? (
-            <>
-              <Link to="/upload">
-                <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/20">
-                  Upload Data
-                </Button>
-              </Link>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/20">
-                    {user?.name || user?.email || 'Account'}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
-                    <LogOut className="mr-2 h-4 w-4" /> Logout
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          ) : (
-            <>
-              <Link to="/login">
-                <Button variant="outline" className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/20">
-                  Login
-                </Button>
-              </Link>
-              <Link to="/login">
-                <Button className="purple-gradient">Get Started</Button>
-              </Link>
-            </>
-          )}
-        </div>
+    <nav className="bg-gray-900 text-white py-4 px-6 flex items-center justify-between">
+      {/* Logo and Navigation Links */}
+      <div className="flex items-center">
+        <span className="text-xl font-bold mr-6">
+          Data Analyzer
+        </span>
+        <ul className="flex space-x-4">
+          {navigationItems.map((item) => (
+            <li key={item.name}>
+              <NavLink
+                to={item.path}
+                className={({ isActive }) =>
+                  `flex items-center space-x-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-700 focus:ring-offset-1 disabled:pointer-events-none data-[state=active]:bg-gray-800 data-[state=active]:text-white ${isActive ? 'active' : ''}`
+                }
+              >
+                {item.icon}
+                <span>{item.name}</span>
+              </NavLink>
+            </li>
+          ))}
+        </ul>
       </div>
-      
-      {isMenuOpen && (
-        <div className="md:hidden absolute top-16 left-0 right-0 backdrop-blur-xl bg-black/50 border-b border-white/10 animate-fade-in">
-          <div className="flex flex-col space-y-4 p-4">
-            <MobileNavLink href="#features" onClick={() => setIsMenuOpen(false)}>Features</MobileNavLink>
-            <MobileNavLink href="#benefits" onClick={() => setIsMenuOpen(false)}>Benefits</MobileNavLink>
-            <MobileNavLink href="#how-it-works" onClick={() => setIsMenuOpen(false)}>How It Works</MobileNavLink>
-            <MobileNavLink href="#testimonials" onClick={() => setIsMenuOpen(false)}>Testimonials</MobileNavLink>
-            <div className="flex flex-col space-y-2 pt-2">
-              {isAuthenticated ? (
-                <>
-                  <Link to="/upload" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full bg-white/10 border-white/20">
-                      Upload Data
-                    </Button>
-                  </Link>
-                  <Button 
-                    variant="destructive" 
-                    className="w-full" 
-                    onClick={() => {
-                      handleLogout();
-                      setIsMenuOpen(false);
-                    }}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" /> Logout
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Link to="/login" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full bg-white/10 border-white/20">
-                      Login
-                    </Button>
-                  </Link>
-                  <Link to="/login" onClick={() => setIsMenuOpen(false)}>
-                    <Button className="w-full purple-gradient">
-                      Get Started
-                    </Button>
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
+
+      {/* User Avatar and Dropdown */}
+      {user && (
+        <div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={user.user_metadata?.avatar_url} alt={user.email || "User Avatar"} />
+                  <AvatarFallback>{user.email?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56 mr-2">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate("/account")}>
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/settings")}>
+                Preferences
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => signOut()}>
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
     </nav>
   );
 };
-
-const NavLink = ({ href, children }: { href: string, children: React.ReactNode }) => (
-  <a 
-    href={href} 
-    className="text-gray-200 hover:text-white transition-colors relative after:content-[''] after:absolute after:w-full after:scale-x-0 after:h-0.5 after:bottom-0 after:left-0 after:bg-primary/80 after:origin-bottom-right after:transition-transform after:duration-300 hover:after:scale-x-100 hover:after:origin-bottom-left"
-  >
-    {children}
-  </a>
-);
-
-const MobileNavLink = ({ href, children, onClick }: { href: string, children: React.ReactNode, onClick: () => void }) => (
-  <a 
-    href={href} 
-    className="text-gray-200 hover:text-white py-2 border-b border-white/10 block"
-    onClick={onClick}
-  >
-    {children}
-  </a>
-);
 
 export default NavBar;

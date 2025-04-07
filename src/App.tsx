@@ -1,53 +1,90 @@
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from './components/theme-provider';
+import { Toaster } from './components/ui/toaster';
+import { Toaster as SonnerToaster } from 'sonner';
+import { AuthProvider } from './contexts/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import NavBar from './components/NavBar';
+import Home from './pages/Home';
+import Dashboard from './pages/Dashboard';
+import UploadPage from './pages/UploadPage';
+import VisualizePage from './pages/VisualizePage';
+import AnalyzePage from './pages/AnalyzePage';
+import DatasetPage from './pages/DatasetPage';
+import AccountPage from './pages/AccountPage';
+import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/auth/LoginPage';
+import SignupPage from './pages/auth/SignupPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import { supabase } from './lib/supabase';
+import TestAnalysisTools from "./components/TestAnalysisTools";
 
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Index from "./pages/Index";
-import Upload from "./pages/Upload";
-import NotFound from "./pages/NotFound";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Visualize from "./pages/Visualize";
-import { AuthProvider } from "./hooks/useAuth";
-import ProtectedRoute from "./components/ProtectedRoute";
+function App() {
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-// Create a new QueryClient instance
-const queryClient = new QueryClient();
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/upload" element={
-              <ProtectedRoute>
-                <Upload />
-              </ProtectedRoute>
-            } />
-            <Route path="/visualize/:datasetId" element={
-              <ProtectedRoute>
-                <Visualize />
-              </ProtectedRoute>
-            } />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
-);
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
+
+  return (
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      <AuthProvider initialSession={session}>
+        <Router>
+          <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
+            <NavBar />
+            <main className="container mx-auto px-4 py-8">
+              <Routes>
+                <Route path="/" element={<Home />} />
+                
+                {/* Add Test Route */}
+                <Route path="/test" element={<TestAnalysisTools />} />
+                
+                {/* Keep existing routes */}
+                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
+                <Route path="/visualize/:datasetId" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
+                <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+                <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
+                <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+
+                {/* Auth routes */}
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/signup" element={<SignupPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+              </Routes>
+            </main>
+          </div>
+          <Toaster />
+          <SonnerToaster position="top-right" richColors />
+        </Router>
+      </AuthProvider>
+    </ThemeProvider>
+  );
+}
 
 export default App;
