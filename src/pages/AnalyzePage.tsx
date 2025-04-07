@@ -21,10 +21,12 @@ import AIQueryPanel from '@/components/AIQueryPanel';
 import EnhancedVisualization from '@/components/EnhancedVisualization';
 import { nlpService, QueryResult } from '@/services/nlpService';
 import { Badge } from '@/components/ui/badge';
+import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
 
 const AnalyzePage = () => {
   const { datasetId } = useParams<{ datasetId: string }>();
   const [datasets, setDatasets] = useState<any[]>([]);
+  const [uniqueDatasets, setUniqueDatasets] = useState<any[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
@@ -42,9 +44,13 @@ const AnalyzePage = () => {
         const datasetsArray = Array.isArray(result) ? result : [];
         setDatasets(datasetsArray);
         
+        // Get unique datasets by filename
+        const uniqueData = getUniqueDatasetsByFilename(datasetsArray);
+        setUniqueDatasets(uniqueData);
+        
         // If datasetId is provided, find that dataset
-        if (datasetId && datasetsArray.length > 0) {
-          const dataset = datasetsArray.find(d => d.id === datasetId);
+        if (datasetId && uniqueData.length > 0) {
+          const dataset = uniqueData.find(d => d.id === datasetId);
           if (dataset) {
             setSelectedDataset(dataset);
             // Generate recommendations for this dataset
@@ -112,7 +118,7 @@ const AnalyzePage = () => {
         <div className="flex justify-center items-center py-16">
           <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
         </div>
-      ) : datasets.length === 0 ? (
+      ) : uniqueDatasets.length === 0 ? (
         <Card className="glass-card p-8 text-center">
           <Database className="h-16 w-16 mx-auto mb-4 text-gray-400" />
           <CardTitle className="text-xl mb-2">No Datasets Found</CardTitle>
@@ -134,7 +140,7 @@ const AnalyzePage = () => {
                 <CardDescription>Select a dataset to analyze</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                {datasets.map(dataset => (
+                {uniqueDatasets.map(dataset => (
                   <Button
                     key={dataset.id}
                     variant="ghost"
