@@ -30,11 +30,31 @@ serve(async (req) => {
     // Create Supabase client with the service role key for admin access
     const supabase = createClient(supabaseUrl, supabaseServiceRole);
     
-    // Extract path from URL to determine action
-    const url = new URL(req.url);
-    const action = url.pathname.split('/').pop();
+    // Extract the action from the request body
+    let action = "";
     
-    console.log(`Storage manager called with action: ${action}`);
+    try {
+      const body = await req.json();
+      action = body?.action || "";
+      console.log(`Storage manager called with action from body: ${action}`);
+    } catch (parseError) {
+      // If parsing JSON fails, try to extract action from URL path
+      console.error("Error parsing request body:", parseError);
+      
+      // Extract path from URL to determine action
+      const url = new URL(req.url);
+      action = url.pathname.split('/').pop() || "";
+      console.log(`Storage manager called with action from URL: ${action}`);
+    }
+    
+    if (!action) {
+      return new Response(
+        JSON.stringify({ error: "No action specified" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+    
+    console.log(`Storage manager executing action: ${action}`);
     
     if (action === 'create-datasets-bucket') {
       try {
@@ -251,26 +271,3 @@ serve(async (req) => {
     );
   }
 });
-
-// Helper RPC function to create storage policies
-// This is commented out because it should be created in the database via SQL, not here
-/*
-CREATE OR REPLACE FUNCTION create_storage_policy(bucket_name TEXT)
-RETURNS VOID AS $$
-BEGIN
-  EXECUTE format('
-    CREATE POLICY "Allow public read access" ON storage.objects
-    FOR SELECT USING (bucket_id = %L);
-    
-    CREATE POLICY "Allow public insert access" ON storage.objects
-    FOR INSERT WITH CHECK (bucket_id = %L);
-    
-    CREATE POLICY "Allow public update access" ON storage.objects
-    FOR UPDATE USING (bucket_id = %L);
-    
-    CREATE POLICY "Allow public delete access" ON storage.objects
-    FOR DELETE USING (bucket_id = %L);
-  ', bucket_name, bucket_name, bucket_name, bucket_name);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-*/

@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { toast } from "sonner";
 import { Dataset, StorageStats } from '@/services/types/datasetTypes';
@@ -236,17 +237,21 @@ export const callStorageManager = async (action: string): Promise<any> => {
     console.log(`Calling storage manager: ${action}`);
     
     const { data, error } = await supabase.functions.invoke('storage-manager', {
+      method: 'POST',
       body: { action },
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
     
     if (error) {
       console.error(`Storage manager ${action} failed:`, error);
-      return { success: false, message: error.message };
+      return { success: false, message: error.message || "Unknown error" };
     }
     
-    return data;
+    return data || { success: true };
   } catch (error) {
     console.error(`Storage manager ${action} failed:`, error);
-    return { success: false, message: error.message };
+    return { success: false, message: error.message || "Unknown error" };
   }
 };

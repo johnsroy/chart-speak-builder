@@ -1,52 +1,41 @@
 
-# A string used to distinguish different Supabase projects on the same host. Defaults to the working
-# directory name when running `supabase init`.
 project_id = "rehadpogugijylybwmoe"
-app_id = "rehadpogugijylybwmoe"
 
 [api]
-# Port to use for the API URL.
+# Port to use for the API URL
 port = 54321
-# Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
-# endpoints. public and storage are always included.
-schemas = ["public", "storage", "graphql_public"]
-# Extra schemas to add to the search_path of every request. public is always included.
-extra_search_path = ["public", "extensions"]
-# The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
-# for accidental or malicious requests.
-max_rows = 1000
+scheme = "http"
 
 [db]
-# Port to use for the local database URL.
+# Port to use when connecting to the database
 port = 54322
-# The database major version to use. This has to be the same as your remote database's. Run `SHOW
-# server_version;` on the remote database to check.
-major_version = 15
 
 [studio]
-# Port to use for Supabase Studio.
+# Port to use for Supabase Studio
 port = 54323
 
-# Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
-# are monitored, and you can view the emails that would have been sent from the web interface.
+# Email testing server. Emails sent with the local dev setup are not actually sent - the
+# inbox server is used to catch the emails and display them for testing purposes.
 [inbucket]
-# Port to use for the email testing server web interface.
+# Port to use for the email inbox server
 port = 54324
-smtp_port = 54325
-pop3_port = 54326
 
 [storage]
-# The maximum file size allowed (e.g. "5MB", "500KB").
+# The maximum file size allowed to be uploaded to storage when using the Storage API (in bytes)
 file_size_limit = "50MiB"
 
 [auth]
-# The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
+# The base URL of your website. Used as an allowlist for redirects and for constructing URLs used
 # in emails.
 site_url = "http://localhost:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = ["https://localhost:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
+# If disabled, the refresh token will never expire.
+enable_refresh_token_rotation = true
+# Allows refreshing of tokens prior to expiry.
+refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
 enable_signup = true
 
@@ -59,25 +48,179 @@ double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
 enable_confirmations = false
 
-# Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
-# `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin`, `notion`, `twitch`,
-# `twitter`, `slack`, `spotify`, `workos`, `zoom`.
+# Configure one of the supported storage providers.
 [auth.external.apple]
 enabled = false
 client_id = ""
 secret = ""
 # Overrides the default auth redirectUrl.
 redirect_uri = ""
-# Overrides the default auth provider URL. Used to support self-hosted gitlab, single-tenant Azure,
-# or any other third-party OIDC providers.
+# For apple signin in native apps or in the browser on MacOS/iOS
+# e.g. io.supabase.myapp://auth/callback
+native_redirect_uri = ""
+# e.g. ["name", "email"]
+scopes = ["name", "email"]
+
+[auth.external.azure]
+enabled = false
+client_id = ""
+secret = ""
+url = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["openid", "profile", "email", "offline_access"]
+scopes = ["openid", "profile", "email", "offline_access"]
+
+[auth.external.bitbucket]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["account", "repository"]
+scopes = ["account", "repository"]
+
+[auth.external.discord]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["identify", "email"]
+scopes = ["identify", "email"]
+
+[auth.external.facebook]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["email", "photos", "user_friends"]
+scopes = ["email", "photos", "user_friends"]
+
+[auth.external.figma]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["file_read", "user"]
+scopes = ["file_read", "user"]
+
+[auth.external.github]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["user:email", "read:user"]
+scopes = ["user:email", "read:user"]
+
+[auth.external.gitlab]
+enabled = false
+client_id = ""
+secret = ""
+url = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["read_user"]
+scopes = ["read_user"]
+
+[auth.external.google]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["email", "profile"]
+scopes = ["email", "profile"]
+
+[auth.external.kakao]
+enabled = false
+client_id = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+scope = "profile_nickname profile_image account_email"
+
+[auth.external.keycloak]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
 url = ""
 
-[functions]
-# Port to use for Functions.
-port = 54328
+[auth.external.linkedin]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["r_liteprofile", "r_emailaddress"]
+scopes = ["r_liteprofile", "r_emailaddress"]
 
-[functions.data-processor]
-verify_jwt = false
+[auth.external.notion]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. [] (Look at notion docs for more details about scopes: https://developers.notion.com/docs/authorization#scopes)
+scopes = []
 
-[functions.data-processor-fallback]
+[auth.external.twitch]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["openid", "user:read:email"]
+scopes = ["openid", "user:read:email"]
+
+[auth.external.twitter]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+
+[auth.external.spotify]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["user-read-email"]
+scopes = ["user-read-email"]
+
+[auth.external.slack]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. [] (Look at Slack docs for more details about scopes: https://api.slack.com/legacy/oauth-scopes)
+scopes = []
+
+[auth.external.workos]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# The connection ID is from WorkOS dashboard
+connection = ""
+# The provider is what you want to use for authentication
+provider = ""
+
+[auth.external.zoom]
+enabled = false
+client_id = ""
+secret = ""
+# Overrides the default auth redirectUrl.
+redirect_uri = ""
+# e.g. ["user:read", "meeting:read", "meeting:write"]
+scopes = ["user:read", "meeting:read", "meeting:write"]
+
+[functions.storage-manager]
 verify_jwt = false

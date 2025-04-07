@@ -24,38 +24,71 @@ const initializeApp = async () => {
       // Import utilities only when needed to avoid circular dependencies
       const { verifyStorageBuckets, createStorageBuckets, callStorageManager } = await import('@/utils/storageUtils');
       
-      // First try direct API approach to create buckets
-      const bucketsCreated = await createStorageBuckets();
+      let storageSetupSuccess = false;
+      let retryCount = 0;
+      const maxRetries = 2;
       
-      if (bucketsCreated) {
-        console.log("Successfully created storage buckets via API");
-      } else {
-        console.log("Direct bucket creation failed, trying edge function...");
-        
-        // Try the edge function as a fallback
-        const forceCreateResult = await callStorageManager('force-create-buckets');
-        
-        if (forceCreateResult.success) {
-          console.log("Successfully created storage buckets via edge function:", forceCreateResult);
+      while (!storageSetupSuccess && retryCount <= maxRetries) {
+        try {
+          // First try direct API approach to create buckets
+          const bucketsCreated = await createStorageBuckets();
           
-          // Add sample data to the buckets for testing
-          const sampleResult = await callStorageManager('sample');
-          if (sampleResult.success) {
-            console.log("Added sample data to buckets:", sampleResult);
+          if (bucketsCreated) {
+            console.log("Successfully created storage buckets via API");
+            storageSetupSuccess = true;
           } else {
-            console.warn("Failed to add sample data:", sampleResult.message || "Unknown error");
+            console.log("Direct bucket creation failed, trying edge function...");
+            
+            try {
+              // Try the edge function
+              const forceCreateResult = await callStorageManager('force-create-buckets');
+              
+              if (forceCreateResult && forceCreateResult.success) {
+                console.log("Successfully created storage buckets via edge function:", forceCreateResult);
+                storageSetupSuccess = true;
+                
+                // Add sample data to the buckets for testing
+                try {
+                  const sampleResult = await callStorageManager('sample');
+                  if (sampleResult && sampleResult.success) {
+                    console.log("Added sample data to buckets:", sampleResult);
+                  }
+                } catch (sampleError) {
+                  console.warn("Failed to add sample data:", sampleError);
+                }
+              }
+            } catch (edgeFunctionError) {
+              console.error("Edge function approach failed:", edgeFunctionError);
+            }
+            
+            if (!storageSetupSuccess) {
+              // Try the regular setup as a fallback
+              try {
+                const setupResult = await callStorageManager('setup');
+                if (setupResult && setupResult.success) {
+                  console.log("Bucket setup fallback successful:", setupResult);
+                  storageSetupSuccess = true;
+                }
+              } catch (setupError) {
+                console.error("Setup fallback failed:", setupError);
+              }
+            }
           }
-        } else {
-          console.error("Failed to create storage buckets via edge function:", forceCreateResult.message || "Unknown error");
-          
-          // Try the regular setup as a final fallback
-          const setupResult = await callStorageManager('setup');
-          if (setupResult.success) {
-            console.log("Bucket setup fallback successful:", setupResult);
-          } else {
-            console.error("All bucket creation methods failed");
-          }
+        } catch (attemptError) {
+          console.error(`Storage setup attempt ${retryCount + 1} failed:`, attemptError);
         }
+        
+        retryCount++;
+        
+        if (!storageSetupSuccess && retryCount <= maxRetries) {
+          // Wait before retrying
+          console.log(`Retrying storage setup (${retryCount}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      if (!storageSetupSuccess) {
+        console.warn("All storage setup attempts failed. Proceeding without storage initialization.");
       }
       
       // Initialize admin user
@@ -77,8 +110,10 @@ const initializeApp = async () => {
 
 // Run initialization immediately when imported to ensure buckets are created
 if (typeof window !== 'undefined') {
-  // Run the function immediately
-  initializeApp();
+  // Schedule the initialization to run after a short delay to ensure everything is ready
+  setTimeout(() => {
+    initializeApp();
+  }, 500);
 }
 
 // Expose these functions from the imported utilities to avoid breaking existing code
