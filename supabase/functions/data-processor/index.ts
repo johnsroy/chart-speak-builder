@@ -22,7 +22,8 @@ serve(async (req) => {
     // Create Supabase client with the service role key for admin access
     const supabase = createClient(supabaseUrl, supabaseServiceRole);
     
-    const { action, dataset_id } = await req.json();
+    const requestData = await req.json();
+    const { action, dataset_id } = requestData;
     
     console.log(`Processing dataset ${dataset_id} with action: ${action}`);
     
@@ -35,19 +36,12 @@ serve(async (req) => {
       
     if (datasetError) {
       console.error('Error retrieving dataset:', datasetError);
-      
-      // Generate sample data as fallback
-      const fallbackData = generateSampleData('Sample Dataset');
-      
       return new Response(
-        JSON.stringify({
-          data: fallbackData,
-          schema: inferSchema(fallbackData[0] || {}),
-          count: fallbackData.length,
-          isFallback: true,
-          error: datasetError.message
+        JSON.stringify({ 
+          error: `Failed to get dataset: ${datasetError.message}`,
+          success: false 
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 }
       );
     }
     
@@ -56,16 +50,21 @@ serve(async (req) => {
     if (action === 'delete') {
       // Delete file from storage
       try {
-        const { error: storageError } = await supabase
-          .storage
-          .from(dataset.storage_type === 'local' ? 'datasets' : dataset.storage_type)
+        const storageBucket = dataset.storage_type || 'datasets';
+        console.log(`Attempting to delete file from ${storageBucket} bucket: ${dataset.storage_path}`);
+        
+        const { error: storageError } = await supabase.storage
+          .from(storageBucket)
           .remove([dataset.storage_path]);
           
         if (storageError) {
           console.error('Error deleting from storage:', storageError);
+          // Continue with deletion even if storage deletion fails
+          // The record is more important than the file
         }
       } catch (storageError) {
         console.error('Exception during storage deletion:', storageError);
+        // Continue with deletion even if storage deletion fails
       }
       
       // Delete database record
@@ -75,8 +74,12 @@ serve(async (req) => {
         .eq('id', dataset_id);
         
       if (deleteError) {
+        console.error('Error deleting from database:', deleteError);
         return new Response(
-          JSON.stringify({ error: deleteError.message }),
+          JSON.stringify({ 
+            error: `Database deletion failed: ${deleteError.message}`,
+            success: false 
+          }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
         );
       }
@@ -92,26 +95,28 @@ serve(async (req) => {
         // Download the dataset file
         const { data: fileData, error: fileError } = await supabase
           .storage
-          .from(dataset.storage_type === 'local' ? 'datasets' : dataset.storage_type)
+          .from(dataset.storage_type || 'datasets')
           .download(dataset.storage_path);
           
         if (fileError) {
           console.error('File download error:', fileError);
-          // Fallback to generated data when file download fails
-          const sampleData = generateEnhancedSampleData(dataset.name || 'Sample', null);
           return new Response(
-            JSON.stringify({
-              data: sampleData,
-              schema: inferSchema(sampleData[0] || {}),
-              count: sampleData.length,
-              isFallback: true
+            JSON.stringify({ 
+              error: `Failed to download file: ${fileError.message}`,
+              success: false  
             }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 }
           );
         }
         
         if (!fileData) {
-          throw new Error("No file data returned from storage");
+          return new Response(
+            JSON.stringify({ 
+              error: "No file data returned from storage",
+              success: false 
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 }
+          );
         }
         
         // Parse the file based on its type
@@ -171,8 +176,13 @@ serve(async (req) => {
               data = parsedData.slice(0, 100); // Limit to first 100 rows
             } catch (fallbackError) {
               console.error('Fallback CSV parsing also failed:', fallbackError);
-              // If all parsing fails, generate sample data
-              data = generateEnhancedSampleData(dataset.name || 'Sample', null);
+              return new Response(
+                JSON.stringify({ 
+                  error: `CSV parsing failed: ${fallbackError.message}`,
+                  success: false 
+                }),
+                { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+              );
             }
           }
         } else if (dataset.file_name.endsWith('.json')) {
@@ -182,12 +192,23 @@ serve(async (req) => {
             data = Array.isArray(parsedData) ? parsedData.slice(0, 100) : [parsedData];
           } catch (jsonError) {
             console.error('JSON parsing error:', jsonError);
-            // If JSON parsing fails, generate sample data
-            data = generateEnhancedSampleData(dataset.name || 'Sample', null);
+            return new Response(
+              JSON.stringify({ 
+                error: `JSON parsing failed: ${jsonError.message}`,
+                success: false 
+              }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+            );
           }
         } else {
-          // For unsupported formats, generate sample data
-          data = generateEnhancedSampleData(dataset.name || 'Sample', null);
+          // For unsupported formats
+          return new Response(
+            JSON.stringify({ 
+              error: `Unsupported file format: ${dataset.file_name}`,
+              success: false 
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+          );
         }
         
         // Extract column schema if not already available
@@ -229,60 +250,43 @@ serve(async (req) => {
           }
         }
         
-        // Generate more meaningful data if the dataset is too small
-        if (data.length < 5) {
-          console.log('Dataset too small, generating sample data');
-          const sampleData = generateEnhancedSampleData(dataset.name, data[0]);
-          data = [...data, ...sampleData].slice(0, 100);
-        }
-        
         // Return preview data and schema
         return new Response(
           JSON.stringify({
             data: data,
             schema: dataset.column_schema || inferSchema(data[0] || {}),
-            count: data.length
+            count: data.length,
+            success: true
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } catch (error) {
         console.error('Error processing file:', error);
         
-        // Generate sample data as fallback
-        const sampleData = generateSampleData(dataset.name || 'Sample');
-        
         return new Response(
           JSON.stringify({
-            data: sampleData,
-            schema: inferSchema(sampleData[0] || {}),
-            count: sampleData.length,
-            isFallback: true
+            error: `Error processing file: ${error.message}`,
+            success: false
           }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
         );
       }
     }
     
     return new Response(
-      JSON.stringify({ error: "Invalid action specified" }),
+      JSON.stringify({ error: "Invalid action specified", success: false }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
     );
     
   } catch (error) {
     console.error("Error in data-processor function:", error);
     
-    // Generate sample data as fallback for any error
-    const sampleData = generateSampleData('Emergency Fallback');
-    
     return new Response(
       JSON.stringify({ 
         error: error.message || "Unknown error occurred",
-        data: sampleData,
-        schema: inferSchema(sampleData[0] || {}),
-        count: sampleData.length,
-        isFallback: true
+        success: false
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });
@@ -317,112 +321,6 @@ function parseCSVLine(line: string): string[] {
   // Add the last value
   result.push(currentValue.trim());
   return result;
-}
-
-// Helper function to generate sample data
-function generateSampleData(datasetName: string) {
-  const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
-  const years = [2020, 2021, 2022, 2023, 2024];
-  const products = ['Product X', 'Product Y', 'Product Z'];
-  const regions = ['North', 'South', 'East', 'West'];
-  
-  const data = [];
-  
-  for (const category of categories) {
-    for (const year of years) {
-      for (const region of regions) {
-        const product = products[Math.floor(Math.random() * products.length)];
-        
-        data.push({
-          Category: category,
-          Year: year,
-          Region: region,
-          Product: product,
-          Value: Math.floor(Math.random() * 1000),
-          Revenue: Math.floor(Math.random() * 10000) / 100,
-          Count: Math.floor(Math.random() * 100),
-          Growth: Math.floor(Math.random() * 40) - 20 + '%'
-        });
-      }
-    }
-  }
-  
-  console.log('Generated sample fallback data:', data.length, 'rows');
-  return data;
-}
-
-// Generate more realistic data based on dataset structure
-function generateEnhancedSampleData(datasetName: string, sampleRow: Record<string, any> | null) {
-  if (!sampleRow) {
-    return generateSampleData(datasetName);
-  }
-  
-  const data = [];
-  const numRows = 20;
-  
-  // Get column names from sample
-  const columns = Object.keys(sampleRow);
-  
-  // Identify potential category/dimension columns and numeric columns
-  const categoryColumns: string[] = [];
-  const numericColumns: string[] = [];
-  const dateColumns: string[] = [];
-  
-  columns.forEach(col => {
-    const value = sampleRow[col];
-    if (typeof value === 'number') {
-      numericColumns.push(col);
-    } else if (typeof value === 'string' && !isNaN(Date.parse(value)) && value.match(/^\d{4}-\d{2}-\d{2}/)) {
-      dateColumns.push(col);
-    } else if (typeof value === 'string') {
-      categoryColumns.push(col);
-    }
-  });
-  
-  // Generate values that follow the pattern of the sample
-  for (let i = 0; i < numRows; i++) {
-    const row: Record<string, any> = {};
-    
-    // For each column, generate a realistic value
-    columns.forEach(col => {
-      const originalValue = sampleRow[col];
-      
-      if (typeof originalValue === 'number') {
-        // For numeric columns, generate variations
-        const baseValue = originalValue || 100;
-        const min = baseValue * 0.5;
-        const max = baseValue * 1.5;
-        row[col] = Math.floor(min + Math.random() * (max - min));
-      } else if (typeof originalValue === 'string') {
-        if (dateColumns.includes(col)) {
-          // Generate date with variation
-          const baseDate = new Date(originalValue);
-          const daysToAdd = Math.floor(Math.random() * 365);
-          const newDate = new Date(baseDate);
-          newDate.setDate(newDate.getDate() + daysToAdd);
-          row[col] = newDate.toISOString().split('T')[0];
-        } else if (categoryColumns.includes(col)) {
-          // For categorical, create variations
-          const variations = [
-            originalValue,
-            `${originalValue} Type A`,
-            `${originalValue} Type B`,
-            `${originalValue} Plus`,
-            `${originalValue} Premium`
-          ];
-          row[col] = variations[Math.floor(Math.random() * variations.length)];
-        } else {
-          row[col] = originalValue;
-        }
-      } else {
-        row[col] = originalValue;
-      }
-    });
-    
-    data.push(row);
-  }
-  
-  return data;
 }
 
 // Helper function to infer schema from data

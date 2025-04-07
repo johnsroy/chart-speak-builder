@@ -259,7 +259,9 @@ export const useFileUpload = () => {
       try {
         // Delete the existing dataset
         await dataService.deleteDataset(datasetToOverwrite);
-        toast.success("Previous version of the file deleted");
+        sonnerToast("Previous version deleted", {
+          description: "Previous version of the file has been deleted"
+        });
         
         // Now upload the new dataset
         await handleUpload(isAuthenticated, userId);

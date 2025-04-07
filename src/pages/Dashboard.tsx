@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -70,16 +69,18 @@ const Dashboard = () => {
   }, [isAuthenticated, user, adminLogin]);
 
   useEffect(() => {
-    const handleUploadSuccess = (event: Event) => {
+    const handleUploadSuccess = (event: any) => {
       const customEvent = event as CustomEvent<{ datasetId: string }>;
       console.log("Detected dataset upload success:", customEvent.detail.datasetId);
       loadDatasets();
     };
 
     window.addEventListener('dataset-upload-success', handleUploadSuccess);
+    window.addEventListener('upload:success', handleUploadSuccess);
 
     return () => {
       window.removeEventListener('dataset-upload-success', handleUploadSuccess);
+      window.removeEventListener('upload:success', handleUploadSuccess);
     };
   }, [loadDatasets]);
 
@@ -123,28 +124,28 @@ const Dashboard = () => {
     }
   };
 
+  const getUniqueDatasets = (allDatasets) => {
+    const uniqueMap = new Map();
+    
+    allDatasets.forEach(dataset => {
+      const existing = uniqueMap.get(dataset.file_name);
+      if (!existing || new Date(dataset.updated_at) > new Date(existing.updated_at)) {
+        uniqueMap.set(dataset.file_name, dataset);
+      }
+    });
+    
+    return Array.from(uniqueMap.values());
+  };
+
   const filteredDatasets = filterType 
-    ? datasets.filter(dataset => {
+    ? getUniqueDatasets(datasets).filter(dataset => {
         const fileExt = dataset.file_name.split('.').pop()?.toLowerCase();
         if (filterType === 'csv') return fileExt === 'csv';
         if (filterType === 'excel') return fileExt === 'xlsx' || fileExt === 'xls';
         if (filterType === 'json') return fileExt === 'json';
         return true;
       })
-    : datasets;
-  
-  // Ensure we only show the most recent version of each file name
-  const uniqueDatasets = filteredDatasets.reduce((acc, current) => {
-    const existingIndex = acc.findIndex(item => item.file_name === current.file_name);
-    
-    if (existingIndex === -1) {
-      acc.push(current);
-    } else if (new Date(current.updated_at) > new Date(acc[existingIndex].updated_at)) {
-      acc[existingIndex] = current;
-    }
-    
-    return acc;
-  }, []);
+    : getUniqueDatasets(datasets);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
@@ -225,9 +226,9 @@ const Dashboard = () => {
                   </Card>
                 ))}
               </div>
-            ) : uniqueDatasets.length > 0 ? (
+            ) : filteredDatasets.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {uniqueDatasets.map(dataset => (
+                {filteredDatasets.map(dataset => (
                   <Card key={dataset.id} className="glass-card hover:bg-white/5 transition-colors cursor-pointer overflow-hidden" onClick={() => navigate(`/visualize/${dataset.id}`)}>
                     <CardHeader className="relative pb-2">
                       <DropdownMenu>
@@ -256,10 +257,10 @@ const Dashboard = () => {
                         </DropdownMenuContent>
                       </DropdownMenu>
                       
-                      <CardTitle className="text-base truncate pr-10" title={dataset.name}>
+                      <CardTitle className="text-base truncate pr-10 max-w-full" title={dataset.name}>
                         {dataset.name}
                       </CardTitle>
-                      <CardDescription className="truncate text-xs" title={dataset.file_name}>
+                      <CardDescription className="truncate text-xs max-w-full" title={dataset.file_name}>
                         {dataset.file_name} • {(dataset.file_size / (1024 * 1024)).toFixed(2)} MB
                       </CardDescription>
                     </CardHeader>

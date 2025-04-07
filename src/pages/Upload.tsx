@@ -44,12 +44,14 @@ const Upload = () => {
       return () => clearInterval(progressInterval);
     };
     
-    // Add event listener
-    window.addEventListener('upload:success' as any, handleUploadSuccess);
+    // Add event listener for both possible event names to ensure it works
+    window.addEventListener('upload:success', handleUploadSuccess as EventListener);
+    window.addEventListener('dataset-upload-success', handleUploadSuccess as EventListener);
     
     // Clean up
     return () => {
-      window.removeEventListener('upload:success' as any, handleUploadSuccess);
+      window.removeEventListener('upload:success', handleUploadSuccess as EventListener);
+      window.removeEventListener('dataset-upload-success', handleUploadSuccess as EventListener);
     };
   }, [navigate]);
 

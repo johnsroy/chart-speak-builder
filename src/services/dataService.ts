@@ -186,20 +186,83 @@ export const dataService = {
    */
   deleteDataset: async (id: string): Promise<boolean> => {
     try {
-      // Call the data processor edge function to handle deletion of both the file and database record
-      const { error } = await supabase.functions.invoke('data-processor', {
-        body: { action: 'delete', dataset_id: id }
-      });
+      console.log(`Attempting to delete dataset with ID: ${id}`);
       
-      if (error) {
-        throw new Error(`Failed to delete dataset: ${error.message}`);
+      // First try using the direct database approach
+      try {
+        // Get dataset info to delete the file later
+        const { data: dataset, error: getError } = await supabase
+          .from('datasets')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+          
+        if (getError) {
+          console.error("Error getting dataset before delete:", getError);
+          // Continue with deletion attempt even if we can't get the dataset
+        }
+        
+        // Delete the record from the database
+        const { error: deleteError } = await supabase
+          .from('datasets')
+          .delete()
+          .eq('id', id);
+          
+        if (deleteError) {
+          console.error("Error deleting dataset record:", deleteError);
+          throw new Error(`Failed to delete dataset record: ${deleteError.message}`);
+        }
+        
+        // Try to delete the file if we got the dataset
+        if (dataset && dataset.storage_path) {
+          try {
+            const { error: storageError } = await supabase.storage
+              .from(dataset.storage_type || 'datasets')
+              .remove([dataset.storage_path]);
+              
+            if (storageError) {
+              console.warn("Warning: Deleted record but failed to delete storage file:", storageError);
+              // This is not a critical error since the record is gone
+            }
+          } catch (storageDeleteError) {
+            console.warn("Storage deletion error:", storageDeleteError);
+            // Non-critical error
+          }
+        }
+        
+        console.log(`Successfully deleted dataset ${id} using direct method`);
+        
+        // Dispatch an event to notify subscribers
+        const event = new CustomEvent('dataset-deleted', { detail: { datasetId: id } });
+        window.dispatchEvent(event);
+        
+        return true;
+      } catch (directDeleteError) {
+        console.warn("Direct delete failed, falling back to edge function:", directDeleteError);
+        
+        // Fall back to using the edge function
+        const { data, error } = await supabase.functions.invoke('data-processor', {
+          body: { action: 'delete', dataset_id: id }
+        });
+        
+        if (error) {
+          console.error("Edge function delete error:", error);
+          throw new Error(`Failed to delete dataset: ${error.message}`);
+        }
+        
+        if (data && data.success) {
+          console.log(`Successfully deleted dataset ${id} using edge function`);
+          
+          // Dispatch an event to notify subscribers
+          const event = new CustomEvent('dataset-deleted', { detail: { datasetId: id } });
+          window.dispatchEvent(event);
+          
+          return true;
+        } else {
+          const errorMessage = data && data.error ? data.error : "Unknown error during delete operation";
+          throw new Error(errorMessage);
+        }
       }
-      
-      // Dispatch an event to notify subscribers
-      const event = new CustomEvent('dataset-deleted', { detail: { datasetId: id } });
-      window.dispatchEvent(event);
-      
-      return true;
     } catch (error) {
       console.error('Error deleting dataset:', error);
       throw error;
@@ -224,87 +287,25 @@ export const dataService = {
     try {
       console.log(`Previewing dataset ${datasetId}...`);
       
-      // Try to use the edge function to transform data
-      try {
-        const { data, error } = await supabase.functions.invoke('data-processor', {
-          body: { action: 'preview', dataset_id: datasetId }
-        });
-        
-        if (error) {
-          console.error('Error previewing via transform function:', error);
-          throw error;
-        }
-        
-        if (data?.data && Array.isArray(data.data)) {
-          console.log(`Loaded ${data.data.length} rows of preview data`);
-          return data.data;
-        }
-      } catch (transformError) {
-        console.error('Error previewing via transform function:', transformError);
+      // Call the edge function to get data
+      const { data, error } = await supabase.functions.invoke('data-processor', {
+        body: { action: 'preview', dataset_id: datasetId }
+      });
+      
+      if (error) {
+        console.error('Error previewing via transform function:', error);
+        throw error;
       }
       
-      // Fallback: Get dataset info and try to download the file directly
-      try {
-        const dataset = await dataService.getDataset(datasetId);
-        
-        if (!dataset) {
-          throw new Error('Dataset not found');
-        }
-        
-        // Download the file from storage
-        const { data: fileData, error: downloadError } = await supabase.storage
-          .from(dataset.storage_type || 'datasets')
-          .download(dataset.storage_path);
-          
-        if (downloadError) {
-          console.error('Storage download error:', downloadError);
-          throw new Error(`Failed to download file: ${JSON.stringify(downloadError)}`);
-        }
-        
-        let parsedData: any[] = [];
-        
-        // Parse file based on type
-        if (dataset.file_name.endsWith('.csv')) {
-          const text = await fileData.text();
-          parsedData = parseCSV(text);
-        } else if (dataset.file_name.endsWith('.json')) {
-          const text = await fileData.text();
-          const json = JSON.parse(text);
-          parsedData = Array.isArray(json) ? json : [json];
-        } else {
-          // Unsupported format
-          throw new Error('Unsupported file format');
-        }
-        
-        // Limit to 100 rows for preview
-        return parsedData.slice(0, 100);
-      } catch (fileError) {
-        console.error('Error getting dataset:', fileError);
-      }
-      
-      // Fallback: Use generated sample data based on schema
-      try {
-        const dataset = await dataService.getDataset(datasetId);
-        
-        if (!dataset || !dataset.column_schema) {
-          throw new Error('Dataset or schema not found');
-        }
-        
-        // Generate sample data based on the schema
-        return generateSampleData(dataset.column_schema, 50);
-      } catch (generateError) {
-        console.error('Error previewing dataset:', generateError);
-        throw generateError;
+      if (data?.data && Array.isArray(data.data)) {
+        console.log(`Loaded ${data.data.length} rows of preview data`);
+        return data.data;
+      } else {
+        throw new Error('No data returned from preview function');
       }
     } catch (error) {
       console.error('Error previewing dataset:', error);
-      
-      // Return a minimal dataset as a last resort
-      return [
-        { Category: 'Sample A', Value: 100 },
-        { Category: 'Sample B', Value: 200 },
-        { Category: 'Sample C', Value: 300 }
-      ];
+      throw error;
     }
   },
 

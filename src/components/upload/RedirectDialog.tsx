@@ -3,7 +3,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { Check, Eye, Lightbulb, BrainCircuit, ChartBar } from 'lucide-react';
+import { Check, Eye, Lightbulb, BrainCircuit, ChartBar, Sparkles } from 'lucide-react';
 
 export interface RedirectDialogProps {
   open: boolean;
@@ -55,8 +55,8 @@ const RedirectDialog: React.FC<RedirectDialogProps> = ({
             className="w-full flex items-center gap-2"
             onClick={handleVisualize}
           >
-            <ChartBar className="h-4 w-4" />
-            Visualize With Advanced AI
+            <Sparkles className="h-4 w-4" />
+            Visualize With Claude 3.7 AI
           </Button>
           <Button 
             variant="outline" 
@@ -69,7 +69,7 @@ const RedirectDialog: React.FC<RedirectDialogProps> = ({
             }}
           >
             <BrainCircuit className="h-4 w-4" />
-            Ask Questions About Your Data
+            Ask ChatGPT About Your Data
           </Button>
           <Button 
             variant="ghost" 
