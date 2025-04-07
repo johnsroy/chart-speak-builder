@@ -37,10 +37,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setUser(currentUser);
             } catch (error) {
               console.error('Error updating user after auth change:', error);
+            } finally {
+              setIsLoading(false);
             }
           }, 0);
         } else {
           setUser(null);
+          setIsLoading(false);
         }
       }
     );

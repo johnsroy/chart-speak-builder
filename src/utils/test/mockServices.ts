@@ -1,176 +1,100 @@
 
 import { supabase } from '@/lib/supabase';
-import { QueryResult } from '@/services/types/queryTypes';
-import { sampleQueries, chartData } from './sampleData';
+import { chartData, nlpResponses } from './sampleData';
+import { QueryResult } from '@/services/types/queryTypes'; 
 
-// Store the original functions so we can restore them later
-let originalFunctionInvoke: any = null;
+// Create a mock of the supabase client for testing purposes
+export const mockSupabaseClient = {
+  from: () => ({
+    select: () => ({
+      eq: () => ({
+        data: [],
+        error: null
+      })
+    }),
+    insert: () => ({
+      select: () => ({
+        single: () => ({
+          data: { id: 'mock-id' },
+          error: null
+        })
+      })
+    })
+  }),
+  storage: {
+    from: () => ({
+      upload: () => ({ data: { path: 'mock-path' }, error: null }),
+      getPublicUrl: () => ({ data: { publicUrl: 'https://example.com/mock-image.jpg' } })
+    })
+  },
+  auth: {
+    getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+    getUser: () => Promise.resolve({ data: { user: null }, error: null })
+  },
+  functions: {
+    // Fixed type by making it compatible with FunctionsResponse
+    invoke: (functionName: string, options?: any) => {
+      if (functionName === 'transform') {
+        return Promise.resolve({
+          data: chartData,
+          error: null
+        });
+      } else if (functionName === 'ai-query') {
+        const query = options?.body?.query?.toLowerCase() || '';
+        
+        if (query.includes('sales')) {
+          return Promise.resolve({
+            data: nlpResponses.sales,
+            error: null
+          });
+        } else if (query.includes('product')) {
+          return Promise.resolve({
+            data: nlpResponses.products,
+            error: null
+          });
+        } else if (query.includes('region') || query.includes('country')) {
+          return Promise.resolve({
+            data: nlpResponses.regions,
+            error: null
+          });
+        } else if (query.includes('time') || query.includes('trend')) {
+          return Promise.resolve({
+            data: nlpResponses.timeSeries,
+            error: null
+          });
+        }
+        
+        // Default response
+        return Promise.resolve({
+          data: nlpResponses.default,
+          error: null
+        });
+      }
+      
+      // Generic error for unhandled function names
+      return Promise.resolve({
+        data: null,
+        error: { message: `Mock function ${functionName} not implemented` }
+      });
+    }
+  }
+};
 
-// Setup mock functions
-export const setupMockSupabaseFunctions = () => {
-  // Save the original function
-  if (!originalFunctionInvoke) {
-    originalFunctionInvoke = supabase.functions.invoke;
+// Mock implementation for processNLQuery
+export const mockProcessNLQuery = async (datasetId: string, query: string): Promise<QueryResult> => {
+  // Use the mock responses based on keywords in the query
+  const lowerQuery = query.toLowerCase();
+  
+  if (lowerQuery.includes('sales')) {
+    return nlpResponses.sales;
+  } else if (lowerQuery.includes('product')) {
+    return nlpResponses.products;
+  } else if (lowerQuery.includes('region') || lowerQuery.includes('country')) {
+    return nlpResponses.regions;
+  } else if (lowerQuery.includes('time') || lowerQuery.includes('trend')) {
+    return nlpResponses.timeSeries;
   }
   
-  // Mock the invoke function
-  supabase.functions.invoke = async <T = any>(functionName: string, options: any = {}) => {
-    console.log(`Mock invoking function: ${functionName}`, options);
-    
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Handle different function calls
-    if (functionName === 'transform') {
-      const { config } = options.body || {};
-      const queryType = config?.chartType || config?.chart_type || 'bar';
-      
-      // Return appropriate mock data based on chart type
-      switch (queryType) {
-        case 'bar':
-          return {
-            data: {
-              data: chartData.barChart,
-              columns: ['category', 'value'],
-              chart_type: 'bar',
-              chartType: 'bar', // Add this for component compatibility
-              x_axis: 'category',
-              y_axis: 'value',
-              chart_title: 'Sample Bar Chart'
-            },
-            error: null
-          } as unknown as { data: T; error: null };
-        case 'pie':
-          return {
-            data: {
-              data: chartData.pieChart,
-              columns: ['segment', 'value'],
-              chart_type: 'pie',
-              chartType: 'pie',
-              chart_title: 'Sample Pie Chart'
-            },
-            error: null
-          } as unknown as { data: T; error: null };
-        case 'line':
-          return {
-            data: {
-              data: chartData.lineChart,
-              columns: ['date', 'value'],
-              chart_type: 'line',
-              chartType: 'line',
-              x_axis: 'date',
-              y_axis: 'value',
-              chart_title: 'Sample Line Chart'
-            },
-            error: null
-          } as unknown as { data: T; error: null };
-        default:
-          return {
-            data: {
-              data: [],
-              columns: []
-            },
-            error: 'Unsupported chart type'
-          } as unknown as { data: T; error: string };
-      }
-    }
-    
-    if (functionName === 'ai-query') {
-      const { query } = options.body || {};
-      
-      return {
-        data: {
-          data: chartData.barChart,
-          columns: ['product_category', 'sales'],
-          chart_type: 'bar',
-          chartType: 'bar',
-          x_axis: 'product_category',
-          y_axis: 'sales',
-          chart_title: 'Sales by Product Category',
-          explanation: `I analyzed your query "${query}" and determined that a bar chart showing sales by product category would best represent this data.`
-        },
-        error: null
-      } as unknown as { data: T; error: null };
-    }
-    
-    // Default fallback
-    return {
-      data: null,
-      error: {
-        message: `Mock function ${functionName} not implemented`
-      }
-    } as unknown as { data: T; error: { message: string } };
-  };
-};
-
-// Restore original functions
-export const restoreMockSupabaseFunctions = () => {
-  if (originalFunctionInvoke) {
-    supabase.functions.invoke = originalFunctionInvoke;
-  }
-};
-
-// Test data query function
-export const testDataQuery = async (queryType: string): Promise<QueryResult> => {
-  try {
-    // Convert queryType to correct config format
-    let config;
-    switch (queryType) {
-      case 'barChart':
-        config = sampleQueries.barChart.query_config;
-        break;
-      case 'pieChart':
-        config = sampleQueries.pieChart.query_config;
-        break;
-      case 'lineChart':
-        config = sampleQueries.lineChart.query_config;
-        break;
-      default:
-        throw new Error(`Invalid query type: ${queryType}`);
-    }
-    
-    // Call the transform function
-    const result = await supabase.functions.invoke('transform', {
-      body: { config }
-    });
-    
-    if (result.error) {
-      throw new Error(result.error.message || 'Query execution failed');
-    }
-    
-    return result.data as QueryResult;
-  } catch (error) {
-    console.error(`Error executing ${queryType} query:`, error);
-    return {
-      data: [],
-      columns: [],
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
-    };
-  }
-};
-
-// Test NLP query function
-export const testNLPQuery = async (query: string): Promise<QueryResult> => {
-  try {
-    // Call the AI query function
-    const result = await supabase.functions.invoke('ai-query', {
-      body: { 
-        datasetId: 'mock-dataset', 
-        query 
-      }
-    });
-    
-    if (result.error) {
-      throw new Error(result.error.message || 'NLP query execution failed');
-    }
-    
-    return result.data as QueryResult;
-  } catch (error) {
-    console.error('Error executing NLP query:', error);
-    return {
-      data: [],
-      columns: [],
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
-    };
-  }
+  // Default response
+  return nlpResponses.default;
 };
