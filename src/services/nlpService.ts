@@ -5,20 +5,25 @@ import { QueryResult } from './types/queryTypes';
 // Processing NL query 
 export const processNLQuery = async (
   datasetId: string,
-  query: string
+  query: string,
+  model: 'openai' | 'anthropic' = 'openai'
 ): Promise<QueryResult> => {
   try {
+    console.log(`Calling AI query function for dataset ${datasetId} with model ${model}`);
     const response = await supabase.functions.invoke('ai-query', {
       body: { 
         datasetId, 
-        query 
+        query,
+        model 
       }
     });
     
     if (response.error) {
-      throw new Error(response.error.message);
+      console.error('AI Query function error:', response.error);
+      throw new Error(response.error.message || 'Error processing query');
     }
     
+    console.log('AI query response:', response.data);
     return response.data as QueryResult;
   } catch (error) {
     console.error('Error in NLP query:', error);
@@ -36,7 +41,7 @@ export const nlpService = {
     try {
       console.log(`Processing query using ${model} model: "${query}"`);
       // Process query through Edge function
-      const result = await processNLQuery(datasetId, query);
+      const result = await processNLQuery(datasetId, query, model);
       return result;
     } catch (error) {
       console.error('Error processing query:', error);
@@ -93,6 +98,48 @@ export const nlpService = {
     }
     
     return recommendations;
+  },
+
+  // Get previous queries for a dataset
+  getPreviousQueries: async (datasetId: string): Promise<any[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('queries')
+        .select('*')
+        .eq('dataset_id', datasetId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching previous queries:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching previous queries:', error);
+      return [];
+    }
+  },
+
+  // Get a specific query by ID
+  getQueryById: async (queryId: string): Promise<any> => {
+    try {
+      const { data, error } = await supabase
+        .from('queries')
+        .select('*')
+        .eq('id', queryId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching query:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error fetching query:', error);
+      return null;
+    }
   }
 };
 

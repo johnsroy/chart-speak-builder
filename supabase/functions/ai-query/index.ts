@@ -176,6 +176,35 @@ Return ONLY a JSON object with the following structure:
       throw new Error('Invalid AI response format - missing required fields');
     }
     
+    // Save the query to Supabase for history tracking
+    const { data: savedQuery, error: saveError } = await supabase
+      .from('queries')
+      .insert({
+        dataset_id: datasetId,
+        query_text: query,
+        query_type: model,
+        name: aiResponse.chart_title || 'Untitled Query',
+        query_config: {
+          model: model,
+          chart_type: aiResponse.chart_type,
+          x_axis: aiResponse.x_axis,
+          y_axis: aiResponse.y_axis,
+          timestamp: new Date().toISOString(),
+          user_query: query,
+          result: aiResponse
+        },
+        user_id: dataset.user_id // Use the dataset owner as the query owner
+      })
+      .select()
+      .single();
+      
+    if (saveError) {
+      console.error('Error saving query:', saveError);
+      // Continue even if saving fails - this shouldn't block the response
+    } else {
+      console.log('Saved query with ID:', savedQuery.id);
+    }
+    
     // Return the complete response with data
     const result = {
       chart_type: aiResponse.chart_type,
@@ -184,7 +213,8 @@ Return ONLY a JSON object with the following structure:
       chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
       explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
       data: dataToAnalyze,
-      columns: columnNames
+      columns: columnNames,
+      query_id: savedQuery?.id
     };
     
     console.log(`Analysis complete: Chart type=${result.chart_type}, x=${result.x_axis}, y=${result.y_axis}`);

@@ -1,7 +1,8 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Send, BarChart, LineChart, PieChart, Download } from 'lucide-react';
+import { Loader2, Send, BarChart, LineChart, PieChart, Download, History } from 'lucide-react';
 import { Card, CardContent } from "@/components/ui/card";
 import { QueryResult } from '@/services/types/queryTypes';
 import { nlpService } from '@/services/nlpService';
@@ -12,6 +13,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { dataService } from '@/services/dataService';
+import { supabase } from '@/lib/supabase';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface Message {
   id: string;
@@ -20,6 +29,7 @@ interface Message {
   timestamp: Date;
   result?: QueryResult;
   model?: 'openai' | 'anthropic';
+  queryId?: string;  // Reference to saved query in Supabase
 }
 
 interface DatasetChatInterfaceProps {
@@ -37,8 +47,22 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const [activeModel, setActiveModel] = useState<'openai' | 'anthropic'>('openai');
   const [recommendations, setRecommendations] = useState<string[]>([]);
   const [dataset, setDataset] = useState(null);
+  const [previousQueries, setPreviousQueries] = useState<any[]>([]);
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Get the current user ID
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const getUserId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserId(user?.id || null);
+    };
+    
+    getUserId();
+  }, []);
 
   useEffect(() => {
     const fetchDatasetAndRecommendations = async () => {
@@ -48,6 +72,10 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         
         const suggestedQueries = nlpService.getRecommendationsForDataset(datasetData);
         setRecommendations(suggestedQueries);
+        
+        // Load previous queries
+        const queries = await nlpService.getPreviousQueries(datasetId);
+        setPreviousQueries(queries);
         
       } catch (error) {
         console.error('Error fetching dataset details:', error);
@@ -108,10 +136,19 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         sender: 'ai',
         timestamp: new Date(),
         result: result,
-        model: activeModel
+        model: activeModel,
+        queryId: result.query_id
       };
       
       setMessages(prev => [...prev, aiResponse]);
+      
+      // Update the previous queries list
+      if (result.query_id) {
+        const newQuery = await nlpService.getQueryById(result.query_id);
+        if (newQuery) {
+          setPreviousQueries(prev => [newQuery, ...prev]);
+        }
+      }
     } catch (error) {
       console.error('Error processing query:', error);
       
@@ -167,6 +204,66 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     // In a real implementation, this would generate a chart image or export data
   };
 
+  const loadPreviousQuery = async (queryId: string) => {
+    try {
+      setShowHistoryDialog(false);
+      setIsLoading(true);
+      
+      const query = await nlpService.getQueryById(queryId);
+      
+      if (!query) {
+        throw new Error('Query not found');
+      }
+      
+      // Get the visualization data
+      const data = await dataService.previewDataset(datasetId);
+      
+      const config = query.query_config;
+      
+      const result: QueryResult = {
+        chart_type: config.chart_type,
+        chartType: config.chart_type,
+        x_axis: config.x_axis,
+        y_axis: config.y_axis,
+        xAxis: config.x_axis,
+        yAxis: config.y_axis,
+        chart_title: config.result?.chart_title || 'Visualization',
+        explanation: config.result?.explanation || `Analysis of ${config.x_axis} vs ${config.y_axis}`,
+        data: data || [],
+        columns: Object.keys(data && data.length > 0 ? data[0] : {}),
+        query_id: queryId
+      };
+      
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        content: query.query_text,
+        sender: 'user',
+        timestamp: new Date(query.created_at)
+      };
+      
+      const aiResponse: Message = {
+        id: Date.now().toString() + '-response',
+        content: result.explanation || 'Here\'s the visualization based on your query.',
+        sender: 'ai',
+        timestamp: new Date(query.created_at),
+        result: result,
+        model: query.query_type as 'openai' | 'anthropic',
+        queryId: queryId
+      };
+      
+      setMessages(prev => [...prev, userMessage, aiResponse]);
+    } catch (error) {
+      console.error('Error loading previous query:', error);
+      toast({
+        title: "Error loading query",
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[70vh] max-h-[70vh]">
       <div className="flex items-center justify-between mb-4">
@@ -196,6 +293,51 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             </Avatar>
             Claude
           </Button>
+          <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+            <DialogTrigger asChild>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="flex items-center gap-1"
+              >
+                <History className="h-4 w-4 mr-1" />
+                History
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md md:max-w-lg bg-gray-900 text-white">
+              <DialogHeader>
+                <DialogTitle>Query History</DialogTitle>
+              </DialogHeader>
+              <div className="max-h-96 overflow-y-auto">
+                {previousQueries.length === 0 ? (
+                  <p className="text-center py-4 text-gray-400">No previous queries</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {previousQueries.map((query) => (
+                      <li 
+                        key={query.id} 
+                        className="p-2 rounded hover:bg-gray-800 cursor-pointer border border-gray-700"
+                        onClick={() => loadPreviousQuery(query.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            {query.query_config?.chart_type === 'bar' && <BarChart className="h-4 w-4 text-purple-400 mr-2" />}
+                            {query.query_config?.chart_type === 'line' && <LineChart className="h-4 w-4 text-blue-400 mr-2" />}
+                            {query.query_config?.chart_type === 'pie' && <PieChart className="h-4 w-4 text-green-400 mr-2" />}
+                            <span className="font-medium">{query.name}</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {new Date(query.created_at).toLocaleDateString()}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-gray-400 mt-1 line-clamp-2">{query.query_text}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
       
@@ -235,7 +377,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                           <div className="flex items-center">
                             {getChartTypeIcon(message.result)}
                             <span className="ml-1 text-xs font-medium">
-                              {message.result.chartType.charAt(0).toUpperCase() + message.result.chartType.slice(1)} Chart
+                              {(message.result.chartType || message.result.chart_type || 'bar').charAt(0).toUpperCase() + 
+                               (message.result.chartType || message.result.chart_type || 'bar').slice(1)} Chart
                             </span>
                           </div>
                           
