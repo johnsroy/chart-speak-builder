@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -14,7 +14,11 @@ import {
   ArrowRight,
   UploadCloud,
   MessageSquare,
-  BarChart
+  BarChart,
+  PieChart,
+  LineChart,
+  RefreshCw,
+  Zap
 } from 'lucide-react';
 import { dataService } from '@/services/dataService';
 import AIQueryPanel from '@/components/AIQueryPanel';
@@ -105,6 +109,25 @@ const AnalyzePage = () => {
     setQueryText(recommendation);
   };
 
+  const handleTryAnotherQuery = () => {
+    setQueryResult(null);
+  };
+
+  const renderChartIcon = () => {
+    if (!queryResult) return <BarChart className="h-16 w-16 mx-auto mb-4 text-purple-400" />;
+    
+    const chartType = queryResult.chartType || queryResult.chart_type;
+    
+    switch (chartType) {
+      case 'pie':
+        return <PieChart className="h-16 w-16 mx-auto mb-4 text-purple-400" />;
+      case 'line':
+        return <LineChart className="h-16 w-16 mx-auto mb-4 text-purple-400" />;
+      default:
+        return <BarChart className="h-16 w-16 mx-auto mb-4 text-purple-400" />;
+    }
+  };
+
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="mb-8">
@@ -174,8 +197,8 @@ const AnalyzePage = () => {
               <>
                 <Card className="glass-card mb-6">
                   <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <BrainCircuit className="h-5 w-5 mr-2 text-purple-400" />
+                    <CardTitle className="flex items-center gap-2">
+                      <BrainCircuit className="h-5 w-5 text-purple-400" />
                       Ask a Question About "{selectedDataset.name}"
                     </CardTitle>
                     <CardDescription>
@@ -227,60 +250,74 @@ const AnalyzePage = () => {
                 </Card>
 
                 {isQuerying ? (
-                  <div className="flex justify-center items-center py-12">
-                    <div className="text-center">
-                      <Loader2 className="h-10 w-10 animate-spin mx-auto mb-4 text-purple-400" />
-                      <p className="text-gray-300">Analyzing your data...</p>
+                  <div className="flex flex-col justify-center items-center py-12 glass-card p-6 rounded-xl">
+                    <div className="relative">
+                      <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
+                      <div className="absolute -top-2 -right-2">
+                        <div className="animate-ping bg-green-500 rounded-full h-3 w-3"></div>
+                      </div>
                     </div>
+                    <p className="text-gray-300 mt-4 font-medium">Analyzing your data...</p>
+                    <p className="text-gray-400 text-sm mt-2">Generating insights using AI</p>
                   </div>
                 ) : queryResult ? (
-                  <div className="space-y-6">
-                    <Card className="glass-card">
-                      <CardHeader>
-                        <CardTitle className="flex items-center">
-                          <BarChart className="h-5 w-5 mr-2 text-purple-400" />
-                          Analysis Result
+                  <div className="space-y-6 animate-fadeIn">
+                    <Card className="glass-card overflow-hidden border-purple-500/20">
+                      <CardHeader className="bg-purple-900/20">
+                        <CardTitle className="flex items-center text-xl">
+                          <Zap className="h-5 w-5 mr-2 text-purple-400" />
+                          Analysis Result 
+                          <Badge variant="outline" className="ml-3 bg-purple-900/50 border-purple-500/50">
+                            {queryResult.chartType || queryResult.chart_type || 'Visualization'}
+                          </Badge>
                         </CardTitle>
                       </CardHeader>
-                      <CardContent>
-                        <p className="text-gray-300 mb-4">{queryResult.explanation || "Here's what we found in your data:"}</p>
-                        <EnhancedVisualization result={queryResult} height={400} />
+                      <CardContent className="pt-6">
+                        <EnhancedVisualization 
+                          result={queryResult} 
+                          height={400} 
+                          showTitle={false}
+                          className="bg-transparent border-0 shadow-none"
+                        />
                       </CardContent>
+                      <CardFooter className="flex justify-between border-t border-gray-800 pt-4">
+                        <Button 
+                          variant="outline" 
+                          onClick={handleTryAnotherQuery}
+                          className="border-purple-500/30 hover:bg-purple-500/20"
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Try Another Query
+                        </Button>
+                        <Button
+                          onClick={() => navigate(`/visualize/${selectedDataset.id}?query=${encodeURIComponent(queryText)}`)}
+                          className="bg-purple-700 hover:bg-purple-600"
+                        >
+                          Advanced Visualization <ChevronRight className="ml-1 h-4 w-4" />
+                        </Button>
+                      </CardFooter>
                     </Card>
-
-                    <div className="flex justify-between">
-                      <Button 
-                        variant="outline" 
-                        onClick={() => setQueryResult(null)}
-                        className="border-purple-500/30 hover:bg-purple-500/20"
-                      >
-                        Ask Another Question
-                      </Button>
-                      <Button
-                        onClick={() => navigate(`/visualize/${selectedDataset.id}?query=${encodeURIComponent(queryText)}`)}
-                        className="bg-purple-700 hover:bg-purple-600"
-                      >
-                        Advanced Visualization <ChevronRight className="ml-1 h-4 w-4" />
-                      </Button>
-                    </div>
                   </div>
                 ) : (
                   <div className="glass-card p-8 text-center rounded-xl">
-                    <BrainCircuit className="h-16 w-16 mx-auto mb-4 text-purple-400" />
+                    {renderChartIcon()}
                     <h3 className="text-xl font-medium mb-2">AI-Powered Data Analysis</h3>
                     <p className="text-gray-300 mb-6 max-w-lg mx-auto">
                       Ask questions about your data in natural language and GenBI will generate visualizations and insights automatically.
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
-                      <div className="glass-container p-4 rounded-lg">
+                      <div className="glass-container p-4 rounded-lg hover:bg-purple-900/20 transition-colors cursor-pointer"
+                          onClick={() => setQueryText("Show me sales trends over time")}>
                         <MessageSquare className="h-5 w-5 mb-2 text-purple-400" />
                         <p className="text-sm">"Show me sales trends over time"</p>
                       </div>
-                      <div className="glass-container p-4 rounded-lg">
+                      <div className="glass-container p-4 rounded-lg hover:bg-purple-900/20 transition-colors cursor-pointer"
+                          onClick={() => setQueryText("Compare revenue by region as a bar chart")}>
                         <BarChart className="h-5 w-5 mb-2 text-purple-400" />
                         <p className="text-sm">"Compare revenue by region as a bar chart"</p>
                       </div>
-                      <div className="glass-container p-4 rounded-lg">
+                      <div className="glass-container p-4 rounded-lg hover:bg-purple-900/20 transition-colors cursor-pointer"
+                          onClick={() => setQueryText("What are the main factors affecting customer satisfaction?")}>
                         <BrainCircuit className="h-5 w-5 mb-2 text-purple-400" />
                         <p className="text-sm">"What are the main factors affecting customer satisfaction?"</p>
                       </div>

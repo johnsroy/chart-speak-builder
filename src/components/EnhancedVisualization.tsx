@@ -1,37 +1,44 @@
 
 import React from 'react';
-import { Card } from "@/components/ui/card";
-import { Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2, Info } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { QueryResult } from '@/services/types/queryTypes';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   BarChart as RechartsBarChart,
   LineChart as RechartsLineChart,
   PieChart as RechartsPieChart,
   Bar, Line, Pie,
   XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer,
+  Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   Cell
 } from 'recharts';
 
 interface EnhancedVisualizationProps {
   result: QueryResult;
   height?: number;
+  className?: string;
+  showTitle?: boolean;
 }
 
 const COLORS = [
   '#8884d8', '#83a6ed', '#8dd1e1', '#82ca9d', 
   '#a4de6c', '#d0ed57', '#ffc658', '#ff8042',
-  '#0088FE', '#00C49F', '#FFBB28', '#FF8042'
+  '#0088FE', '#00C49F', '#FFBB28', '#FF8042',
+  '#845EC2', '#D65DB1', '#FF6F91', '#FF9671',
+  '#FFC75F', '#F9F871'
 ];
 
 const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({ 
   result,
-  height = 300
+  height = 300,
+  className = "",
+  showTitle = true
 }) => {
   if (!result) {
     return (
-      <Card className="flex justify-center items-center p-6 h-60 glass-card">
+      <Card className={`flex justify-center items-center p-6 h-60 glass-card ${className}`}>
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </Card>
     );
@@ -41,7 +48,7 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   
   if (result.error) {
     return (
-      <Alert variant="destructive" className="mt-4">
+      <Alert variant="destructive" className={`mt-4 ${className}`}>
         <AlertDescription>{result.error}</AlertDescription>
       </Alert>
     );
@@ -56,19 +63,43 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   
   if (!chartData || chartData.length === 0) {
     return (
-      <Card className="flex justify-center items-center p-6 h-60 glass-card">
+      <Card className={`flex justify-center items-center p-6 h-60 glass-card ${className}`}>
         <p className="text-muted-foreground">No data available for visualization</p>
       </Card>
     );
   }
 
   return (
-    <Card className="p-4 glass-card">
-      <div className="w-full" style={{ height: `${height}px` }}>
-        <ResponsiveContainer width="100%" height="100%">
-          {renderChart(chartType, chartData, xAxis, yAxis)}
-        </ResponsiveContainer>
-      </div>
+    <Card className={`glass-card overflow-hidden ${className}`}>
+      {showTitle && result.chart_title && (
+        <CardHeader className="pb-0">
+          <CardTitle className="flex items-center gap-2 text-xl">
+            {result.chart_title}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 text-gray-400 cursor-pointer" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">{result.explanation || 'Visualization based on your query'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </CardTitle>
+        </CardHeader>
+      )}
+      <CardContent className={`${showTitle ? 'pt-4' : 'pt-6'} pb-6`}>
+        <div className="w-full" style={{ height: `${height}px` }}>
+          <ResponsiveContainer width="100%" height="100%">
+            {renderChart(chartType, chartData, xAxis, yAxis)}
+          </ResponsiveContainer>
+        </div>
+        {result.explanation && (
+          <div className="mt-4 pt-4 border-t border-gray-800">
+            <p className="text-sm text-gray-300">{result.explanation}</p>
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 };
@@ -92,7 +123,7 @@ const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?
             tick={{ fill: '#ccc', fontSize: 12 }}
           />
           <YAxis stroke="#888" tick={{ fill: '#ccc' }} />
-          <Tooltip 
+          <RechartsTooltip 
             contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
             labelStyle={{ color: '#eee' }}
           />
@@ -127,7 +158,7 @@ const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?
             tick={{ fill: '#ccc', fontSize: 12 }}
           />
           <YAxis stroke="#888" tick={{ fill: '#ccc' }} />
-          <Tooltip 
+          <RechartsTooltip 
             contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
             labelStyle={{ color: '#eee' }}
           />
@@ -148,7 +179,7 @@ const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?
         <RechartsPieChart
           margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
         >
-          <Tooltip 
+          <RechartsTooltip 
             contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
             labelStyle={{ color: '#eee' }}
             formatter={(value, name) => [`${value}`, `${name}`]}
@@ -180,7 +211,7 @@ const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?
           <CartesianGrid strokeDasharray="3 3" stroke="#444" />
           <XAxis dataKey="name" />
           <YAxis />
-          <Tooltip />
+          <RechartsTooltip />
           <Bar dataKey="value" fill="#8884d8" />
         </RechartsBarChart>
       );
