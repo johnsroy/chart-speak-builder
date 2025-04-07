@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -25,7 +24,6 @@ const Dashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [datasets, setDatasets] = useState<any[]>([]);
 
-  // Update local datasets when allDatasets changes
   useEffect(() => {
     if (!isLoading) {
       const uniqueDatasets = getUniqueDatasetsByFilename(allDatasets);
@@ -50,27 +48,42 @@ const Dashboard = () => {
     setupAuth();
   }, [isAuthenticated, user, adminLogin]);
 
-  // Event handler for dataset deletion
   const handleDatasetDeleted = useCallback(() => {
-    // Refresh datasets after deletion
     loadDatasets();
-  }, [loadDatasets]);
+    if (datasetToDelete) {
+      setDatasets(prevDatasets => 
+        prevDatasets.filter(dataset => dataset.id !== datasetToDelete.id)
+      );
+    }
+  }, [loadDatasets, datasetToDelete]);
 
   useEffect(() => {
+    const handleDatasetDeletedEvent = (event: CustomEvent) => {
+      console.log('Dashboard: Dataset deleted event received:', event.detail?.datasetId);
+      
+      loadDatasets();
+      
+      if (event.detail?.datasetId) {
+        setDatasets(prevDatasets => 
+          prevDatasets.filter(dataset => dataset.id !== event.detail?.datasetId)
+        );
+      }
+    };
+
     const handleUploadSuccess = () => {
       loadDatasets();
     };
 
     window.addEventListener('dataset-upload-success', handleUploadSuccess);
     window.addEventListener('upload:success', handleUploadSuccess);
-    window.addEventListener('dataset-deleted', handleDatasetDeleted);
+    window.addEventListener('dataset-deleted', handleDatasetDeletedEvent as EventListener);
 
     return () => {
       window.removeEventListener('dataset-upload-success', handleUploadSuccess);
       window.removeEventListener('upload:success', handleUploadSuccess);
-      window.removeEventListener('dataset-deleted', handleDatasetDeleted);
+      window.removeEventListener('dataset-deleted', handleDatasetDeletedEvent as EventListener);
     };
-  }, [loadDatasets, handleDatasetDeleted]);
+  }, [loadDatasets]);
 
   const handleNewDataset = () => {
     navigate("/upload");

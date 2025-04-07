@@ -59,12 +59,13 @@ export const useDatasets = () => {
         setSelectedDatasetId(null);
       }
       
-      // Update datasets list by removing the deleted dataset
+      // Immediately update the UI by removing the deleted dataset
       setDatasets(prevDatasets => 
         prevDatasets.filter(dataset => dataset.id !== event.detail?.datasetId)
       );
       
       // Also reload datasets to ensure we have the latest data
+      // This ensures the state is fully consistent with the backend
       loadDatasets();
     };
     
