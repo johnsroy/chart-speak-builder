@@ -33,6 +33,16 @@ const ChartBuilder: React.FC<ChartBuilderProps> = ({ datasetId }) => {
   
   const { toast } = useToast();
 
+  // Helper function to normalize column data
+  const getColumnName = (column: string | { name: string; type: string }): string => {
+    return typeof column === 'string' ? column : column.name;
+  };
+
+  // Helper function to get column names as array of strings
+  const getColumnNames = (columns: Array<string | { name: string; type: string }>): string[] => {
+    return columns.map(col => getColumnName(col));
+  };
+
   // Load dataset columns
   useEffect(() => {
     const loadDatasetColumns = async () => {
@@ -144,6 +154,15 @@ const ChartBuilder: React.FC<ChartBuilderProps> = ({ datasetId }) => {
     const data = queryResult.data;
     const chartType = queryConfig.chartType || 'bar';
     
+    // Convert column objects to names if needed
+    const columnNames = Array.isArray(queryResult.columns) ? 
+      getColumnNames(queryResult.columns) : 
+      [];
+    
+    // Get the first dimension or column name for x-axis
+    const xAxisKey = queryConfig.dimensions[0] || 
+                    (columnNames.length > 0 ? columnNames[0] : 'category');
+    
     switch (chartType) {
       case 'bar':
         return (
@@ -151,7 +170,7 @@ const ChartBuilder: React.FC<ChartBuilderProps> = ({ datasetId }) => {
             <BarChart data={data}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
-                dataKey={queryConfig.dimensions[0] || queryResult.columns[0]} 
+                dataKey={xAxisKey}
                 tick={{ fontSize: 12 }}
               />
               <YAxis />
@@ -175,7 +194,7 @@ const ChartBuilder: React.FC<ChartBuilderProps> = ({ datasetId }) => {
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
-                dataKey={queryConfig.dimensions[0] || queryResult.columns[0]} 
+                dataKey={xAxisKey}
                 tick={{ fontSize: 12 }}
               />
               <YAxis />
@@ -202,10 +221,10 @@ const ChartBuilder: React.FC<ChartBuilderProps> = ({ datasetId }) => {
               <Legend />
               <Pie
                 data={data}
-                nameKey={queryConfig.dimensions[0] || queryResult.columns[0]}
+                nameKey={xAxisKey}
                 dataKey={queryConfig.measures && queryConfig.measures[0] ? 
                   queryConfig.measures[0].field : 
-                  queryResult.columns[1]
+                  (columnNames.length > 1 ? columnNames[1] : 'value')
                 }
                 cx="50%"
                 cy="50%"
@@ -258,7 +277,7 @@ const ChartBuilder: React.FC<ChartBuilderProps> = ({ datasetId }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {queryResult.columns.map((column, index) => (
+                  {columnNames.map((column, index) => (
                     <th 
                       key={index} 
                       className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -271,7 +290,7 @@ const ChartBuilder: React.FC<ChartBuilderProps> = ({ datasetId }) => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {queryResult.data.map((row, rowIndex) => (
                   <tr key={rowIndex}>
-                    {queryResult.columns.map((column, colIndex) => (
+                    {columnNames.map((column, colIndex) => (
                       <td 
                         key={`${rowIndex}-${colIndex}`} 
                         className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
