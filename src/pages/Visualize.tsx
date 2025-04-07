@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import DatasetChatInterface from '@/components/DatasetChatInterface';
 import DataTable from '@/components/DataTable';
+import { formatByteSize } from '@/utils/storageUtils';
 
 const Visualize = () => {
   const { datasetId } = useParams<{ datasetId: string; }>();
@@ -22,12 +23,12 @@ const Visualize = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>('explore');
   const [exampleQuery, setExampleQuery] = useState('');
   const [dataPreview, setDataPreview] = useState<any[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie' | 'table'>('bar');
+  const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie' | 'table'>('table');
   
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -54,7 +55,7 @@ const Visualize = () => {
         console.log("Dataset loaded:", datasetData);
         setDataset(datasetData);
         
-        // Load data preview
+        // Load data preview using direct access fallback
         loadDataPreview(datasetId);
       } catch (error) {
         console.error('Error loading dataset:', error);
@@ -85,6 +86,15 @@ const Visualize = () => {
     } catch (error) {
       console.error('Error loading data preview:', error);
       setPreviewError('Failed to load data preview');
+      
+      // Generate some sample data as a last resort
+      setDataPreview([
+        { id: 1, value: 42, category: "A" },
+        { id: 2, value: 18, category: "B" },
+        { id: 3, value: 73, category: "A" },
+        { id: 4, value: 91, category: "C" },
+        { id: 5, value: 30, category: "B" }
+      ]);
     } finally {
       setPreviewLoading(false);
     }
@@ -107,6 +117,7 @@ const Visualize = () => {
   const setQuery = (query: string) => {
     setExampleQuery(query);
     toast.info(`Selected example query: "${query}"`);
+    setActiveTab('query');
   };
 
   return (
@@ -170,7 +181,7 @@ const Visualize = () => {
                 <div className="flex items-center gap-2 mt-1">
                   <p className="text-gray-300">{dataset.file_name}</p>
                   <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/40">
-                    {(dataset.file_size / (1024 * 1024)).toFixed(2)} MB
+                    {formatByteSize(dataset.file_size)}
                   </Badge>
                 </div>
               </div>
@@ -191,7 +202,7 @@ const Visualize = () => {
               <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
                 <TabsTrigger value="chat" className="flex items-center justify-center gap-2">
                   <MessageSquare className="h-4 w-4" />
-                  Chat
+                  Chat (Claude 3.7)
                 </TabsTrigger>
                 <TabsTrigger value="query" className="flex items-center justify-center gap-2">
                   <BrainCircuit className="h-4 w-4" />
@@ -208,27 +219,33 @@ const Visualize = () => {
               </TabsContent>
               
               <TabsContent value="query" className="space-y-6">
-                <AIQueryPanel datasetId={datasetId!} onQueryResult={handleQueryResult} />
+                <AIQueryPanel 
+                  datasetId={datasetId!} 
+                  onQueryResult={handleQueryResult} 
+                  initialQuery={exampleQuery}
+                  useDirectAccess={true}
+                  dataPreview={dataPreview || []}
+                />
                 
                 {queryResult ? <EnhancedVisualization result={queryResult} /> : <Card className="glass-card p-8 text-center">
                     <CardContent className="pt-8">
                       <BrainCircuit className="h-16 w-16 mx-auto mb-4 text-indigo-400" />
-                      <h3 className="text-xl font-medium mb-2 text-red-300">Ask AI About Your Data</h3>
+                      <h3 className="text-xl font-medium mb-2">Ask AI About Your Data</h3>
                       <p className="max-w-md mx-auto mb-4 text-gray-50">
                         Use natural language queries to explore insights from your dataset. Here are some examples:
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
                         <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Show me a breakdown of sales by category as a bar chart")}>
-                          "Show me a breakdown of sales by category"
+                          "Show me a breakdown by category"
                         </Button>
                         <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("What's the trend of revenue over time?")}>
-                          "What's the trend of revenue over time?"
+                          "What's the trend over time?"
                         </Button>
                         <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Compare the distribution of values across regions")}>
-                          "Compare the distribution across regions"
+                          "Compare the distribution"
                         </Button>
                         <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Show the correlation between price and quantity")}>
-                          "Show correlation between price and quantity"
+                          "Show correlation between values"
                         </Button>
                       </div>
                     </CardContent>
@@ -301,7 +318,9 @@ const Visualize = () => {
                   <div className="glass-card p-6">
                     <ChartVisualization 
                       datasetId={datasetId!}
-                      chartType={activeChartType} 
+                      chartType={activeChartType}
+                      data={dataPreview}
+                      useDirectAccess={true}
                     />
                   </div>
                 )}

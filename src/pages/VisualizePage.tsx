@@ -4,39 +4,70 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UploadCloud, Database, ChevronRight, BarChart3, PieChart, LineChart } from 'lucide-react';
+import { UploadCloud, Database, ChevronRight, BarChart3, PieChart, LineChart, RefreshCw } from 'lucide-react';
 import { dataService } from '@/services/dataService';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
+import { toast } from 'sonner';
+import { Dataset } from '@/services/types/datasetTypes';
 
 const VisualizePage = () => {
-  const [datasets, setDatasets] = useState<any[]>([]);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('my-data');
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchDatasets = async () => {
-      setIsLoading(true);
-      try {
-        const result = await dataService.getDatasets();
-        setDatasets(Array.isArray(result) ? result : []);
-      } catch (error) {
-        console.error('Error fetching datasets:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchDatasets();
   }, []);
 
+  const fetchDatasets = async () => {
+    setIsLoading(true);
+    try {
+      // Get unique datasets only (latest version of each file)
+      const allDatasets = await dataService.getDatasets();
+      const uniqueDatasets = getUniqueDatasetsByFilename(allDatasets);
+      setDatasets(uniqueDatasets);
+    } catch (error) {
+      console.error('Error fetching datasets:', error);
+      toast.error('Could not load your datasets');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleRefreshDatasets = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchDatasets();
+      toast.success('Datasets refreshed');
+    } catch (error) {
+      console.error('Error refreshing datasets:', error);
+      toast.error('Failed to refresh datasets');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 text-gradient">Visualize Your Data</h1>
-        <p className="text-gray-300 max-w-3xl">
-          Create interactive charts and dashboards to gain insights from your data. Select a dataset to begin or upload a new one.
-        </p>
+      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 text-gradient">Visualize Your Data</h1>
+          <p className="text-gray-300 max-w-3xl">
+            Create interactive charts and dashboards to gain insights from your data. Select a dataset to begin or upload a new one.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          className="mt-4 md:mt-0 self-start md:self-auto"
+          onClick={handleRefreshDatasets}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
@@ -66,11 +97,11 @@ const VisualizePage = () => {
               datasets.map(dataset => (
                 <Card key={dataset.id} className="glass-card hover:shadow-lg hover:shadow-purple-500/20 transition-all duration-300">
                   <CardHeader>
-                    <CardTitle>{dataset.name}</CardTitle>
-                    <CardDescription>{dataset.file_name}</CardDescription>
+                    <CardTitle className="text-base truncate" title={dataset.name}>{dataset.name}</CardTitle>
+                    <CardDescription className="truncate text-xs" title={dataset.file_name}>{dataset.file_name}</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-gray-300">{dataset.description || 'No description available'}</p>
+                    <p className="text-sm text-gray-300 line-clamp-2">{dataset.description || 'No description available'}</p>
                     <div className="flex items-center mt-2 text-xs text-gray-400">
                       <Database className="h-3 w-3 mr-1" />
                       <span>{dataset.row_count || 'Unknown'} rows</span>

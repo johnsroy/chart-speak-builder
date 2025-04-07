@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { toast } from "sonner";
+import { Dataset, StorageStats } from '@/services/types/datasetTypes';
 
 /**
  * Verifies that all required storage buckets exist
@@ -135,34 +136,93 @@ export const setupStorageBuckets = async () => {
 };
 
 /**
- * Tests if a bucket has write permission by attempting to upload a test file
- * @param bucketName Name of the bucket to test
- * @returns Promise resolving to true if write permission exists
+ * Accurately calculates storage statistics
+ * @param datasets Array of dataset objects
+ * @returns StorageStats object with accurate statistics
  */
-export const testBucketPermission = async (bucketName: string): Promise<boolean> => {
+export const calculateAccurateStorageStats = (datasets: Dataset[]): StorageStats => {
   try {
-    // Create a small test file
-    const testContent = new Uint8Array([1, 2, 3, 4]);
-    const testPath = `test-${Date.now()}.bin`;
-    
-    // Try to upload
-    const { error: uploadError } = await supabase.storage
-      .from(bucketName)
-      .upload(testPath, testContent);
-      
-    if (uploadError) {
-      console.error(`No write permission for bucket ${bucketName}:`, uploadError);
-      return false;
+    if (!Array.isArray(datasets)) {
+      console.warn("calculateAccurateStorageStats received invalid datasets:", datasets);
+      return {
+        totalSize: 0,
+        datasetCount: 0,
+        formattedSize: '0 B',
+        storageTypes: []
+      };
     }
     
-    // Clean up
-    await supabase.storage.from(bucketName).remove([testPath]);
+    // Remove duplicates by keeping only the latest version of each file
+    const uniqueDatasets = getUniqueDatasetsByFilename(datasets);
     
-    return true;
+    // Calculate total storage size
+    const totalSize = uniqueDatasets.reduce((sum, dataset) => sum + (dataset.file_size || 0), 0);
+    
+    // Count total fields across all datasets
+    const totalFields = uniqueDatasets.reduce(
+      (sum, dataset) => sum + (dataset?.column_schema ? Object.keys(dataset.column_schema).length : 0), 
+      0
+    );
+    
+    // Get storage types
+    const storageTypes = Array.from(new Set(uniqueDatasets.map(d => d.storage_type || 'unknown')));
+    
+    return {
+      totalSize,
+      datasetCount: uniqueDatasets.length,
+      formattedSize: formatByteSize(totalSize),
+      storageTypes,
+      totalFields // Adding total fields to the stats object
+    };
   } catch (error) {
-    console.error(`Error testing bucket ${bucketName} permissions:`, error);
-    return false;
+    console.error('Error calculating storage stats:', error);
+    return {
+      totalSize: 0,
+      datasetCount: 0,
+      formattedSize: '0 B',
+      storageTypes: [],
+      totalFields: 0
+    };
   }
+};
+
+/**
+ * Format byte size to human readable format
+ * @param bytes Size in bytes
+ * @returns Formatted size string (e.g., "1.5 MB")
+ */
+export const formatByteSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+/**
+ * Get unique datasets by filename, keeping only the latest version
+ * @param datasets Array of all datasets
+ * @returns Array of unique datasets (latest version of each file)
+ */
+export const getUniqueDatasetsByFilename = (datasets: Dataset[]): Dataset[] => {
+  const fileMap = new Map<string, Dataset>();
+  
+  if (!Array.isArray(datasets)) return [];
+  
+  datasets.forEach(dataset => {
+    if (!dataset || !dataset.file_name) return;
+    
+    const existing = fileMap.get(dataset.file_name);
+    
+    // Keep the dataset with the most recent updated_at timestamp
+    if (!existing || new Date(dataset.updated_at || '') > new Date(existing.updated_at || '')) {
+      fileMap.set(dataset.file_name, dataset);
+    }
+  });
+  
+  return Array.from(fileMap.values());
 };
 
 /**

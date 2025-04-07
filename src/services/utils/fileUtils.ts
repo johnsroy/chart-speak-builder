@@ -4,11 +4,11 @@
  */
 
 /**
- * Format file size
+ * Format file size to human-readable string
  * @param bytes Size in bytes
- * @returns Formatted file size string
+ * @returns Formatted size string (e.g. "1.24 MB")
  */
-export function formatFileSize(bytes: number): string {
+export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
   
   const k = 1024;
@@ -16,122 +16,120 @@ export function formatFileSize(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
+};
 
 /**
- * Parse CSV text
- * @param text CSV text
- * @returns Parsed CSV data
+ * Parse CSV text into an array of objects
+ * @param text CSV text content
+ * @returns Array of parsed objects
  */
-export function parseCSV(text: string): any[] {
-  const rows = text.split('\n');
-  if (rows.length === 0) return [];
-  
-  const headers = parseCSVRow(rows[0]);
-  const result = [];
-  
-  for (let i = 1; i < rows.length; i++) {
-    if (!rows[i].trim()) continue;
+export const parseCSV = async (text: string): Promise<any[]> => {
+  try {
+    // Simple CSV parser for direct data access
+    // Split into lines
+    const lines = text.trim().split('\n');
+    if (lines.length === 0) return [];
     
-    const values = parseCSVRow(rows[i]);
-    if (values.length !== headers.length) continue;
+    // Parse header
+    const header = lines[0].split(',').map(h => h.trim().replace(/^"(.+)"$/, '$1'));
     
-    const obj: Record<string, any> = {};
-    headers.forEach((header, index) => {
-      const value = values[index];
+    // Parse rows
+    return lines.slice(1).map(line => {
+      // Handle quoted values with commas inside them
+      const values: string[] = [];
+      let inQuotes = false;
+      let currentValue = '';
       
-      if (value === '' || value === 'null') {
-        obj[header] = null;
-      } else if (!isNaN(Number(value))) {
-        obj[header] = Number(value);
-      } else if (value === 'true') {
-        obj[header] = true;
-      } else if (value === 'false') {
-        obj[header] = false;
-      } else {
-        obj[header] = value;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(currentValue.trim().replace(/^"(.+)"$/, '$1'));
+          currentValue = '';
+        } else {
+          currentValue += char;
+        }
       }
+      
+      // Add the last value
+      values.push(currentValue.trim().replace(/^"(.+)"$/, '$1'));
+      
+      // Create object from header and values
+      const obj: Record<string, any> = {};
+      header.forEach((key, i) => {
+        const value = values[i] || '';
+        
+        // Try to convert to number if appropriate
+        const numValue = Number(value);
+        obj[key] = isNaN(numValue) ? value : numValue;
+      });
+      
+      return obj;
     });
-    
-    result.push(obj);
+  } catch (error) {
+    console.error('Error parsing CSV:', error);
+    throw error;
   }
-  
-  return result;
-}
+};
 
 /**
- * Parse a CSV row, handling quotes correctly
- * @param row CSV row
- * @returns Array of cell values
- */
-export function parseCSVRow(row: string): string[] {
-  const result: string[] = [];
-  let inQuotes = false;
-  let currentCell = '';
-  
-  for (let i = 0; i < row.length; i++) {
-    const char = row[i];
-    
-    if (char === '"') {
-      if (i + 1 < row.length && row[i + 1] === '"') {
-        // Handle escaped quotes
-        currentCell += '"';
-        i++;
-      } else {
-        // Toggle quote state
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      // End of cell
-      result.push(currentCell.trim());
-      currentCell = '';
-    } else {
-      currentCell += char;
-    }
-  }
-  
-  // Don't forget the last cell
-  result.push(currentCell.trim());
-  return result;
-}
-
-/**
- * Generate sample data based on schema
+ * Generate sample data based on column schema
  * @param schema Column schema
  * @param count Number of rows to generate
- * @returns Generated data
+ * @returns Array of sample data objects
  */
-export function generateSampleData(schema: Record<string, string>, count: number): any[] {
-  const result = [];
-  const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
-  const products = ['Product X', 'Product Y', 'Product Z'];
-  const regions = ['North', 'South', 'East', 'West'];
-  
-  for (let i = 0; i < count; i++) {
-    const row: Record<string, any> = {};
+export const generateSampleData = (schema: Record<string, string>, count: number = 10): any[] => {
+  try {
+    const result = [];
+    const columnNames = Object.keys(schema);
     
-    for (const [key, type] of Object.entries(schema)) {
-      if (type === 'number') {
-        row[key] = Math.floor(Math.random() * 1000);
-      } else if (type === 'boolean') {
-        row[key] = Math.random() > 0.5;
-      } else if (type === 'date') {
-        const date = new Date();
-        date.setDate(date.getDate() - Math.floor(Math.random() * 365));
-        row[key] = date.toISOString().split('T')[0];
-      } else if (key.toLowerCase().includes('category')) {
-        row[key] = categories[i % categories.length];
-      } else if (key.toLowerCase().includes('product')) {
-        row[key] = products[i % products.length];
-      } else if (key.toLowerCase().includes('region')) {
-        row[key] = regions[i % regions.length];
-      } else {
-        row[key] = `Value ${i + 1}`;
-      }
+    // Generate fake data based on column types
+    for (let i = 0; i < count; i++) {
+      const row: Record<string, any> = {};
+      
+      columnNames.forEach(column => {
+        const type = schema[column].toLowerCase();
+        
+        if (type.includes('int') || type.includes('number')) {
+          row[column] = Math.floor(Math.random() * 100);
+        } else if (type.includes('float') || type.includes('double') || type.includes('decimal')) {
+          row[column] = Math.random() * 100;
+        } else if (type.includes('bool')) {
+          row[column] = Math.random() > 0.5;
+        } else if (type.includes('date')) {
+          const date = new Date();
+          date.setDate(date.getDate() - Math.floor(Math.random() * 365));
+          row[column] = date.toISOString().split('T')[0];
+        } else {
+          row[column] = `Sample ${column} ${i + 1}`;
+        }
+      });
+      
+      result.push(row);
     }
     
-    result.push(row);
+    return result;
+  } catch (error) {
+    console.error('Error generating sample data:', error);
+    return [];
+  }
+};
+
+/**
+ * Get dataset name from file
+ * @param file File object
+ * @returns Generated dataset name
+ */
+export const getDatasetNameFromFile = (file: File): string => {
+  // Remove file extension
+  const nameParts = file.name.split('.');
+  
+  if (nameParts.length > 1) {
+    // Remove the extension and use the rest
+    return nameParts.slice(0, -1).join('.');
   }
   
-  return result;
-}
+  return file.name;
+};

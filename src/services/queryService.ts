@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 
@@ -11,6 +10,8 @@ export interface QueryConfig {
   limit?: number;
   measures?: Array<{field: string, aggregation: string}>;
   chart_type?: string; // For backward compatibility
+  useDirectAccess?: boolean; // Flag to use direct data access without edge functions
+  dataPreview?: any[]; // Data to use for direct processing
 }
 
 export interface SavedQuery {
@@ -30,6 +31,13 @@ export interface FilterCondition {
 export const queryService = {
   executeQuery: async (config: QueryConfig): Promise<QueryResult> => {
     try {
+      // Check if we should use direct data access
+      if (config.useDirectAccess && config.dataPreview && Array.isArray(config.dataPreview)) {
+        console.log("Using direct data access for query execution");
+        return processQueryLocally(config);
+      }
+      
+      // Otherwise use the edge function
       const response = await supabase.functions.invoke('transform', {
         body: { config },
       });
@@ -55,42 +63,105 @@ export const queryService = {
       return result;
     } catch (error) {
       console.error('Query execution error:', error);
+      
+      // Return a valid QueryResult object even on error
       return {
         data: [],
         columns: [],
-        error: error instanceof Error ? error.message : 'An unknown error occurred',
-        chartType: 'bar', // Default chart type
-        xAxis: '', // Empty default
-        yAxis: '', // Empty default
-        chart_type: 'bar', // For backwards compatibility
-        x_axis: '',
-        y_axis: ''
+        error: error instanceof Error ? error.message : 'Unknown query error',
+        chartType: 'bar',
+        xAxis: 'Category',
+        yAxis: 'Value'
       };
     }
-  },
-
-  saveQuery: async (query: SavedQuery): Promise<{ id: string }> => {
-    try {
-      const { data, error } = await supabase
-        .from('saved_queries')
-        .insert({
-          name: query.name,
-          config: query.query_config,
-          query_type: query.query_type,
-          query_text: query.query_text,
-          dataset_id: query.dataset_id,
-          user_id: (await supabase.auth.getUser()).data.user?.id,
-        })
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      return { id: data.id };
-    } catch (error) {
-      console.error('Error saving query:', error);
-      throw error;
-    }
-  },
+  }
 };
 
-export type { QueryResult };
+/**
+ * Process a query locally using the provided data preview
+ * This is a fallback for when edge functions aren't working
+ * @param config QueryConfig with data preview
+ * @returns ProcessedQueryResult
+ */
+function processQueryLocally(config: QueryConfig): QueryResult {
+  try {
+    const { dataPreview, dimensions, metrics, filters, limit, chartType } = config;
+    
+    if (!dataPreview || !Array.isArray(dataPreview) || dataPreview.length === 0) {
+      throw new Error('No data available for processing');
+    }
+    
+    // Extract dimension and metric fields
+    const xField = dimensions && dimensions.length > 0 ? dimensions[0] : Object.keys(dataPreview[0])[0];
+    const yField = metrics && metrics.length > 0 ? metrics[0] : Object.keys(dataPreview[0])[1];
+    
+    // Apply filters if provided
+    let filteredData = dataPreview;
+    if (filters && filters.length > 0) {
+      filteredData = dataPreview.filter(row => {
+        return filters.every(filter => {
+          const { column, operator, value } = filter;
+          const rowValue = row[column];
+          
+          switch (operator) {
+            case '=': return rowValue === value;
+            case '!=': return rowValue !== value;
+            case '>': return rowValue > value;
+            case '<': return rowValue < value;
+            case '>=': return rowValue >= value;
+            case '<=': return rowValue <= value;
+            case 'LIKE': 
+              return typeof rowValue === 'string' && 
+                    typeof value === 'string' && 
+                    rowValue.toLowerCase().includes(value.toLowerCase());
+            default: return true;
+          }
+        });
+      });
+    }
+    
+    // Apply limit if provided
+    if (limit && limit > 0) {
+      filteredData = filteredData.slice(0, limit);
+    }
+    
+    // For aggregated charts like bar and pie, group by dimension
+    // and aggregate the metric
+    if (chartType === 'bar' || chartType === 'pie') {
+      const groupedData = filteredData.reduce((acc, row) => {
+        const key = String(row[xField]);
+        if (!acc[key]) {
+          acc[key] = { [xField]: key, [yField]: 0, count: 0 };
+        }
+        acc[key][yField] += Number(row[yField]) || 0;
+        acc[key].count += 1;
+        return acc;
+      }, {});
+      
+      filteredData = Object.values(groupedData);
+    }
+    
+    // Extract column information
+    const columns = Object.keys(filteredData[0] || {})
+      .filter(key => key !== 'count') // Remove helper fields
+      .map(key => ({ name: key, type: typeof filteredData[0][key] }));
+    
+    return {
+      data: filteredData,
+      columns,
+      chartType: chartType || 'bar',
+      xAxis: xField,
+      yAxis: yField
+    };
+  } catch (error) {
+    console.error('Local query processing error:', error);
+    return {
+      data: [],
+      columns: [],
+      error: error instanceof Error ? error.message : 'Error processing query locally',
+      chartType: 'bar',
+      xAxis: 'Category',
+      yAxis: 'Value'
+    };
+  }
+}

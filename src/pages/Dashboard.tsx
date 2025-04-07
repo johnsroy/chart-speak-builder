@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -11,20 +12,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { dataService } from '@/services/dataService';
-
-const findDuplicateDatasets = (datasets) => {
-  const fileMap = new Map();
-  
-  datasets.forEach(dataset => {
-    if (fileMap.has(dataset.file_name)) {
-      fileMap.set(dataset.file_name, [...fileMap.get(dataset.file_name), dataset]);
-    } else {
-      fileMap.set(dataset.file_name, [dataset]);
-    }
-  });
-  
-  return Array.from(fileMap).filter(([_, datasets]) => datasets.length > 1);
-};
+import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -39,13 +27,9 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!isLoading && datasets.length > 0) {
-      const duplicates = findDuplicateDatasets(datasets);
-      if (duplicates.length > 0) {
+      const uniqueDatasets = getUniqueDatasetsByFilename(datasets);
+      if (uniqueDatasets.length < datasets.length) {
         setDuplicateWarnings(true);
-        toast("Duplicate Datasets Detected", {
-          description: `You have ${duplicates.length} files with duplicate uploads. Consider removing duplicates.`,
-          duration: 5000
-        });
       } else {
         setDuplicateWarnings(false);
       }
@@ -124,28 +108,18 @@ const Dashboard = () => {
     }
   };
 
-  const getUniqueDatasets = (allDatasets) => {
-    const uniqueMap = new Map();
-    
-    allDatasets.forEach(dataset => {
-      const existing = uniqueMap.get(dataset.file_name);
-      if (!existing || new Date(dataset.updated_at) > new Date(existing.updated_at)) {
-        uniqueMap.set(dataset.file_name, dataset);
-      }
-    });
-    
-    return Array.from(uniqueMap.values());
-  };
-
+  // Get unique datasets (most recent version of each file)
+  const uniqueDatasets = getUniqueDatasetsByFilename(datasets);
+  
   const filteredDatasets = filterType 
-    ? getUniqueDatasets(datasets).filter(dataset => {
+    ? uniqueDatasets.filter(dataset => {
         const fileExt = dataset.file_name.split('.').pop()?.toLowerCase();
         if (filterType === 'csv') return fileExt === 'csv';
         if (filterType === 'excel') return fileExt === 'xlsx' || fileExt === 'xls';
         if (filterType === 'json') return fileExt === 'json';
         return true;
       })
-    : getUniqueDatasets(datasets);
+    : uniqueDatasets;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
@@ -188,20 +162,6 @@ const Dashboard = () => {
             </Button>
           </div>
         </div>
-        
-        {duplicateWarnings && (
-          <div className="mb-6 p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
-            <div>
-              <h3 className="font-medium mb-1">Duplicate Datasets Detected</h3>
-              <p className="text-sm text-gray-300">
-                You have multiple uploads of the same files. Consider removing duplicates to save space and 
-                avoid confusion. When uploading files with the same name, you'll now be asked if you want 
-                to overwrite the existing file.
-              </p>
-            </div>
-          </div>
-        )}
         
         <Tabs defaultValue="all" className="space-y-4">
           <TabsList>
@@ -270,7 +230,7 @@ const Dashboard = () => {
                           <div className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-xs">
                             {dataset.file_name.split('.').pop()?.toUpperCase()}
                           </div>
-                          {dataset.row_count && (
+                          {dataset.row_count > 0 && (
                             <div className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-xs">
                               {dataset.row_count.toLocaleString()} rows
                             </div>

@@ -6,12 +6,15 @@ import Footer from '@/components/Footer';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import { Progress } from '@/components/ui/progress';
+import RedirectDialog from '@/components/upload/RedirectDialog';
 
 const Upload = () => {
   const navigate = useNavigate();
   const [isUploaded, setIsUploaded] = useState(false);
   const [uploadedDatasetId, setUploadedDatasetId] = useState<string | null>(null);
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [showRedirectDialog, setShowRedirectDialog] = useState(false);
+  const [showVisualize, setShowVisualize] = useState(true);
   
   // Listen for successful upload events
   useEffect(() => {
@@ -33,11 +36,14 @@ const Upload = () => {
         
         if (newProgress >= 100) {
           clearInterval(progressInterval);
-          // Redirect to visualize page with dataset ID after processing completes
+          
+          // Show the redirect dialog when processing is complete
+          setShowRedirectDialog(true);
+          
+          // Don't automatically redirect, wait for user choice
           toast.success("Dataset processing complete!", {
-            description: "Redirecting you to visualization page..."
+            description: "You can now explore your data"
           });
-          navigate(`/visualize/${event.detail.datasetId}`);
         }
       }, interval);
 
@@ -54,6 +60,13 @@ const Upload = () => {
       window.removeEventListener('dataset-upload-success', handleUploadSuccess as EventListener);
     };
   }, [navigate]);
+
+  const handleCloseRedirectDialog = () => {
+    setShowRedirectDialog(false);
+    setIsUploaded(false);
+    setUploadedDatasetId(null);
+    setProcessingProgress(0);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
@@ -84,6 +97,18 @@ const Upload = () => {
           </div>
         </div>
       )}
+      
+      {/* Redirect dialog that appears after processing */}
+      {uploadedDatasetId && (
+        <RedirectDialog
+          open={showRedirectDialog}
+          onOpenChange={setShowRedirectDialog}
+          datasetId={uploadedDatasetId}
+          showVisualize={showVisualize}
+          setShowVisualize={setShowVisualize}
+        />
+      )}
+      
       <Footer />
     </div>
   );
