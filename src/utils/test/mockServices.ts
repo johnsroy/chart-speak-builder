@@ -1,9 +1,71 @@
-
 import { supabase } from '@/lib/supabase';
-import { chartData, nlpResponses } from './sampleData';
+import { chartData, nlpResponses, sampleQueries } from './sampleData';
 import { QueryResult } from '@/services/types/queryTypes'; 
 
-// Create a mock of the supabase client for testing purposes
+// Store the original supabase client functions to restore later
+const originalSupabaseFunctions = {
+  invoke: supabase.functions.invoke
+};
+
+// Setup mock Supabase functions
+export const setupMockSupabaseFunctions = () => {
+  (supabase.functions as any).invoke = mockSupabaseClient.functions.invoke;
+};
+
+// Restore original Supabase functions
+export const restoreMockSupabaseFunctions = () => {
+  (supabase.functions as any).invoke = originalSupabaseFunctions.invoke;
+};
+
+// Test data query function
+export const testDataQuery = async (queryType: string): Promise<QueryResult> => {
+  switch (queryType) {
+    case 'barChart':
+      return mockSupabaseClient.functions.invoke('transform', {
+        body: { query: sampleQueries.barChart.query_config }
+      }).then((response) => ({
+        chart_type: 'bar',
+        x_axis: 'month',
+        y_axis: 'sales',
+        chart_title: 'Monthly Sales',
+        data: response.data,
+        columns: ['month', 'sales']
+      }));
+    case 'pieChart':
+      return mockSupabaseClient.functions.invoke('transform', {
+        body: { query: sampleQueries.pieChart.query_config }
+      }).then((response) => ({
+        chart_type: 'pie',
+        x_axis: 'region',
+        y_axis: 'sales',
+        chart_title: 'Sales by Region',
+        data: response.data,
+        columns: ['region', 'sales']
+      }));
+    case 'lineChart':
+      return mockSupabaseClient.functions.invoke('transform', {
+        body: { query: sampleQueries.lineChart.query_config }
+      }).then((response) => ({
+        chart_type: 'line',
+        x_axis: 'month',
+        y_axis: 'customers',
+        chart_title: 'Customer Trends',
+        data: response.data,
+        columns: ['month', 'customers']
+      }));
+    default:
+      throw new Error('Invalid query type');
+  }
+};
+
+// Test NLP query function
+export const testNLPQuery = async (query: string): Promise<QueryResult> => {
+  return mockSupabaseClient.functions.invoke('ai-query', {
+    body: { query }
+  }).then((response) => response.data);
+};
+
+// Existing mockSupabaseClient implementation remains the same
 export const mockSupabaseClient = {
   from: () => ({
     select: () => ({
@@ -32,7 +94,6 @@ export const mockSupabaseClient = {
     getUser: () => Promise.resolve({ data: { user: null }, error: null })
   },
   functions: {
-    // Fixed type by making it compatible with FunctionsResponse
     invoke: (functionName: string, options?: any) => {
       if (functionName === 'transform') {
         return Promise.resolve({
