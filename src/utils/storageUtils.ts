@@ -148,7 +148,8 @@ export const calculateAccurateStorageStats = (datasets: Dataset[]): StorageStats
         totalSize: 0,
         datasetCount: 0,
         formattedSize: '0 B',
-        storageTypes: []
+        storageTypes: [],
+        totalFields: 0
       };
     }
     
@@ -172,7 +173,7 @@ export const calculateAccurateStorageStats = (datasets: Dataset[]): StorageStats
       datasetCount: uniqueDatasets.length,
       formattedSize: formatByteSize(totalSize),
       storageTypes,
-      totalFields // Adding total fields to the stats object
+      totalFields
     };
   } catch (error) {
     console.error('Error calculating storage stats:', error);

@@ -25,5 +25,5 @@ export interface StorageStats {
   datasetCount: number;
   formattedSize: string;
   storageTypes: string[];
-  totalFields: number; // Changed from optional to required
+  totalFields: number; // This is required, not optional
 }

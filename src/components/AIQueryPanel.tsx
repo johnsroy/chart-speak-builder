@@ -13,11 +13,15 @@ import { dataService } from '@/services/dataService';
 interface AIQueryPanelProps {
   datasetId: string;
   onQueryResult: (result: QueryResult) => void;
+  useDirectAccess?: boolean; // Add the missing prop
+  dataPreview?: any[]; // Add dataPreview prop
 }
 
 const AIQueryPanel: React.FC<AIQueryPanelProps> = ({
   datasetId,
-  onQueryResult
+  onQueryResult,
+  useDirectAccess = false, // Set default value
+  dataPreview = []
 }) => {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);

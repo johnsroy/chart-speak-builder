@@ -29,6 +29,9 @@ export interface FilterCondition {
   value: string | number;
 }
 
+// Re-export QueryResult from types
+export type { QueryResult };
+
 export const queryService = {
   executeQuery: async (config: QueryConfig): Promise<QueryResult> => {
     try {
