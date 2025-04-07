@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -262,6 +261,9 @@ export const useFileUpload = () => {
         sonnerToast("Previous version deleted", {
           description: "Previous version of the file has been deleted"
         });
+        
+        // Wait a moment to ensure deletion completes
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Now upload the new dataset
         await handleUpload(isAuthenticated, userId);
