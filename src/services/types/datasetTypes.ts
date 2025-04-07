@@ -15,7 +15,7 @@ export interface Dataset {
   user_id: string;
   created_at?: string;
   updated_at?: string;
-  preview_key?: string;
+  preview_data?: any[]; // Use this for temporary preview data instead of relying on a key
 }
 
 /**

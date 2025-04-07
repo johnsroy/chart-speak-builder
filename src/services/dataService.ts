@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { toast as sonnerToast } from "sonner";
 import { Dataset, StorageStats } from './types/datasetTypes';
@@ -178,7 +177,7 @@ export const dataService = {
         columnSchema = { "Column1": "string", "Value": "number" };
       }
       
-      // Create dataset record
+      // Create dataset record - without preview_key
       const dataset = {
         name,
         description,
@@ -188,8 +187,7 @@ export const dataService = {
         storage_path: useLocalFallback ? localStoragePath : storagePath,
         row_count: rowCount,
         column_schema: columnSchema,
-        user_id: safeUserId,
-        preview_key: `preview_${timestamp}_${file.name}`
+        user_id: safeUserId
       };
       
       let result;

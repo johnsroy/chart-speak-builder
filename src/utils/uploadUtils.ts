@@ -119,13 +119,13 @@ export const performUpload = async (
   try {
     console.log("Starting file upload with props:", { name, size: file.size, userId, ...additionalProps });
     
-    // Check if we have preview data in session storage
-    const previewKey = sessionStorage.getItem('current_upload_preview_key');
-    if (previewKey && !additionalProps.preview_key) {
-      additionalProps.preview_key = previewKey;
+    // Remove preview_key from additionalProps to avoid the error
+    if (additionalProps.preview_key) {
+      console.log("Preview key was provided but will be ignored as it's not supported in the schema");
+      delete additionalProps.preview_key;
     }
     
-    // For larger files, try to extract schema and preview data before upload
+    // Store preview data in session storage instead of trying to use preview_key in the database
     if (file.size > 5 * 1024 * 1024 && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
       try {
         console.log("Extracting schema and preview for large file");
@@ -134,10 +134,9 @@ export const performUpload = async (
         
         if (previewData && previewData.length > 0) {
           const timestamp = Date.now();
-          const newPreviewKey = `preview_${timestamp}_${file.name}`;
-          sessionStorage.setItem(newPreviewKey, JSON.stringify(previewData));
-          additionalProps.preview_key = newPreviewKey;
-          console.log("Created preview data for large file, stored with key:", newPreviewKey);
+          const storageKey = `preview_${timestamp}_${file.name}`;
+          sessionStorage.setItem(storageKey, JSON.stringify(previewData));
+          console.log("Created preview data for large file, stored in session storage with key:", storageKey);
           
           // Extract column schema
           if (previewData[0]) {

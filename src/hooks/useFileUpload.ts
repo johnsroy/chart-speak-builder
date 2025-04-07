@@ -112,7 +112,6 @@ export const useFileUpload = () => {
           // Store preview data in session storage
           const previewKey = `upload_preview_${Date.now()}`;
           sessionStorage.setItem(previewKey, JSON.stringify(previewData));
-          sessionStorage.setItem('current_upload_preview_key', previewKey);
           console.log("Stored file preview in session storage with key:", previewKey);
         } catch (previewError) {
           console.warn("Failed to generate preview:", previewError);
@@ -188,14 +187,8 @@ export const useFileUpload = () => {
       // Always use a valid user ID to guarantee upload works
       const validatedUserId = validateUserId(userId);
       
-      // Prepare additional metadata
+      // Prepare additional metadata - remove preview_key
       let additionalProps = {};
-      
-      // If we have a preview data in session storage, pass the key
-      const previewKey = sessionStorage.getItem('current_upload_preview_key');
-      if (previewKey) {
-        additionalProps = { preview_key: previewKey };
-      }
       
       // Start upload process
       setIsUploading(true);
@@ -278,8 +271,7 @@ export const useFileUpload = () => {
             storage_path: fallbackPath,
             user_id: validatedUserId,
             row_count: 0,
-            column_schema: {},
-            preview_key: sessionStorage.getItem('current_upload_preview_key') || undefined
+            column_schema: {}
           };
           
           try {
