@@ -43,7 +43,35 @@
 }
 
 .glass-card {
-  @apply backdrop-blur-lg bg-slate-900/60 shadow-xl border-slate-700/50;
+  @apply backdrop-blur-lg bg-slate-900/60 shadow-xl border border-purple-500/20 rounded-xl;
+}
+
+.glass-container {
+  @apply backdrop-blur-lg bg-black/40 shadow-lg border border-purple-500/20 rounded-xl;
+}
+
+.purple-gradient {
+  @apply bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600;
+}
+
+/* Card with gradient border */
+.gradient-border-card {
+  @apply relative rounded-xl overflow-hidden border border-transparent p-0.5;
+  background: linear-gradient(to right, rgba(149, 76, 233, 0.2), rgba(98, 58, 162, 0.2));
+}
+
+.gradient-border-card::before {
+  content: '';
+  @apply absolute inset-0 rounded-xl -z-10;
+  background: linear-gradient(to right, #954ce9, #623aa2);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  padding: 1px;
+}
+
+.gradient-border-card .inner {
+  @apply bg-gray-900/80 rounded-lg p-4 h-full;
 }
 
 /* Custom animation for the progress bar in the redirect dialog */
@@ -57,4 +85,34 @@
   100% {
     width: 100%;
   }
+}
+
+/* Smooth fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Dashboard card styles */
+.dashboard-card {
+  @apply glass-card p-5 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/20;
+}
+
+/* Navigation elements */
+.nav-item {
+  @apply flex items-center space-x-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-white/10;
+}
+
+.nav-item.active {
+  @apply bg-purple-800/50 text-white;
 }

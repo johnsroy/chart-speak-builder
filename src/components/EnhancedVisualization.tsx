@@ -31,7 +31,7 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
 }) => {
   if (!result) {
     return (
-      <Card className="flex justify-center items-center p-6 h-60">
+      <Card className="flex justify-center items-center p-6 h-60 glass-card">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </Card>
     );
@@ -56,14 +56,14 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   
   if (!chartData || chartData.length === 0) {
     return (
-      <Card className="flex justify-center items-center p-6 h-60">
+      <Card className="flex justify-center items-center p-6 h-60 glass-card">
         <p className="text-muted-foreground">No data available for visualization</p>
       </Card>
     );
   }
 
   return (
-    <Card className="p-4">
+    <Card className="p-4 glass-card">
       <div className="w-full" style={{ height: `${height}px` }}>
         <ResponsiveContainer width="100%" height="100%">
           {renderChart(chartType, chartData, xAxis, yAxis)}

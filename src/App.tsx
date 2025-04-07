@@ -25,7 +25,7 @@ function App() {
   
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen bg-gradient-to-b from-gray-900 to-black">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
       </div>
     );
@@ -40,12 +40,16 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/test" element={<TestAnalysisTools />} />
             
+            {/* Expose main data visualization routes */}
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/upload" element={<UploadPage />} />
+            <Route path="/visualize/:datasetId" element={<Visualize />} />
+            <Route path="/visualize" element={<VisualizePage />} />
+            <Route path="/analyze/:datasetId" element={<AnalyzePage />} />
+            <Route path="/analyze" element={<AnalyzePage />} />
+            <Route path="/dataset/:datasetId" element={<DatasetPage />} />
+            
             {/* Protected routes */}
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
-            <Route path="/visualize/:datasetId" element={<ProtectedRoute><Visualize /></ProtectedRoute>} />
-            <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
-            <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
             <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
 
