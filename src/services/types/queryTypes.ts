@@ -15,4 +15,5 @@ export interface QueryResult {
   explanation?: string;
   error?: string;
   query_id?: string;
+  model_used?: string; // Add this property to fix the TypeScript errors
 }
