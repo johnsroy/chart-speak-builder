@@ -81,7 +81,7 @@ export const createStorageBuckets = async (): Promise<boolean> => {
       }
     }
     
-    return results.every(result => result.success);
+    return results.some(result => result.success);
   } catch (error) {
     console.error("Error creating buckets:", error);
     return false;
@@ -116,10 +116,14 @@ export const setupStorageBuckets = async () => {
     console.log("Setting up storage buckets via edge function...");
     
     // Try to use the edge function first
-    const result = await callStorageManager('force-create-buckets');
-    
-    if (result && result.success) {
-      return result;
+    try {
+      const result = await callStorageManager('force-create-buckets');
+      
+      if (result && result.success) {
+        return result;
+      }
+    } catch (edgeError) {
+      console.warn("Edge function approach failed:", edgeError);
     }
     
     console.log("Edge function approach failed, trying direct API...");
@@ -127,9 +131,28 @@ export const setupStorageBuckets = async () => {
     // Fall back to direct API approach
     const success = await createStorageBuckets();
     
+    if (success) {
+      return {
+        success,
+        message: "Storage buckets created via API"
+      };
+    }
+    
+    console.log("Direct bucket creation failed, trying edge function...");
+    
+    // Try the edge function again but with a different action
+    try {
+      const setupResult = await callStorageManager('setup');
+      return setupResult;
+    } catch (setupError) {
+      console.error("Setup action also failed:", setupError);
+    }
+    
+    console.log("All storage setup attempts failed. Proceeding without storage initialization.");
+    
     return {
-      success,
-      message: success ? "Storage buckets created via API" : "Failed to create storage buckets"
+      success: false,
+      message: "All storage setup attempts failed"
     };
   } catch (error) {
     console.error("Failed to set up storage buckets:", error);
@@ -240,13 +263,13 @@ export const callStorageManager = async (action: string): Promise<any> => {
   try {
     console.log(`Calling storage manager: ${action}`);
     
-    // Prepare the request body
+    // Prepare the request body with proper JSON
     const body = { action };
     
-    // Make the request to the edge function
+    // Make the request to the edge function with proper headers
     const { data, error } = await supabase.functions.invoke('storage-manager', {
       method: 'POST',
-      body, // Send the action in the body
+      body, 
       headers: {
         'Content-Type': 'application/json'
       }

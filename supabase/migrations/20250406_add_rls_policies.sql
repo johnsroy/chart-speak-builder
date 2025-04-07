@@ -30,3 +30,32 @@ USING (true);
 UPDATE public.datasets 
 SET column_schema = '{"Category":"string","Year":"number","Value":"number","Revenue":"number","Count":"number"}' 
 WHERE column_schema IS NULL OR column_schema = '{}'::jsonb;
+
+-- Add storage bucket access policies
+-- This will help with bucket access for non-authenticated users
+INSERT INTO storage.policies (name, definition, check_schema, owner, for_storage)
+SELECT 
+  'allow_public_access_datasets', 
+  'storage.bucket_id = ''datasets''', 
+  'public',
+  'authenticated',
+  true
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO storage.policies (name, definition, check_schema, owner, for_storage)
+SELECT 
+  'allow_public_access_secure', 
+  'storage.bucket_id = ''secure''', 
+  'public',
+  'authenticated',
+  true
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO storage.policies (name, definition, check_schema, owner, for_storage)
+SELECT 
+  'allow_public_access_cold_storage', 
+  'storage.bucket_id = ''cold_storage''', 
+  'public',
+  'authenticated',
+  true
+ON CONFLICT (name) DO NOTHING;

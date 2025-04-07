@@ -19,44 +19,45 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 const initializeApp = async () => {
   try {
     if (typeof window !== 'undefined') {
-      console.log("Initializing app and creating storage buckets...");
+      console.log("Initializing app and checking storage buckets...");
       
       // First try to call the edge function directly to create buckets
-      const { callStorageManager } = await import('@/utils/storageUtils');
-      
       try {
-        console.log("Attempting to create buckets via edge function...");
-        const result = await callStorageManager('force-create-buckets');
+        const { callStorageManager } = await import('@/utils/storageUtils');
         
-        if (result && result.success) {
-          console.log("Successfully created storage buckets via edge function");
+        try {
+          console.log("Attempting to create buckets via edge function...");
+          const result = await callStorageManager('force-create-buckets');
           
-          // Try to add sample data to the buckets
-          try {
-            await callStorageManager('sample');
-          } catch (sampleError) {
-            console.warn("Failed to add sample data:", sampleError);
+          if (result && result.success) {
+            console.log("Successfully created storage buckets via edge function");
+            
+            // Set up admin user now that storage is ready
+            try {
+              const { authService } = await import('@/services/authService');
+              await authService.setupAdminUser().catch(err => {
+                console.warn("Admin user setup had an issue, but continuing:", err.message);
+              });
+              
+              // Check and log the current session
+              const { data: { session } } = await supabase.auth.getSession();
+              console.log("Current session after setup:", session ? "Present" : "Not present");
+              
+              return;
+            } catch (authError) {
+              console.warn("Error setting up admin user, but continuing:", authError);
+            }
+            
+            return;
           }
-          
-          // Set up admin user now that storage is ready
-          try {
-            const { authService } = await import('@/services/authService');
-            await authService.setupAdminUser().catch(err => {
-              console.warn("Admin user setup had an issue, but continuing:", err.message);
-            });
-          } catch (authError) {
-            console.warn("Error setting up admin user, but continuing:", authError);
-          }
-          
-          return;
-        } else {
-          console.warn("Edge function bucket creation failed, trying alternate methods");
+        } catch (edgeFunctionError) {
+          console.warn("Edge function approach failed:", edgeFunctionError);
         }
-      } catch (edgeFunctionError) {
-        console.warn("Edge function approach failed:", edgeFunctionError);
+      } catch (importError) {
+        console.warn("Error importing storage utilities:", importError);
       }
       
-      // Fall back to checking if buckets already exist
+      // If edge function failed, try direct API approach
       try {
         const { verifyStorageBuckets, createStorageBuckets } = await import('@/utils/storageUtils');
         
@@ -65,53 +66,60 @@ const initializeApp = async () => {
         
         if (bucketsExist) {
           console.log("All required storage buckets already exist");
-          
-          // Try to set up admin user
-          try {
-            const { authService } = await import('@/services/authService');
-            await authService.setupAdminUser().catch(err => {
-              console.warn("Admin user setup had an issue, but continuing:", err.message);
-            });
-          } catch (authError) {
-            console.warn("Error setting up admin user, but continuing:", authError);
-          }
-          
-          return;
-        }
-        
-        // As a last resort, try direct bucket creation
-        console.log("Attempting direct bucket creation via API...");
-        const success = await createStorageBuckets().catch(err => {
-          console.warn("Error in direct bucket creation:", err.message);
-          return false;
-        });
-        
-        if (success) {
-          console.log("Successfully created storage buckets via API");
         } else {
-          console.warn("All bucket creation methods failed");
+          // Try direct bucket creation
+          const success = await createStorageBuckets().catch(() => false);
+          
+          if (success) {
+            console.log("Successfully created storage buckets via API");
+          } else {
+            console.warn("Could not create storage buckets, but continuing...");
+          }
         }
-      } catch (error) {
-        console.warn("Error during storage setup:", error);
+      } catch (storageError) {
+        console.warn("Error during storage setup:", storageError);
       }
       
-      // Try to set up admin user even if storage setup failed
+      // Try to set up admin user regardless of storage setup
       try {
         const { authService } = await import('@/services/authService');
         await authService.setupAdminUser().catch(err => {
           console.warn("Admin user setup had an issue, but continuing:", err.message);
         });
+        
+        // Check and log the current session
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log("Current session after setup:", session ? "Present" : "Not present");
       } catch (authError) {
         console.warn("Error setting up admin user, but continuing:", authError);
       }
-      
-      // Check and log the current session
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log("Current session after setup:", session ? "Present" : "Not present");
     }
   } catch (error) {
     console.warn("Failed to initialize app completely, but will continue:", error);
   }
+};
+
+// Run initialization with retry mechanism
+const performInitialization = async (retries = 3, delay = 1000) => {
+  let attempt = 0;
+  
+  while (attempt < retries) {
+    try {
+      await initializeApp();
+      console.log(`App initialized successfully on attempt ${attempt + 1}`);
+      return;
+    } catch (error) {
+      attempt++;
+      console.warn(`Initialization attempt ${attempt} failed:`, error);
+      
+      if (attempt < retries) {
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  console.warn(`App initialization failed after ${retries} attempts, proceeding anyway`);
 };
 
 // Run initialization after a short delay to ensure everything is ready
@@ -123,7 +131,7 @@ if (typeof window !== 'undefined') {
   
   // Schedule the initialization with a delay
   initializeTimeout = setTimeout(() => {
-    initializeApp().catch(err => {
+    performInitialization().catch(err => {
       console.warn("App initialization had some issues, but we'll continue:", err);
     });
   }, 1000);

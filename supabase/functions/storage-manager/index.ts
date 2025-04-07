@@ -29,8 +29,21 @@ serve(async (req) => {
       // If JSON parsing fails, try to get action from URL
       const url = new URL(req.url);
       const pathParts = url.pathname.split("/");
-      action = pathParts[pathParts.length - 1];
-      console.log("Action extracted from URL path:", action);
+      const lastPathPart = pathParts[pathParts.length - 1];
+      
+      // Check if the last path part is a valid action
+      if (["setup", "force-create-buckets", "sample"].includes(lastPathPart)) {
+        action = lastPathPart;
+        console.log("Action extracted from URL path:", action);
+      } else {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: "Invalid request: Could not determine action"
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        );
+      }
     }
 
     // Get Supabase URL and service role key
@@ -49,16 +62,21 @@ serve(async (req) => {
     }
 
     // Create Supabase client with service role key for admin privileges
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
     
     console.log("Executing action:", action);
     
     switch (action) {
       case "setup":
       case "force-create-buckets":
-        return await createBuckets(supabase);
+        return await createBuckets(supabase, corsHeaders);
       case "sample":
-        return await addSampleData(supabase);
+        return await addSampleData(supabase, corsHeaders);
       default:
         console.log("Unknown action requested:", action);
         return new Response(
@@ -80,7 +98,7 @@ serve(async (req) => {
 });
 
 // Function to create storage buckets
-async function createBuckets(supabase) {
+async function createBuckets(supabase, corsHeaders) {
   try {
     console.log("Creating storage buckets...");
     const requiredBuckets = ["datasets", "secure", "cold_storage"];
@@ -109,7 +127,7 @@ async function createBuckets(supabase) {
           results.push({
             bucket: bucketName,
             created: !error,
-            error: error?.message
+            error: error?.message || null
           });
 
           if (error) {
@@ -172,47 +190,21 @@ async function addBucketPolicies(supabase) {
     
     for (const bucket of requiredBuckets) {
       try {
-        // Add a policy for public read access using SQL query
-        const { error: readError } = await supabase.rpc('create_storage_policy', {
+        // Use direct SQL for better control over policy creation
+        // This avoids issues with RLS on the storage schema
+        const { data: publicAccessPolicyData, error: publicAccessPolicyError } = await supabase.rpc('create_storage_policy', {
           bucket_name: bucket,
-          policy_name: `${bucket}_public_read`,
-          definition: `bucket_id = '${bucket}'`,
-          operation: 'SELECT',
+          policy_name: `${bucket}_public_access`,
+          definition: 'true', // Allow public access
+          operation: 'ALL', // ALL operations (read, write, etc.)
           role_name: 'anon'
         });
         
-        if (readError) console.warn(`Error creating read policy for ${bucket}:`, readError);
-        
-        // Add policies for authenticated user access
-        const { error: insertError } = await supabase.rpc('create_storage_policy', {
-          bucket_name: bucket,
-          policy_name: `${bucket}_auth_insert`,
-          definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
-          operation: 'INSERT',
-          role_name: 'authenticated'
-        });
-        
-        if (insertError) console.warn(`Error creating insert policy for ${bucket}:`, insertError);
-        
-        const { error: updateError } = await supabase.rpc('create_storage_policy', {
-          bucket_name: bucket,
-          policy_name: `${bucket}_auth_update`,
-          definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
-          operation: 'UPDATE',
-          role_name: 'authenticated'
-        });
-        
-        if (updateError) console.warn(`Error creating update policy for ${bucket}:`, updateError);
-        
-        const { error: deleteError } = await supabase.rpc('create_storage_policy', {
-          bucket_name: bucket,
-          policy_name: `${bucket}_auth_delete`,
-          definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
-          operation: 'DELETE',
-          role_name: 'authenticated'
-        });
-        
-        if (deleteError) console.warn(`Error creating delete policy for ${bucket}:`, deleteError);
+        if (publicAccessPolicyError) {
+          console.warn(`Error creating public policy for bucket ${bucket}:`, publicAccessPolicyError);
+        } else {
+          console.log(`Created public access policy for bucket ${bucket}`);
+        }
       } catch (e) {
         console.warn(`Error setting policies for bucket ${bucket}:`, e);
       }
@@ -227,7 +219,7 @@ async function addBucketPolicies(supabase) {
 }
 
 // Function to add sample data to buckets
-async function addSampleData(supabase) {
+async function addSampleData(supabase, corsHeaders) {
   try {
     console.log("Adding sample data to buckets...");
     // Example: Add a sample README.txt to each bucket
