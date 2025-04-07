@@ -1,6 +1,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
+import { toast } from 'sonner';
 
 // Processing NL query 
 export const processNLQuery = async (
@@ -10,17 +11,62 @@ export const processNLQuery = async (
 ): Promise<QueryResult> => {
   try {
     console.log(`Calling AI query function for dataset ${datasetId} with model ${model}`);
+    
+    // First ensure we can access the dataset
+    const { data: dataset, error: datasetError } = await supabase
+      .from('datasets')
+      .select('*')
+      .eq('id', datasetId)
+      .single();
+      
+    if (datasetError) {
+      console.error('Error retrieving dataset:', datasetError);
+      throw new Error(`Could not retrieve dataset: ${datasetError.message}`);
+    }
+    
+    // Get preview data first to ensure we have something to work with
+    const previewResponse = await supabase.functions.invoke('data-processor', {
+      body: { 
+        action: 'preview', 
+        dataset_id: datasetId 
+      }
+    });
+    
+    if (previewResponse.error) {
+      console.error('Error retrieving dataset preview:', previewResponse.error);
+      toast.error('Failed to retrieve dataset data');
+      throw new Error(`Could not retrieve dataset preview: ${previewResponse.error.message}`);
+    }
+
+    // Now call the AI query function with the dataset information
     const response = await supabase.functions.invoke('ai-query', {
       body: { 
         datasetId, 
         query,
-        model 
+        model,
+        // Pass along preview data as fallback
+        previewData: previewResponse.data?.data || []
       }
     });
     
     if (response.error) {
       console.error('AI Query function error:', response.error);
-      throw new Error(response.error.message || 'Error processing query');
+      toast.error('AI Query failed, using preview data as fallback');
+      
+      // Create fallback query result using preview data
+      const fallbackResult: QueryResult = {
+        data: previewResponse.data?.data || [],
+        columns: Object.keys((previewResponse.data?.data && previewResponse.data?.data[0]) || {}),
+        error: `AI analysis failed: ${response.error.message}`,
+        chartType: 'bar',
+        xAxis: Object.keys((previewResponse.data?.data && previewResponse.data?.data[0]) || {})[0] || 'category',
+        yAxis: Object.keys((previewResponse.data?.data && previewResponse.data?.data[0]) || {}).find(col => 
+          typeof previewResponse.data?.data[0][col] === 'number'
+        ) || 'value',
+        explanation: 'Showing dataset preview as AI analysis failed.'
+      };
+      
+      return fallbackResult;
     }
     
     console.log('AI query response:', response.data);
@@ -40,6 +86,7 @@ export const processNLQuery = async (
     return result;
   } catch (error) {
     console.error('Error in NLP query:', error);
+    toast.error('Error processing query');
     return {
       data: [],
       columns: [],
