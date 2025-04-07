@@ -60,7 +60,7 @@ const RedirectDialog: React.FC<RedirectDialogProps> = ({
           </div>
           <DialogTitle className="text-xl">Upload Successful!</DialogTitle>
           <DialogDescription className="text-gray-300">
-            Your data is ready to be explored. Redirecting to view data...
+            Your data has been processed and is ready to be explored.
           </DialogDescription>
         </DialogHeader>
         
@@ -69,6 +69,7 @@ const RedirectDialog: React.FC<RedirectDialogProps> = ({
             onClick={handleRedirectToDataTable} 
             className="flex items-center justify-center gap-2 bg-violet-900 hover:bg-violet-800"
             variant="default"
+            autoFocus
           >
             <Table className="h-5 w-5" />
             View Data Table
@@ -85,7 +86,7 @@ const RedirectDialog: React.FC<RedirectDialogProps> = ({
         </div>
         
         <DialogFooter className="sm:justify-center">
-          <p className="text-xs text-gray-400">Automatically redirecting to data view...</p>
+          <p className="text-xs text-gray-400">Automatically redirecting to data view in 2 seconds...</p>
         </DialogFooter>
       </DialogContent>
     </Dialog>

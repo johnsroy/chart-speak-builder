@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { generateChartColors } from '@/utils/chartUtils';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 interface DataTableProps {
   data: any[] | null;
@@ -26,7 +34,7 @@ const DataTable: React.FC<DataTableProps> = ({
   const [currentPage, setCurrentPage] = React.useState(1);
   
   // Handle pagination
-  const totalPages = data ? Math.ceil(data.length / pageSize) : 0;
+  const totalPages = data && data.length > 0 ? Math.ceil(data.length / pageSize) : 0;
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, data?.length || 0);
   const currentData = data?.slice(startIndex, endIndex) || [];
@@ -35,6 +43,20 @@ const DataTable: React.FC<DataTableProps> = ({
   const columnColors = React.useMemo(() => 
     generateChartColors(columns.length, 'gradient'), [columns.length]);
   
+  // Generate fallback data if no data is provided
+  const generateFallbackData = () => {
+    const fallbackData = [];
+    for (let i = 0; i < 5; i++) {
+      fallbackData.push({
+        id: i + 1,
+        name: `Sample Item ${i + 1}`,
+        value: Math.floor(Math.random() * 100),
+        category: ['A', 'B', 'C'][i % 3]
+      });
+    }
+    return fallbackData;
+  };
+
   if (loading) {
     return (
       <Card className="w-full overflow-hidden bg-background/50 backdrop-blur-sm border-purple-500/20">
@@ -57,20 +79,76 @@ const DataTable: React.FC<DataTableProps> = ({
     );
   }
   
+  // No data scenario - generate fallback if error or empty data
   if (error || !data || data.length === 0) {
+    const fallbackData = generateFallbackData();
+    const fallbackColumns = Object.keys(fallbackData[0]);
+    
     return (
       <Card className="w-full overflow-hidden bg-background/50 backdrop-blur-sm border-purple-500/20">
         <CardHeader className="pb-2">
-          <CardTitle className="text-lg">{title}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <p className="text-red-400 mb-2">No data available</p>
-            <p className="text-sm text-muted-foreground">
-              {error || 'Unable to load dataset preview'}
-            </p>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">{title}</CardTitle>
+            <Badge variant="outline" className="bg-red-500/20 text-red-200 border-red-500/40">
+              Using Sample Data
+            </Badge>
           </div>
-        </CardContent>
+        </CardHeader>
+        <ScrollArea className="h-[500px]">
+          <CardContent>
+            <div className="text-center py-4">
+              <p className="text-red-400 mb-2">
+                {error || 'Unable to load dataset preview'}
+              </p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Showing sample data instead
+              </p>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {fallbackColumns.map((column, index) => (
+                      <TableHead 
+                        key={column}
+                        style={{ borderBottom: `2px solid ${columnColors[index % columnColors.length]}` }}
+                      >
+                        {column}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fallbackData.map((row, rowIndex) => (
+                    <TableRow 
+                      key={rowIndex} 
+                      className={rowIndex % 2 === 0 ? 'bg-gray-900/30' : 'bg-gray-800/20'}
+                    >
+                      {fallbackColumns.map((column) => (
+                        <TableCell key={`${rowIndex}-${column}`}>
+                          {typeof row[column] === 'object' 
+                            ? JSON.stringify(row[column]) 
+                            : String(row[column])}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            
+            <div className="flex items-center justify-center mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.reload()}
+              >
+                Retry Loading Data
+              </Button>
+            </div>
+          </CardContent>
+        </ScrollArea>
       </Card>
     );
   }
@@ -88,40 +166,40 @@ const DataTable: React.FC<DataTableProps> = ({
       <ScrollArea className="h-[500px]">
         <CardContent>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-gray-700">
+            <Table>
+              <TableHeader>
+                <TableRow>
                   {columns.map((column, index) => (
-                    <th 
+                    <TableHead 
                       key={column}
-                      className="p-2 text-left text-gray-300 font-medium"
+                      className="text-gray-300 font-medium"
                       style={{ borderBottom: `2px solid ${columnColors[index]}` }}
                     >
                       {column}
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {currentData.map((row, rowIndex) => (
-                  <tr 
+                  <TableRow 
                     key={rowIndex} 
                     className={rowIndex % 2 === 0 ? 'bg-gray-900/30' : 'bg-gray-800/20'}
                   >
                     {columns.map((column) => (
-                      <td 
+                      <TableCell 
                         key={`${rowIndex}-${column}`} 
-                        className="p-2 border-b border-gray-800/50"
+                        className="border-b border-gray-800/50"
                       >
                         {typeof row[column] === 'object' 
                           ? JSON.stringify(row[column]) 
                           : String(row[column])}
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           
           {/* Pagination */}
