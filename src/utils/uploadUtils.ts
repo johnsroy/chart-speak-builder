@@ -78,14 +78,14 @@ export const validateUserId = (userId?: string): string => {
 export const simulateProgress = (
   startPercent: number, 
   totalSize: number, 
-  setProgress: (progress: number) => void
+  setProgress: React.Dispatch<React.SetStateAction<number>>
 ): NodeJS.Timeout => {
   setProgress(startPercent);
   
   const progressInterval = setInterval(() => {
-    // Get the current progress value first
     let currentProgress = 0;
-    setProgress((prev) => {
+    
+    setProgress(prev => {
       currentProgress = prev;
       // Move slowly to 90% to simulate upload
       if (prev < 90) {
