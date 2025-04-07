@@ -1,3 +1,4 @@
+
 import React from "react";
 import {
   Home as HomeIcon,
@@ -8,7 +9,7 @@ import {
   Beaker as BeakerIcon,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";

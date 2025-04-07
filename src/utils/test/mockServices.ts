@@ -1,230 +1,172 @@
+
 import { supabase } from '@/lib/supabase';
-import { sampleSalesData, sampleAIResponses } from './sampleData';
-import { QueryResult } from '@/services/queryService';
+import { QueryResult } from '@/services/types/queryTypes';
+import { sampleQueries, chartData } from './sampleData';
 
-// Keep track of original functions so we can restore them
-let originalFunctionsInvoke: any = null;
+// Store the original functions so we can restore them later
+let originalFunctionInvoke: any = null;
 
-/**
- * Mock the Supabase function invocations for testing
- */
-export function setupMockSupabaseFunctions() {
-  // Save the original function for later restoration
-  if (!originalFunctionsInvoke) {
-    originalFunctionsInvoke = supabase.functions.invoke;
+// Setup mock functions
+export const setupMockSupabaseFunctions = () => {
+  // Save the original function
+  if (!originalFunctionInvoke) {
+    originalFunctionInvoke = supabase.functions.invoke;
   }
-
-  // Replace with mock function
-  supabase.functions.invoke = async (functionName: string, options: any) => {
+  
+  // Mock the invoke function
+  supabase.functions.invoke = async (functionName: string, options: any = {}) => {
     console.log(`Mock invoking function: ${functionName}`, options);
     
-    // Simulate the transform function
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Handle different function calls
     if (functionName === 'transform') {
-      const { query_type, dataset_id, query_text, query_config } = options.body;
+      const { config } = options.body || {};
+      const queryType = config?.chartType || 'bar';
       
-      // For UI Builder queries
-      if (query_type === 'ui_builder') {
-        const chartType = query_config.chart_type;
-        const measures = query_config.measures;
-        const dimensions = query_config.dimensions;
-        
-        // Process based on dimensions and measures
-        if (dimensions.length > 0 && measures.length > 0) {
-          const dimensionField = dimensions[0].field;
-          const measureField = measures[0].field;
-          const aggregation = measures[0].aggregation;
-          
-          // Group and aggregate data
-          const groups: Record<string, any> = {};
-          
-          sampleSalesData.forEach(item => {
-            const key = item[dimensionField as keyof typeof item];
-            if (!groups[key]) {
-              groups[key] = {
-                [dimensionField]: key,
-                [`${aggregation}_${measureField}`]: 0,
-                count: 0
-              };
-            }
-            
-            // Perform aggregation
-            if (aggregation === 'sum') {
-              groups[key][`${aggregation}_${measureField}`] += item[measureField as keyof typeof item];
-            } else if (aggregation === 'count') {
-              groups[key].count += 1;
-            } else if (aggregation === 'avg') {
-              groups[key][`${aggregation}_${measureField}`] += item[measureField as keyof typeof item];
-              groups[key].count += 1;
-            }
-          });
-          
-          // Calculate averages if needed
-          if (aggregation === 'avg') {
-            Object.keys(groups).forEach(key => {
-              groups[key][`${aggregation}_${measureField}`] /= groups[key].count;
-              delete groups[key].count;
-            });
-          }
-          
-          // Convert to array
-          const result = Object.values(groups);
-          
+      // Return appropriate mock data based on chart type
+      switch (queryType) {
+        case 'bar':
           return {
             data: {
-              data: result,
-              columns: Object.keys(result[0])
+              data: chartData.barChart,
+              columns: ['category', 'value'],
+              chart_type: 'bar',
+              x_axis: 'category',
+              y_axis: 'value',
+              chart_title: 'Sample Bar Chart'
             },
             error: null
           };
-        } else {
-          // Return raw data if no aggregation is specified
-          return { 
+        case 'pie':
+          return {
             data: {
-              data: sampleSalesData,
-              columns: Object.keys(sampleSalesData[0])
-            }, 
-            error: null 
+              data: chartData.pieChart,
+              columns: ['segment', 'value'],
+              chart_type: 'pie',
+              chart_title: 'Sample Pie Chart'
+            },
+            error: null
           };
-        }
-      } 
-      // For natural language queries
-      else if (query_type === 'natural_language') {
-        // Return predefined sample response based on query text
-        if (query_text.toLowerCase().includes('product category')) {
-          return { 
+        case 'line':
+          return {
             data: {
-              data: sampleAIResponses.salesByCategory.data,
-              columns: sampleAIResponses.salesByCategory.columns
-            }, 
-            error: null 
+              data: chartData.lineChart,
+              columns: ['date', 'value'],
+              chart_type: 'line',
+              x_axis: 'date',
+              y_axis: 'value',
+              chart_title: 'Sample Line Chart'
+            },
+            error: null
           };
-        } else {
-          return { 
+        default:
+          return {
             data: {
-              data: sampleAIResponses.monthlySales.data,
-              columns: sampleAIResponses.monthlySales.columns
-            }, 
-            error: null 
+              data: [],
+              columns: []
+            },
+            error: 'Unsupported chart type'
           };
-        }
       }
     }
     
-    // Simulate the ai-query function
-    else if (functionName === 'ai-query') {
-      const { query, dataset_id } = options.body;
+    if (functionName === 'ai-query') {
+      const { query } = options.body || {};
       
-      // Return predefined sample response based on query text
-      if (query.toLowerCase().includes('product category')) {
-        return { data: sampleAIResponses.salesByCategory, error: null };
-      } else {
-        return { data: sampleAIResponses.monthlySales, error: null };
-      }
+      return {
+        data: {
+          data: chartData.barChart,
+          columns: ['product_category', 'sales'],
+          chart_type: 'bar',
+          x_axis: 'product_category',
+          y_axis: 'sales',
+          chart_title: 'Sales by Product Category',
+          explanation: `I analyzed your query "${query}" and determined that a bar chart showing sales by product category would best represent this data.`
+        },
+        error: null
+      };
     }
-
+    
     // Default fallback
-    return { 
-      data: { 
-        data: sampleSalesData,
-        columns: Object.keys(sampleSalesData[0])
-      }, 
-      error: null 
+    return {
+      data: null,
+      error: {
+        message: `Mock function ${functionName} not implemented`
+      }
     };
   };
-}
+};
 
-/**
- * Restore the original Supabase functions
- */
-export function restoreMockSupabaseFunctions() {
-  if (originalFunctionsInvoke) {
-    supabase.functions.invoke = originalFunctionsInvoke;
-    originalFunctionsInvoke = null;
+// Restore original functions
+export const restoreMockSupabaseFunctions = () => {
+  if (originalFunctionInvoke) {
+    supabase.functions.invoke = originalFunctionInvoke;
   }
-}
+};
 
-/**
- * Test data query functions
- */
-export async function testDataQuery(queryType: string): Promise<QueryResult> {
-  // Check if we need to mock the functions
-  const isMockActive = !originalFunctionsInvoke;
-  if (!isMockActive) {
-    setupMockSupabaseFunctions();
-  }
-  
-  // Import services dynamically to prevent circular dependencies
-  const { queryService } = await import('@/services/queryService');
-  const { sampleQueries } = await import('./sampleData');
-  
-  let result: QueryResult;
-  
+// Test data query function
+export const testDataQuery = async (queryType: string): Promise<QueryResult> => {
   try {
-    // Select the appropriate sample query
-    const query = sampleQueries[queryType];
-    if (!query) {
-      throw new Error(`Unknown query type: ${queryType}`);
+    // Convert queryType to correct config format
+    let config;
+    switch (queryType) {
+      case 'barChart':
+        config = sampleQueries.barChart;
+        break;
+      case 'pieChart':
+        config = sampleQueries.pieChart;
+        break;
+      case 'lineChart':
+        config = sampleQueries.lineChart;
+        break;
+      default:
+        throw new Error(`Invalid query type: ${queryType}`);
     }
     
-    // Execute the query
-    result = await queryService.executeQuery(query);
-    console.log(`Test query result (${queryType}):`, result);
+    // Call the transform function
+    const result = await supabase.functions.invoke('transform', {
+      body: { config }
+    });
+    
+    if (result.error) {
+      throw new Error(result.error.message || 'Query execution failed');
+    }
+    
+    return result.data as QueryResult;
   } catch (error) {
-    console.error(`Test query error (${queryType}):`, error);
-    result = {
-      query: "Test query",
-      explanation: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      chartType: 'bar',
+    console.error(`Error executing ${queryType} query:`, error);
+    return {
       data: [],
       columns: [],
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
     };
-  } finally {
-    // If we set up the mock in this function, restore it
-    if (!isMockActive) {
-      restoreMockSupabaseFunctions();
-    }
   }
-  
-  return result;
-}
+};
 
-/**
- * Test NLP query functions
- */
-export async function testNLPQuery(queryText: string): Promise<QueryResult> {
-  // Check if we need to mock the functions
-  const isMockActive = !originalFunctionsInvoke;
-  if (!isMockActive) {
-    setupMockSupabaseFunctions();
-  }
-  
-  // Import services dynamically to prevent circular dependencies
-  const { queryService } = await import('@/services/queryService');
-  const { sampleDataset } = await import('./sampleData');
-  
-  let result: QueryResult;
-  
+// Test NLP query function
+export const testNLPQuery = async (query: string): Promise<QueryResult> => {
   try {
-    // Process the natural language query
-    result = await queryService.processQuery(queryText, sampleDataset.id);
-    console.log(`Test NLP query result (${queryText}):`, result);
+    // Call the AI query function
+    const result = await supabase.functions.invoke('ai-query', {
+      body: { 
+        datasetId: 'mock-dataset', 
+        query 
+      }
+    });
+    
+    if (result.error) {
+      throw new Error(result.error.message || 'NLP query execution failed');
+    }
+    
+    return result.data as QueryResult;
   } catch (error) {
-    console.error(`Test NLP query error (${queryText}):`, error);
-    result = {
-      query: queryText,
-      explanation: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      chartType: 'bar',
+    console.error('Error executing NLP query:', error);
+    return {
       data: [],
       columns: [],
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
     };
-  } finally {
-    // If we set up the mock in this function, restore it
-    if (!isMockActive) {
-      restoreMockSupabaseFunctions();
-    }
   }
-  
-  return result;
-}
+};

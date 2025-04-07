@@ -1,6 +1,6 @@
 
-import { ReactNode, useEffect } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import React, { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from "sonner";
 
@@ -10,43 +10,29 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
-  const { isAuthenticated, isLoading, user, session } = useAuth();
-  const navigate = useNavigate();
-  
-  useEffect(() => {
-    // Show toast when authentication fails after loading completes
-    if (!isLoading && !isAuthenticated) {
-      toast.error("Please log in to access this page");
-    }
-    
-    // Show toast when admin permission is required but user is not an admin
-    if (!isLoading && isAuthenticated && requireAdmin && user?.role !== 'admin') {
-      toast.error("Admin permission required");
-    }
-  }, [isLoading, isAuthenticated, user, requireAdmin]);
+  const { isAuthenticated, isLoading, user } = useAuth();
   
   if (isLoading) {
-    // Show loading state
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900">
-        <div className="glass-card p-8 rounded-xl text-white text-center">
-          <div className="animate-pulse">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-black">
+        <div className="p-8 rounded-xl text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto"></div>
+          <p className="mt-4">Loading...</p>
         </div>
       </div>
     );
   }
   
-  if (!isAuthenticated || !session) {
-    // Redirect to login if not authenticated
+  if (!isAuthenticated) {
+    toast.error("Please log in to access this page");
     return <Navigate to="/login" replace />;
   }
   
   if (requireAdmin && user?.role !== 'admin') {
-    // Redirect to dashboard if admin access is required but user is not an admin
+    toast.error("Admin permission required");
     return <Navigate to="/" replace />;
   }
   
-  // Render children if all conditions are met
   return <>{children}</>;
 };
 

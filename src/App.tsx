@@ -1,10 +1,10 @@
+
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './components/theme-provider';
 import { Toaster } from './components/ui/toaster';
 import { Toaster as SonnerToaster } from 'sonner';
 import { AuthProvider } from './contexts/AuthContext';
-import { ProtectedRoute } from './components/ProtectedRoute';
 import NavBar from './components/NavBar';
 import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
@@ -19,6 +19,7 @@ import SignupPage from './pages/auth/SignupPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import { supabase } from './lib/supabase';
 import TestAnalysisTools from "./components/TestAnalysisTools";
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   const [session, setSession] = useState<any>(null);
@@ -63,7 +64,7 @@ function App() {
                 {/* Add Test Route */}
                 <Route path="/test" element={<TestAnalysisTools />} />
                 
-                {/* Keep existing routes */}
+                {/* Protected routes */}
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
                 <Route path="/visualize/:datasetId" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
