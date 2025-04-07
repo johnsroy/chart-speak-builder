@@ -61,7 +61,7 @@ export const processUploadedFile = async (file: File): Promise<any[]> => {
     // Handle different file types
     if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
       const text = await file.text();
-      const data = parseCSV(text);
+      const data = await parseCSV(text); // Make sure we await the result
       console.log(`Parsed CSV with ${data.length} rows:`, data.slice(0, 2));
       return data;
     }

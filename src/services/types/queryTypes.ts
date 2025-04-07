@@ -1,7 +1,7 @@
 
 export interface QueryResult {
   data: any[];
-  columns: string[];
+  columns: string[] | Array<{name: string, type: string}>; // Updated to support both string[] and object array
   error?: string;
   chartType: string;
   chart_type?: string;

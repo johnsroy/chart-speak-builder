@@ -1,8 +1,7 @@
-
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
 import { toast as sonnerToast } from "sonner";
-import { verifyStorageBuckets, createStorageBuckets, testBucketPermission } from './storageUtils';
+import { verifyStorageBuckets, createStorageBuckets } from './storageUtils';
 
 /**
  * Simulates progress for file upload

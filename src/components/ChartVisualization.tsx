@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,9 +12,10 @@ interface ChartVisualizationProps {
   xAxis?: string;
   yAxis?: string;
   heightClass?: string;
+  data?: any[];
+  useDirectAccess?: boolean;
 }
 
-// Define interfaces for different chart data types
 interface PieDataItem {
   name: string;
   value: number;
@@ -26,19 +26,27 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   chartType = 'bar',
   xAxis,
   yAxis,
-  heightClass = 'h-[400px]'
+  heightClass = 'h-[400px]',
+  data: initialData,
+  useDirectAccess = false
 }) => {
-  const [chartData, setChartData] = useState<any[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState<any[] | null>(initialData || null);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
+    if (initialData && initialData.length > 0) {
+      setChartData(initialData);
+      setAvailableColumns(Object.keys(initialData[0]));
+      setLoading(false);
+      return;
+    }
+    
     const loadData = async () => {
       setLoading(true);
       try {
-        // Use previewDataset to get data for visualization
         const data = await dataService.previewDataset(datasetId);
         console.log('Chart data loaded:', data);
         
@@ -48,7 +56,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         
         setChartData(data);
         
-        // Get column names from the first row
         if (data && data.length > 0) {
           setAvailableColumns(Object.keys(data[0]));
         }
@@ -70,24 +77,20 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     if (datasetId) {
       loadData();
     }
-  }, [datasetId, toast]);
+  }, [datasetId, initialData, toast]);
 
-  // Determine which columns to use for X and Y axes
   const determineAxes = () => {
     if (!chartData || chartData.length === 0 || !availableColumns.length) {
       return { xField: '', yField: '' };
     }
 
-    // Use provided axes if they exist in the data
     const xField = xAxis && availableColumns.includes(xAxis) ? xAxis : availableColumns[0];
     
-    // For Y-axis, prefer a numerical field if possible
     let yField = '';
     
     if (yAxis && availableColumns.includes(yAxis)) {
       yField = yAxis;
     } else {
-      // Try to find a numerical column for Y-axis
       const firstRow = chartData[0];
       const numericalColumn = availableColumns.find(
         col => typeof firstRow[col] === 'number'
@@ -110,17 +113,14 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       return {};
     }
 
-    // Extract values for the selected fields and ensure they have different values
     const xValues = chartData.map(item => item[xField]);
     
-    // Ensure numeric values for Y-axis and add some randomness for testing
     const yValues = chartData.map(item => {
       const val = item[yField];
       return typeof val === 'number' ? val : isNaN(Number(val)) ? 
         Math.floor(Math.random() * 1000) : Number(val);
     });
     
-    // Basic chart configurations
     const options = {
       title: {
         text: `${yField} by ${xField}`,
@@ -159,7 +159,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           type: chartType,
           data: yValues,
           itemStyle: {
-            // Use a consistent color pattern instead of random colors
             color: function(params: any) {
               const colorList = [
                 '#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', 
@@ -173,9 +172,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       backgroundColor: 'rgba(0, 0, 0, 0.2)',
     };
 
-    // Special configurations for different chart types
     if (chartType === 'pie') {
-      // Create pie data with correct format for ECharts
       const pieData: PieDataItem[] = xValues.map((label, index) => ({
         name: String(label),
         value: yValues[index],

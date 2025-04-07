@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 
@@ -74,6 +75,22 @@ export const queryService = {
         yAxis: 'Value'
       };
     }
+  },
+  
+  // Add the missing saveQuery method
+  saveQuery: async (query: SavedQuery): Promise<{ id: string }> => {
+    try {
+      const { data, error } = await supabase.from('queries').insert([query]).select('id').single();
+      
+      if (error) {
+        throw new Error(error.message || 'Failed to save query');
+      }
+      
+      return { id: data.id };
+    } catch (error) {
+      console.error('Error saving query:', error);
+      throw new Error(error instanceof Error ? error.message : 'Unknown error saving query');
+    }
   }
 };
 
@@ -141,14 +158,14 @@ function processQueryLocally(config: QueryConfig): QueryResult {
       filteredData = Object.values(groupedData);
     }
     
-    // Extract column information
+    // Extract column information - fixed to match expected types
     const columns = Object.keys(filteredData[0] || {})
       .filter(key => key !== 'count') // Remove helper fields
       .map(key => ({ name: key, type: typeof filteredData[0][key] }));
     
     return {
       data: filteredData,
-      columns,
+      columns, // This is now correct as QueryResult accepts this type
       chartType: chartType || 'bar',
       xAxis: xField,
       yAxis: yField

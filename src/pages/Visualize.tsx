@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
@@ -9,7 +8,7 @@ import { Loader2, ChevronLeft, Database, BarChart, LineChart, PieChart, Table as
 import { toast } from "sonner";
 import AIQueryPanel from '@/components/AIQueryPanel';
 import EnhancedVisualization from '@/components/EnhancedVisualization';
-import { QueryResult } from '@/services/nlpService';
+import { QueryResult } from '@/services/types/queryTypes';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -222,7 +221,6 @@ const Visualize = () => {
                 <AIQueryPanel 
                   datasetId={datasetId!} 
                   onQueryResult={handleQueryResult} 
-                  initialQuery={exampleQuery}
                   useDirectAccess={true}
                   dataPreview={dataPreview || []}
                 />
