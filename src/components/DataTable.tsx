@@ -2,11 +2,12 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { generateChartColors } from '@/utils/chartUtils';
+import { toast } from 'sonner';
 import {
   Table,
   TableBody,
@@ -22,6 +23,7 @@ interface DataTableProps {
   error: string | null;
   title?: string;
   pageSize?: number;
+  onRefresh?: () => void;
 }
 
 const DataTable: React.FC<DataTableProps> = ({ 
@@ -29,9 +31,16 @@ const DataTable: React.FC<DataTableProps> = ({
   loading, 
   error,
   title = 'Dataset Preview',
-  pageSize = 10
+  pageSize = 10,
+  onRefresh
 }) => {
   const [currentPage, setCurrentPage] = React.useState(1);
+  const [isRetrying, setIsRetrying] = React.useState(false);
+  
+  // Reset to first page when data changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [data]);
   
   // Handle pagination
   const totalPages = data && data.length > 0 ? Math.ceil(data.length / pageSize) : 0;
@@ -45,16 +54,53 @@ const DataTable: React.FC<DataTableProps> = ({
   
   // Generate fallback data if no data is provided
   const generateFallbackData = () => {
+    console.log("Generating fallback data for table");
     const fallbackData = [];
-    for (let i = 0; i < 5; i++) {
-      fallbackData.push({
+    const columnNames = ['id', 'name', 'value', 'category', 'date'];
+    
+    for (let i = 0; i < 10; i++) {
+      const item: Record<string, any> = {
         id: i + 1,
         name: `Sample Item ${i + 1}`,
         value: Math.floor(Math.random() * 100),
-        category: ['A', 'B', 'C'][i % 3]
-      });
+        category: ['A', 'B', 'C'][i % 3],
+        date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0]
+      };
+      
+      // Add some extra columns based on the dataset title
+      if (title && title.includes('Vehicle')) {
+        item.make = ['Toyota', 'Honda', 'Ford', 'Tesla', 'BMW'][i % 5];
+        item.model = ['Model X', 'Civic', 'F-150', 'Corolla', 'X5'][i % 5];
+        item.year = 2018 + (i % 5);
+        item.electric = [true, false, false, true, false][i % 5];
+      } else if (title && title.includes('Sales')) {
+        item.revenue = (Math.random() * 10000).toFixed(2);
+        item.profit = (Math.random() * 2000).toFixed(2);
+        item.region = ['North', 'South', 'East', 'West', 'Central'][i % 5];
+      }
+      
+      fallbackData.push(item);
     }
     return fallbackData;
+  };
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    
+    if (onRefresh) {
+      try {
+        await onRefresh();
+        toast.success("Data refreshed successfully");
+      } catch (err) {
+        toast.error("Failed to refresh data");
+      }
+    } else {
+      // Wait for a moment to simulate refresh
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      toast.info("Refresh handler not provided");
+    }
+    
+    setIsRetrying(false);
   };
 
   if (loading) {
@@ -138,13 +184,34 @@ const DataTable: React.FC<DataTableProps> = ({
               </Table>
             </div>
             
-            <div className="flex items-center justify-center mt-4">
+            <div className="flex items-center justify-center mt-4 space-x-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => window.location.reload()}
+                className="bg-violet-900/30 hover:bg-violet-900/50"
               >
-                Retry Loading Data
+                Reload Page
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+                disabled={isRetrying}
+                className="bg-purple-900/30 hover:bg-purple-900/50"
+              >
+                {isRetrying ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCcw className="h-4 w-4 mr-2" />
+                    Refresh Data
+                  </>
+                )}
               </Button>
             </div>
           </CardContent>

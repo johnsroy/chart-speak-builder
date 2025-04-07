@@ -24,6 +24,7 @@ const RedirectDialog: React.FC<RedirectDialogProps> = ({
   
   const handleRedirectToDataTable = () => {
     if (datasetId) {
+      // Always include ?view=table to ensure we're directing to the table view
       navigate(`/visualize/${datasetId}?view=table`);
     } else {
       navigate('/dashboard');
