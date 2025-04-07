@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,7 +6,7 @@ import { Loader2, Send, BarChart, LineChart, PieChart, Download, History } from 
 import { Card, CardContent } from "@/components/ui/card";
 import { QueryResult } from '@/services/types/queryTypes';
 import { nlpService } from '@/services/nlpService';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import EnhancedVisualization from './EnhancedVisualization';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -49,7 +50,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const [previousQueries, setPreviousQueries] = useState<any[]>([]);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
 
   // Get the current user ID
   const [userId, setUserId] = useState<string | null>(null);
@@ -161,10 +161,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       
       setMessages(prev => [...prev, errorMessage]);
       
-      toast({
-        title: "Error analyzing data",
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
-        variant: "destructive"
+      toast.error("Error analyzing data", {
+        description: error instanceof Error ? error.message : 'An unknown error occurred'
       });
     } finally {
       setIsLoading(false);
@@ -196,9 +194,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   };
 
   const downloadVisualization = (result: QueryResult) => {
-    toast({
-      title: "Download started",
-      description: "Your visualization is being downloaded"
+    toast.success("Download started", {
+      description: "Your visualization is being prepared for download"
     });
     // In a real implementation, this would generate a chart image or export data
   };
@@ -230,7 +227,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         explanation: config.result?.explanation || `Analysis of ${config.x_axis} vs ${config.y_axis}`,
         data: data || [],
         columns: Object.keys(data && data.length > 0 ? data[0] : {}),
-        query_id: queryId
+        query_id: queryId,
+        model_used: query.query_type === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'
       };
       
       const userMessage: Message = {
@@ -253,10 +251,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       setMessages(prev => [...prev, userMessage, aiResponse]);
     } catch (error) {
       console.error('Error loading previous query:', error);
-      toast({
-        title: "Error loading query",
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
-        variant: "destructive"
+      toast.error("Error loading query", {
+        description: error instanceof Error ? error.message : 'An unknown error occurred'
       });
     } finally {
       setIsLoading(false);
@@ -325,9 +321,14 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                             {query.query_config?.chart_type === 'pie' && <PieChart className="h-4 w-4 text-green-400 mr-2" />}
                             <span className="font-medium">{query.name}</span>
                           </div>
-                          <Badge variant="outline" className="text-xs">
-                            {new Date(query.created_at).toLocaleDateString()}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-xs">
+                              {query.query_type === 'anthropic' ? 'Claude' : 'GPT-4o'} 
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {new Date(query.created_at).toLocaleDateString()}
+                            </Badge>
+                          </div>
                         </div>
                         <p className="text-sm text-gray-400 mt-1 line-clamp-2">{query.query_text}</p>
                       </li>
@@ -340,7 +341,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         </div>
       </div>
       
-      <Card className="flex-1 overflow-hidden glass-card backdrop-blur-xl bg-gray-950/30 border border-purple-500/20">
+      <Card className="flex-1 overflow-hidden glass-card backdrop-blur-xl bg-gray-950/30 border border-purple-500/20 shadow-xl">
         <ScrollArea className="h-full pr-4">
           <CardContent className="pt-6 pb-2">
             <div className="flex flex-col space-y-4">
@@ -348,9 +349,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                 <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] ${
                     message.sender === 'user' 
-                      ? 'bg-gradient-to-r from-blue-600/80 to-blue-500/70 text-white rounded-t-xl rounded-bl-xl' 
-                      : 'bg-gradient-to-r from-purple-900/70 to-purple-800/50 backdrop-blur-sm text-white rounded-t-xl rounded-br-xl'
-                    } p-3 shadow-md`}>
+                      ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-t-xl rounded-bl-xl shadow-lg' 
+                      : 'bg-gradient-to-r from-purple-900/80 to-purple-800/60 backdrop-blur-sm text-white rounded-t-xl rounded-br-xl shadow-lg'
+                    } p-4`}>
                     
                     {message.sender === 'ai' && (
                       <div className="flex items-center mb-2">
@@ -362,16 +363,16 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                           />
                           <AvatarFallback>{message.model === 'anthropic' ? 'C' : 'G'}</AvatarFallback>
                         </Avatar>
-                        <Badge variant="outline" className="text-xs font-medium border-purple-500/40 bg-purple-500/20">
+                        <Badge variant="secondary" className="text-xs font-medium">
                           {message.model === 'anthropic' ? 'Claude 3.7' : 'GPT-4o'}
                         </Badge>
                       </div>
                     )}
                     
-                    <p className="text-sm">{message.content}</p>
+                    <p className="text-sm leading-relaxed">{message.content}</p>
                     
                     {message.result && (
-                      <div className="mt-4">
+                      <div className="mt-4 bg-black/20 rounded-lg p-2">
                         <div className="flex justify-between items-center mb-2">
                           <div className="flex items-center">
                             {getChartTypeIcon(message.result)}
@@ -394,11 +395,25 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                             </Tooltip>
                           </TooltipProvider>
                         </div>
-                        <EnhancedVisualization result={message.result} />
+                        {/* Use enhanced visualization with proper color scheme based on model */}
+                        <EnhancedVisualization 
+                          result={message.result} 
+                          colorPalette={message.model === 'anthropic' ? 'professional' : 'vibrant'}
+                          showTitle={false}
+                        />
+                        
+                        {/* Show model info */}
+                        {message.result.model_used && (
+                          <div className="flex justify-end mt-2">
+                            <Badge variant="outline" className="text-xs opacity-70">
+                              Generated by {message.result.model_used}
+                            </Badge>
+                          </div>
+                        )}
                       </div>
                     )}
                     
-                    <div className="text-xs opacity-70 mt-1">
+                    <div className="text-xs opacity-70 mt-2 text-right">
                       {new Intl.DateTimeFormat('en-US', {
                         hour: '2-digit',
                         minute: '2-digit'
@@ -420,12 +435,12 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           onKeyDown={handleKeyPress} 
           placeholder="Ask a question about your dataset..." 
           disabled={isLoading} 
-          className="flex-1 bg-gray-950 border-purple-500/30 focus:border-purple-500" 
+          className="flex-1 bg-gray-950/60 border-purple-500/30 focus-visible:ring-purple-500 focus-visible:border-purple-500"
         />
         <Button 
           onClick={handleSendMessage} 
           disabled={isLoading || !inputText.trim()} 
-          className="bg-gradient-to-r from-purple-700 to-purple-600 hover:from-purple-600 hover:to-purple-500"
+          className="bg-gradient-to-r from-purple-700 to-purple-600 hover:from-purple-600 hover:to-purple-500 hover:shadow-lg transition-all"
         >
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
@@ -436,7 +451,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           <Badge 
             key={index}
             variant="outline" 
-            className="bg-purple-500/20 border-purple-500/30 cursor-pointer hover:bg-purple-500/30" 
+            className="bg-purple-500/20 border-purple-500/30 cursor-pointer hover:bg-purple-500/30 hover:scale-105 transition-all" 
             onClick={() => setInputText(query)}
           >
             {query}

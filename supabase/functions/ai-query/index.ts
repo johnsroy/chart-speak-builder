@@ -77,7 +77,7 @@ Dataset Information:
 - Description: ${dataset.description || 'No description provided'}
 - Available Columns: ${columnNames.join(', ')}
 - Schema: ${JSON.stringify(schema)}
-- Sample Data: ${JSON.stringify(previewData.slice(0, 3))}
+- Sample Data: ${JSON.stringify(previewData.slice(0, 5))}
 
 Instructions:
 1. Analyze the user's query to understand what visualization they want.
@@ -100,7 +100,7 @@ Return ONLY a JSON object with the following structure:
     let aiResponse;
     
     if (model === 'anthropic' && anthropicApiKey) {
-      console.log('Using Claude API for analysis');
+      console.log('Using Claude 3.7 API for analysis');
       
       // Call Anthropic API
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -116,14 +116,21 @@ Return ONLY a JSON object with the following structure:
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: query }
-          ]
+          ],
+          temperature: 0.2
         })
       });
       
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Claude API error: Status ${response.status}`, errorText);
+        throw new Error(`Claude API error: ${response.status} - ${errorText}`);
+      }
+      
       const responseData = await response.json();
       
-      if (!response.ok) {
-        throw new Error(`Claude API error: ${responseData.error?.message || JSON.stringify(responseData)}`);
+      if (!responseData.content || responseData.content.length === 0) {
+        throw new Error('Empty response from Claude API');
       }
       
       const claudeResponse = responseData.content[0].text;
@@ -142,7 +149,7 @@ Return ONLY a JSON object with the following structure:
       }
     } 
     else if (openaiApiKey) {
-      console.log('Using OpenAI API for analysis');
+      console.log('Using OpenAI GPT-4o API for analysis');
       
       // Call OpenAI API
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -152,20 +159,26 @@ Return ONLY a JSON object with the following structure:
           'Authorization': `Bearer ${openaiApiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4o',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: query }
           ],
-          temperature: 0.3,
+          temperature: 0.2,
           response_format: { type: "json_object" }
         })
       });
       
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`OpenAI API error: Status ${response.status}`, errorText);
+        throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+      }
+      
       const responseData = await response.json();
       
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${responseData.error?.message || JSON.stringify(responseData)}`);
+      if (!responseData.choices || responseData.choices.length === 0) {
+        throw new Error('Empty response from OpenAI API');
       }
       
       const openaiResponse = responseData.choices[0].message.content;
@@ -231,7 +244,8 @@ Return ONLY a JSON object with the following structure:
           explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
           data: previewData,
           columns: columnNames,
-          query_id: savedQuery?.id
+          query_id: savedQuery?.id,
+          model_used: model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'
         };
         
         console.log(`Analysis complete: Chart type=${result.chart_type}, x=${result.x_axis}, y=${result.y_axis}`);
@@ -255,7 +269,8 @@ Return ONLY a JSON object with the following structure:
       chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
       explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
       data: previewData,
-      columns: columnNames
+      columns: columnNames,
+      model_used: model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'
     };
     
     console.log(`Analysis complete: Chart type=${result.chart_type}, x=${result.x_axis}, y=${result.y_axis}`);

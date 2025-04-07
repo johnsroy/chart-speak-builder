@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { Dataset } from '@/services/types/datasetTypes';
 
@@ -59,42 +60,94 @@ export const processChartData = (data: any[], xField: string, yField: string) =>
 };
 
 /**
- * Beautiful color palettes for data visualization
+ * Enhanced color palettes for beautiful data visualization
  */
 export const COLOR_PALETTES = {
-  // Purple-focused
-  purple: ['#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'],
-  
-  // Vibrant colors
-  vibrant: ['#F97316', '#8B5CF6', '#0EA5E9', '#22C55E', '#EF4444', '#F59E0B', '#06B6D4', '#D946EF'],
+  // Modern vibrant palette
+  vibrant: [
+    '#8B5CF6', // Main purple
+    '#0EA5E9', // Sky blue
+    '#F97316', // Orange
+    '#22C55E', // Green
+    '#EF4444', // Red
+    '#F59E0B', // Amber
+    '#06B6D4', // Teal
+    '#D946EF', // Fuchsia
+    '#3B82F6', // Blue
+    '#EC4899'  // Pink
+  ],
   
   // Pastel colors
-  pastel: ['#FEC6A1', '#FEF7CD', '#F2FCE2', '#D3E4FD', '#FFDEE2', '#FDE1D3', '#E5DEFF', '#C8C8C9'],
+  pastel: [
+    '#C7D2FE', // Indigo
+    '#BFDBFE', // Blue
+    '#A7F3D0', // Green
+    '#FEE2E2', // Red
+    '#FDE68A', // Yellow
+    '#DDD6FE', // Purple
+    '#FBCFE8', // Pink
+    '#BAE6FD', // Light blue
+    '#E5E7EB', // Gray
+    '#FED7AA'  // Orange
+  ],
+  
+  // Deep rich colors for dark mode
+  rich: [
+    '#7C3AED', // Deep purple
+    '#2563EB', // Royal blue
+    '#059669', // Emerald
+    '#DC2626', // Deep red
+    '#D97706', // Deep amber
+    '#7C2D12', // Chocolate
+    '#4F46E5', // Indigo
+    '#BE123C', // Rose
+    '#0369A1', // Deep sky blue
+    '#15803D'  // Deep green
+  ],
   
   // Gradient-friendly
-  gradient: ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'],
+  gradient: [
+    '#0088FE', // Blue
+    '#00C49F', // Teal
+    '#FFBB28', // Yellow
+    '#FF8042', // Orange
+    '#8884d8', // Purple
+    '#82ca9d', // Light green
+    '#a4de6c', // Lime green
+    '#d0ed57', // Yellow green
+    '#ffc658', // Gold
+    '#8dd1e1'  // Sky blue
+  ],
   
-  // Dark mode friendly
-  dark: ['#1A1F2C', '#403E43', '#221F26', '#333333', '#555555', '#8A898C', '#C8C8C9', '#9F9EA1']
+  // Professional palette for business data
+  professional: [
+    '#4E79A7', // Blue
+    '#F28E2B', // Orange
+    '#E15759', // Red
+    '#76B7B2', // Teal
+    '#59A14F', // Green
+    '#EDC948', // Yellow
+    '#B07AA1', // Purple
+    '#FF9DA7', // Pink
+    '#9C755F', // Brown
+    '#BAB0AC'  // Gray
+  ]
 };
 
 /**
  * Generates chart colors with better aesthetics
  */
-export const generateChartColors = (count: number, paletteName: keyof typeof COLOR_PALETTES = 'vibrant') => {
-  const palette = COLOR_PALETTES[paletteName] || COLOR_PALETTES.vibrant;
+export const generateChartColors = (count: number, paletteName: keyof typeof COLOR_PALETTES = 'professional') => {
+  const palette = COLOR_PALETTES[paletteName] || COLOR_PALETTES.professional;
   
   if (count <= palette.length) {
     return palette.slice(0, count);
   }
   
-  // Generate additional colors if needed
-  const colors = [...palette];
-  for (let i = palette.length; i < count; i++) {
-    const hue = (i * 137.5) % 360; // golden ratio approximation for better distribution
-    const saturation = 65 + (i % 3) * 5; // vary saturation slightly
-    const lightness = 45 + (i % 5) * 5; // vary lightness slightly
-    colors.push(`hsl(${hue}, ${saturation}%, ${lightness}%)`);
+  // Generate additional colors by cycling through the palette
+  const colors = [];
+  for (let i = 0; i < count; i++) {
+    colors.push(palette[i % palette.length]);
   }
   
   return colors;
@@ -159,6 +212,45 @@ export const createGradientColors = (baseColor: string, count: number = 5) => {
 };
 
 /**
+ * Creates chart-specific gradient definitions for SVG charts
+ */
+export const createChartGradients = (chartId: string, colors: string[] = COLOR_PALETTES.professional) => {
+  return colors.map((color, index) => ({
+    id: `gradient-${chartId}-${index}`,
+    color,
+    gradientStops: [
+      { offset: '5%', stopColor: color, stopOpacity: 0.8 },
+      { offset: '95%', stopColor: color, stopOpacity: 0.3 },
+    ]
+  }));
+};
+
+/**
+ * Generate transparent color variants for overlays and highlights
+ */
+export const getTransparentColor = (color: string, opacity: number = 0.2): string => {
+  // For hex colors
+  if (color.startsWith('#')) {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  }
+  
+  // For rgb/rgba colors
+  if (color.startsWith('rgb')) {
+    if (color.startsWith('rgba')) {
+      // Replace existing opacity
+      return color.replace(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d\.]+\)/, `rgba($1, $2, $3, ${opacity})`);
+    }
+    // Convert rgb to rgba
+    return color.replace(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/, `rgba($1, $2, $3, ${opacity})`);
+  }
+  
+  return color;
+};
+
+/**
  * Extracts a dataset name from file name
  */
 export const extractDatasetNameFromFileName = (fileName: string): string => {
@@ -176,7 +268,7 @@ export const findDateField = (dataset: any): string | null => {
   
   // Look for fields with 'date' in the name
   const dateNameFields = Object.keys(dataset.column_schema).filter(
-    field => /date|time/i.test(field)
+    field => /date|time|year/i.test(field)
   );
   
   if (dateNameFields.length > 0) return dateNameFields[0];
@@ -196,4 +288,49 @@ export const findDateField = (dataset: any): string | null => {
  */
 export const isTimeSeriesData = (dataset: any): boolean => {
   return !!findDateField(dataset);
+};
+
+/**
+ * Formats number values for display in charts
+ */
+export const formatChartValue = (value: number): string => {
+  if (typeof value !== 'number') return String(value);
+  
+  // For large numbers, use K, M, B suffixes
+  if (Math.abs(value) >= 1_000_000_000) {
+    return (value / 1_000_000_000).toFixed(1) + 'B';
+  }
+  if (Math.abs(value) >= 1_000_000) {
+    return (value / 1_000_000).toFixed(1) + 'M';
+  }
+  if (Math.abs(value) >= 1_000) {
+    return (value / 1_000).toFixed(1) + 'K';
+  }
+  
+  // For decimals, limit to 2 decimal places
+  if (Math.floor(value) !== value) {
+    return value.toFixed(2);
+  }
+  
+  return value.toString();
+};
+
+/**
+ * Formats percentage values for display
+ */
+export const formatPercentage = (value: number, total: number): string => {
+  if (total === 0) return '0%';
+  const percentage = (value / total) * 100;
+  return percentage < 0.1 ? '<0.1%' : percentage.toFixed(1) + '%';
+};
+
+/**
+ * Determines appropriate tick counts for axes based on container size
+ */
+export const getOptimalTickCount = (width: number, height: number): { xTicks: number, yTicks: number } => {
+  // Base tick counts on available space
+  const xTicks = Math.max(2, Math.min(10, Math.floor(width / 100)));
+  const yTicks = Math.max(2, Math.min(10, Math.floor(height / 50)));
+  
+  return { xTicks, yTicks };
 };

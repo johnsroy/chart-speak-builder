@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 import { toast } from 'sonner';
@@ -10,7 +11,7 @@ export const processNLQuery = async (
   model: 'openai' | 'anthropic' = 'openai'
 ): Promise<QueryResult> => {
   try {
-    console.log(`Calling AI query function for dataset ${datasetId} with model ${model}`);
+    console.log(`Calling AI query function for dataset ${datasetId} with model ${model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'}`);
     
     // First ensure we can access the dataset
     const { data: dataset, error: datasetError } = await supabase
@@ -183,7 +184,8 @@ const processQueryLocally = async (
       y_axis: yAxis,
       chart_title: chartTitle,
       explanation,
-      data: previewData
+      data: previewData,
+      model_used: `Local fallback (${modelName} unavailable)`
     };
   } catch (error) {
     console.error('Error in local query processing:', error);
@@ -195,7 +197,7 @@ const processQueryLocally = async (
 export const nlpService = {
   processQuery: async (query: string, datasetId: string, model: 'openai' | 'anthropic' = 'openai'): Promise<QueryResult> => {
     try {
-      console.log(`Processing query using ${model} model: "${query}"`);
+      console.log(`Processing query using ${model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'} model: "${query}"`);
       // Process query through Edge function with fallback
       const result = await processNLQuery(datasetId, query, model);
       return result;
