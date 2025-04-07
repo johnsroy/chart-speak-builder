@@ -23,7 +23,7 @@ export const setupMockSupabaseFunctions = () => {
     // Handle different function calls
     if (functionName === 'transform') {
       const { config } = options.body || {};
-      const queryType = config?.chartType || 'bar';
+      const queryType = config?.chartType || config?.chart_type || 'bar';
       
       // Return appropriate mock data based on chart type
       switch (queryType) {

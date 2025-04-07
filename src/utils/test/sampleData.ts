@@ -128,3 +128,30 @@ export const sampleAIResponses = {
     columns: ["month", "sales", "region", "customers", "product_category"]
   }
 };
+
+/**
+ * Sample chart data for visualizations
+ */
+export const chartData = {
+  barChart: [
+    { category: "Category A", value: 35 },
+    { category: "Category B", value: 45 },
+    { category: "Category C", value: 30 },
+    { category: "Category D", value: 25 },
+    { category: "Category E", value: 55 }
+  ],
+  pieChart: [
+    { segment: "Segment 1", value: 30 },
+    { segment: "Segment 2", value: 25 },
+    { segment: "Segment 3", value: 15 },
+    { segment: "Segment 4", value: 30 }
+  ],
+  lineChart: [
+    { date: "2025-01", value: 10 },
+    { date: "2025-02", value: 25 },
+    { date: "2025-03", value: 15 },
+    { date: "2025-04", value: 35 },
+    { date: "2025-05", value: 30 },
+    { date: "2025-06", value: 40 }
+  ]
+};
