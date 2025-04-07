@@ -83,7 +83,7 @@ export const simulateProgress = (
   setProgress(startPercent);
   
   const progressInterval = setInterval(() => {
-    setProgress(prev => {
+    setProgress((prev: number) => {
       // Move slowly to 90% to simulate upload
       if (prev < 90) {
         // Larger files should progress more slowly

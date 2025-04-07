@@ -13,6 +13,7 @@ import {
 } from '@/utils/uploadUtils';
 import { verifyStorageBuckets, setupStorageBuckets } from '@/utils/storageUtils';
 import { parseCSV } from '@/services/utils/fileUtils';
+import { supabase } from '@/lib/supabase';
 
 /**
  * Custom hook for managing file uploads
@@ -465,7 +466,3 @@ export const useFileUpload = () => {
     createStorageBucketIfNeeded: setupStorageBuckets
   };
 };
-
-// Import supabase client for direct operations
-import { supabase } from '@/lib/supabase';
-import { parseCSV } from '@/services/utils/fileUtils';

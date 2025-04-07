@@ -21,9 +21,10 @@ export const formatFileSize = (bytes: number): string => {
 /**
  * Parse CSV text into an array of objects
  * @param text CSV text content
+ * @param maxRows Optional maximum number of rows to parse
  * @returns Array of parsed objects
  */
-export const parseCSV = async (text: string): Promise<any[]> => {
+export const parseCSV = async (text: string, maxRows?: number): Promise<any[]> => {
   try {
     // Simple CSV parser for direct data access
     // Split into lines
@@ -33,8 +34,10 @@ export const parseCSV = async (text: string): Promise<any[]> => {
     // Parse header
     const header = lines[0].split(',').map(h => h.trim().replace(/^"(.+)"$/, '$1'));
     
-    // Parse rows
-    return lines.slice(1).map(line => {
+    // Parse rows (apply maxRows limit if provided)
+    const dataLines = maxRows ? lines.slice(1, maxRows + 1) : lines.slice(1);
+    
+    return dataLines.map(line => {
       // Handle quoted values with commas inside them
       const values: string[] = [];
       let inQuotes = false;
