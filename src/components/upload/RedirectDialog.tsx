@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -41,10 +41,19 @@ const RedirectDialog: React.FC<RedirectDialogProps> = ({
     onOpenChange(false);
   };
   
-  // Auto-redirect to the data table view after 2 seconds
-  React.useEffect(() => {
+  // Dispatch a custom event when dialog is shown
+  useEffect(() => {
     if (open && datasetId) {
+      console.log("Redirect dialog opened for dataset:", datasetId);
+      // Dispatch an event that can be captured elsewhere in the app
+      const redirectEvent = new CustomEvent('dataset-redirect-ready', {
+        detail: { datasetId }
+      });
+      window.dispatchEvent(redirectEvent);
+      
+      // Auto-redirect to the data table view after 2 seconds
       const timer = setTimeout(() => {
+        console.log("Auto-redirecting to data table");
         handleRedirectToDataTable();
       }, 2000);
       

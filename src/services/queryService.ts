@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 
@@ -37,7 +38,8 @@ export const queryService = {
       console.log("Executing query with config:", config);
       
       // Check if we should use direct data access
-      if (config.useDirectAccess && config.dataPreview && Array.isArray(config.dataPreview)) {
+      if ((config.useDirectAccess && config.dataPreview && Array.isArray(config.dataPreview)) || 
+          (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0)) {
         console.log("Using direct data access for query execution with", config.dataPreview.length, "rows");
         return processQueryLocally(config);
       }
@@ -51,7 +53,7 @@ export const queryService = {
       if (response.error) {
         console.log("Error from transform function:", response.error);
         // If the transform function fails, try processing locally
-        if (config.dataPreview && Array.isArray(config.dataPreview)) {
+        if (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0) {
           console.log("Falling back to local processing after edge function failure");
           return processQueryLocally(config);
         }
@@ -60,6 +62,15 @@ export const queryService = {
 
       // Normalize the response to ensure property consistency
       const result = response.data as QueryResult;
+      
+      // If the result is empty or invalid, try to process locally if we have data
+      if (!result || !result.data || result.data.length === 0) {
+        if (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0) {
+          console.log("Empty result from edge function, using local processing instead");
+          return processQueryLocally(config);
+        }
+      }
+      
       console.log("Query executed successfully:", result);
       
       // Add property aliases for consistency
@@ -78,7 +89,7 @@ export const queryService = {
       console.error('Query execution error:', error);
       
       // If we have dataPreview, try to process locally even on error
-      if (config.dataPreview && Array.isArray(config.dataPreview)) {
+      if (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0) {
         console.log("Error occurred, using direct data processing as fallback");
         return processQueryLocally(config);
       }

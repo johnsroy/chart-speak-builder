@@ -1,13 +1,13 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronLeft, ChevronRight, Loader2, RefreshCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, RefreshCcw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { generateChartColors } from '@/utils/chartUtils';
 import { toast } from 'sonner';
+import { navigate } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -36,6 +36,7 @@ const DataTable: React.FC<DataTableProps> = ({
 }) => {
   const [currentPage, setCurrentPage] = React.useState(1);
   const [isRetrying, setIsRetrying] = React.useState(false);
+  const [retryCount, setRetryCount] = React.useState(0);
   
   // Reset to first page when data changes
   React.useEffect(() => {
@@ -52,56 +53,24 @@ const DataTable: React.FC<DataTableProps> = ({
   const columnColors = React.useMemo(() => 
     generateChartColors(columns.length, 'gradient'), [columns.length]);
   
-  // Generate fallback data if no data is provided
-  const generateFallbackData = () => {
-    console.log("Generating fallback data for table");
-    const fallbackData = [];
-    
-    // Check if title contains hints about the dataset type
-    const isVehicleData = title?.toLowerCase().includes('vehicle') || 
-                          title?.toLowerCase().includes('car') ||
-                          title?.toLowerCase().includes('electric');
-    
-    // Generate more appropriate data based on dataset type
-    if (isVehicleData) {
-      for (let i = 0; i < 10; i++) {
-        fallbackData.push({
-          id: i + 1,
-          make: ['Tesla', 'Nissan', 'Chevrolet', 'Ford', 'BMW'][i % 5],
-          model: ['Model Y', 'Leaf', 'Bolt', 'Mach-E', 'i3'][i % 5],
-          year: 2020 + (i % 4),
-          electric: true,
-          range_miles: 200 + (i * 20),
-          battery_capacity: 60 + (i * 5),
-          state: ['WA', 'CA', 'OR', 'TX', 'NY'][i % 5],
-          city: ['Seattle', 'San Francisco', 'Portland', 'Austin', 'New York'][i % 5],
-          postal_code: `9${i}${i}${i}${i}`,
-          vehicle_location: `Location ${i+1}`
+  // Auto-retry when data is empty or on error, up to 3 times
+  React.useEffect(() => {
+    if (onRefresh && !loading && retryCount < 3 && (
+        (!data || data.length === 0) || 
+        error
+      )) {
+      console.log(`Auto-retrying data load (attempt ${retryCount + 1}/3)`);
+      const timer = setTimeout(() => {
+        setIsRetrying(true);
+        onRefresh().finally(() => {
+          setIsRetrying(false);
+          setRetryCount(prev => prev + 1);
         });
-      }
-    } else {
-      // Generic fallback data for other types
-      for (let i = 0; i < 10; i++) {
-        const item: Record<string, any> = {
-          id: i + 1,
-          name: `Sample Item ${i + 1}`,
-          value: Math.floor(Math.random() * 100),
-          category: ['A', 'B', 'C'][i % 3],
-          date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0]
-        };
-        
-        // Add some extra columns based on the dataset title
-        if (title && title.toLowerCase().includes('sales')) {
-          item.revenue = (Math.random() * 10000).toFixed(2);
-          item.profit = (Math.random() * 2000).toFixed(2);
-          item.region = ['North', 'South', 'East', 'West', 'Central'][i % 5];
-        }
-        
-        fallbackData.push(item);
-      }
+      }, 1000 * (retryCount + 1)); // Exponential backoff
+      
+      return () => clearTimeout(timer);
     }
-    return fallbackData;
-  };
+  }, [data, error, loading, onRefresh, retryCount]);
 
   const handleRetry = async () => {
     setIsRetrying(true);
@@ -122,7 +91,8 @@ const DataTable: React.FC<DataTableProps> = ({
     setIsRetrying(false);
   };
 
-  if (loading) {
+  // Loading state
+  if (loading || isRetrying) {
     return (
       <Card className="w-full overflow-hidden bg-background/50 backdrop-blur-sm border-purple-500/20">
         <CardHeader className="pb-2">
@@ -144,94 +114,69 @@ const DataTable: React.FC<DataTableProps> = ({
     );
   }
   
-  // No data scenario - generate fallback if error or empty data
+  // Error or empty data state
   if (error || !data || data.length === 0) {
-    const fallbackData = generateFallbackData();
-    const fallbackColumns = Object.keys(fallbackData[0]);
-    
     return (
       <Card className="w-full overflow-hidden bg-background/50 backdrop-blur-sm border-purple-500/20">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">{title}</CardTitle>
             <Badge variant="outline" className="bg-red-500/20 text-red-200 border-red-500/40">
-              Using Sample Data
+              No Data Available
             </Badge>
           </div>
         </CardHeader>
         <ScrollArea className="h-[500px]">
           <CardContent>
-            <div className="text-center py-4">
-              <p className="text-red-400 mb-2">
-                {error || 'Unable to load dataset preview'}
+            <div className="text-center py-12">
+              <AlertTriangle className="h-16 w-16 mx-auto text-red-400 mb-4" />
+              <p className="text-red-400 text-lg mb-2">
+                {error || 'No data available to display'}
               </p>
-              <p className="text-sm text-muted-foreground mb-4">
-                Showing sample data instead
+              <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+                {error ? 
+                  "There was a problem loading the dataset. Please try refreshing or check that the file was uploaded correctly." :
+                  "The dataset appears to be empty or could not be loaded. Try refreshing or uploading the file again."}
               </p>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {fallbackColumns.map((column, index) => (
-                      <TableHead 
-                        key={column}
-                        style={{ borderBottom: `2px solid ${columnColors[index % columnColors.length]}` }}
-                      >
-                        {column}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {fallbackData.map((row, rowIndex) => (
-                    <TableRow 
-                      key={rowIndex} 
-                      className={rowIndex % 2 === 0 ? 'bg-gray-900/30' : 'bg-gray-800/20'}
-                    >
-                      {fallbackColumns.map((column) => (
-                        <TableCell key={`${rowIndex}-${column}`}>
-                          {typeof row[column] === 'object' 
-                            ? JSON.stringify(row[column]) 
-                            : String(row[column])}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            
-            <div className="flex items-center justify-center mt-4 space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.location.reload()}
-                className="bg-violet-900/30 hover:bg-violet-900/50"
-              >
-                Reload Page
-              </Button>
               
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRetry}
-                disabled={isRetrying}
-                className="bg-purple-900/30 hover:bg-purple-900/50"
-              >
-                {isRetrying ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Refreshing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCcw className="h-4 w-4 mr-2" />
-                    Refresh Data
-                  </>
-                )}
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                  className="bg-violet-900/30 hover:bg-violet-900/50"
+                >
+                  Reload Page
+                </Button>
+                
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleRetry}
+                  disabled={isRetrying}
+                  className="bg-purple-900 hover:bg-purple-800"
+                >
+                  {isRetrying ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Refreshing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCcw className="h-4 w-4 mr-2" />
+                      Refresh Data
+                    </>
+                  )}
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/upload')}
+                >
+                  Upload New File
+                </Button>
+              </div>
             </div>
           </CardContent>
         </ScrollArea>
@@ -239,14 +184,30 @@ const DataTable: React.FC<DataTableProps> = ({
     );
   }
   
+  // Normal data display
   return (
     <Card className="w-full overflow-hidden bg-background/50 backdrop-blur-sm border-purple-500/20">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">{title}</CardTitle>
-          <Badge variant="outline" className="bg-purple-500/20 text-purple-200">
-            {data.length} rows
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost" 
+              size="sm"
+              onClick={handleRetry}
+              disabled={isRetrying}
+            >
+              {isRetrying ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="h-4 w-4" />
+              )}
+              <span className="sr-only">Refresh</span>
+            </Button>
+            <Badge variant="outline" className="bg-purple-500/20 text-purple-200">
+              {data.length} rows
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <ScrollArea className="h-[500px]">
@@ -259,7 +220,7 @@ const DataTable: React.FC<DataTableProps> = ({
                     <TableHead 
                       key={column}
                       className="text-gray-300 font-medium"
-                      style={{ borderBottom: `2px solid ${columnColors[index]}` }}
+                      style={{ borderBottom: `2px solid ${columnColors[index % columnColors.length]}` }}
                     >
                       {column}
                     </TableHead>
