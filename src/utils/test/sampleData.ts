@@ -1,231 +1,115 @@
-import { Dataset } from "@/services/types/datasetTypes";
-import { SavedQuery } from "@/services/queryService";
-import { QueryResult } from "@/services/types/queryTypes";
 
-/**
- * Sample dataset for testing
- */
-export const sampleDataset: Dataset = {
-  id: "test-dataset-123",
-  name: "Sales Data",
-  description: "Monthly sales data for testing",
-  file_name: "sales_data.csv",
-  file_size: 1024,
-  storage_type: "local",
-  storage_path: "test/sales_data.csv",
-  row_count: 12,
-  column_schema: {
-    month: "string",
-    sales: "number",
-    region: "string",
-    customers: "number",
-    product_category: "string"
-  },
-  user_id: "test-user-123",
-  created_at: "2025-01-01T00:00:00.000Z",
-  updated_at: "2025-01-01T00:00:00.000Z"
-};
-
-/**
- * Sample sales data for testing
- */
-export const sampleSalesData = [
-  { month: "January", sales: 1200, region: "North", customers: 45, product_category: "Electronics" },
-  { month: "February", sales: 1500, region: "North", customers: 52, product_category: "Electronics" },
-  { month: "March", sales: 1800, region: "South", customers: 61, product_category: "Electronics" },
-  { month: "April", sales: 1300, region: "South", customers: 48, product_category: "Furniture" },
-  { month: "May", sales: 2100, region: "East", customers: 72, product_category: "Furniture" },
-  { month: "June", sales: 2400, region: "East", customers: 83, product_category: "Furniture" },
-  { month: "July", sales: 2200, region: "West", customers: 76, product_category: "Clothing" },
-  { month: "August", sales: 1900, region: "West", customers: 65, product_category: "Clothing" },
-  { month: "September", sales: 2300, region: "North", customers: 79, product_category: "Clothing" },
-  { month: "October", sales: 2700, region: "North", customers: 92, product_category: "Electronics" },
-  { month: "November", sales: 3100, region: "South", customers: 105, product_category: "Electronics" },
-  { month: "December", sales: 3500, region: "South", customers: 118, product_category: "Furniture" }
+// Sample chart data for testing visualization
+export const chartData = [
+  { month: 'Jan', sales: 120, customers: 45 },
+  { month: 'Feb', sales: 150, customers: 53 },
+  { month: 'Mar', sales: 190, customers: 68 },
+  { month: 'Apr', sales: 85, customers: 32 },
+  { month: 'May', sales: 210, customers: 71 },
+  { month: 'Jun', sales: 180, customers: 62 }
 ];
 
-/**
- * Sample query configurations for testing
- */
-export const sampleQueries: Record<string, SavedQuery> = {
+// Sample query configurations for testing
+export const sampleQueries = {
   barChart: {
-    name: "Monthly Sales Bar Chart",
-    dataset_id: "test-dataset-123",
-    query_type: "ui_builder",
-    query_text: "",
     query_config: {
-      datasetId: "test-dataset-123",
-      chartType: "bar",
-      chart_type: "bar",
-      measures: [{ field: "sales", aggregation: "sum" }],
-      dimensions: ["month"],
-      metrics: ["sales"],
-      limit: 12
+      type: "bar",
+      x: "month",
+      y: "sales",
+      title: "Monthly Sales Performance"
     }
   },
   pieChart: {
-    name: "Sales by Region Pie Chart",
-    dataset_id: "test-dataset-123",
-    query_type: "ui_builder",
-    query_text: "",
     query_config: {
-      datasetId: "test-dataset-123",
-      chartType: "pie",
-      chart_type: "pie",
-      measures: [{ field: "sales", aggregation: "sum" }],
-      dimensions: ["region"],
-      metrics: ["sales"],
-      limit: 4
+      type: "pie",
+      x: "region",
+      y: "sales",
+      title: "Sales Distribution by Region"
     }
   },
   lineChart: {
-    name: "Customer Trends Line Chart",
-    dataset_id: "test-dataset-123",
-    query_type: "ui_builder",
-    query_text: "",
     query_config: {
-      datasetId: "test-dataset-123",
-      chartType: "line",
-      chart_type: "line",
-      measures: [{ field: "customers", aggregation: "sum" }],
-      dimensions: ["month"],
-      metrics: ["customers"],
-      limit: 12
-    }
-  },
-  naturalLanguage: {
-    name: "Sales by Product Category",
-    dataset_id: "test-dataset-123",
-    query_type: "natural_language",
-    query_text: "Show me sales by product category",
-    query_config: {
-      datasetId: "test-dataset-123",
-      chartType: "bar",
-      chart_type: "bar",
-      measures: [],
-      dimensions: [],
-      metrics: []
+      type: "line",
+      x: "month",
+      y: "customers",
+      title: "Customer Growth Trends"
     }
   }
 };
 
-/**
- * Sample AI query responses for testing
- */
-export const sampleAIResponses = {
-  salesByCategory: {
-    chart_type: "bar",
-    chartType: "bar",
-    x_axis: "product_category",
-    y_axis: "sales",
-    chart_title: "Sales by Product Category",
-    explanation: "This chart shows the total sales for each product category. Electronics has the highest sales, followed by Furniture and Clothing.",
-    data: [
-      { product_category: "Electronics", sales: 10300 },
-      { product_category: "Furniture", sales: 5800 },
-      { product_category: "Clothing", sales: 6400 }
-    ],
-    columns: ["product_category", "sales"]
-  },
-  monthlySales: {
-    chart_type: "line",
-    chartType: "line",
-    x_axis: "month",
-    y_axis: "sales",
-    chart_title: "Monthly Sales Trends",
-    explanation: "This chart shows sales increasing throughout the year, with a peak in December.",
-    data: sampleSalesData,
-    columns: ["month", "sales", "region", "customers", "product_category"]
-  }
-};
-
-/**
- * Sample chart data for visualizations
- */
-export const chartData = {
-  barChart: [
-    { category: "Category A", value: 35 },
-    { category: "Category B", value: 45 },
-    { category: "Category C", value: 30 },
-    { category: "Category D", value: 25 },
-    { category: "Category E", value: 55 }
-  ],
-  pieChart: [
-    { segment: "Segment 1", value: 30 },
-    { segment: "Segment 2", value: 25 },
-    { segment: "Segment 3", value: 15 },
-    { segment: "Segment 4", value: 30 }
-  ],
-  lineChart: [
-    { date: "2025-01", value: 10 },
-    { date: "2025-02", value: 25 },
-    { date: "2025-03", value: 15 },
-    { date: "2025-04", value: 35 },
-    { date: "2025-05", value: 30 },
-    { date: "2025-06", value: 40 }
-  ]
-};
-
-/**
- * Sample NLP query responses for testing
- */
-export const nlpResponses: Record<string, QueryResult> = {
+// Mock NLP response data for demonstration
+export const nlpResponses = {
   sales: {
     chart_type: "bar",
-    x_axis: "product_category",
+    x_axis: "month",
     y_axis: "sales",
-    chart_title: "Sales by Product Category",
+    chart_title: "Monthly Sales Performance",
+    explanation: "Sales have been trending upward with the highest performance in May. There was a significant drop in April which warrants investigation.",
     data: [
-      { product_category: "Electronics", sales: 10300 },
-      { product_category: "Furniture", sales: 5800 },
-      { product_category: "Clothing", sales: 6400 }
+      { month: 'Jan', sales: 120 },
+      { month: 'Feb', sales: 150 },
+      { month: 'Mar', sales: 190 },
+      { month: 'Apr', sales: 85 },
+      { month: 'May', sales: 210 },
+      { month: 'Jun', sales: 180 }
     ],
-    explanation: "This chart shows the total sales for each product category. Electronics has the highest sales, followed by Clothing and Furniture.",
-    columns: ["product_category", "sales"]
+    columns: ["month", "sales"]
   },
   products: {
     chart_type: "pie",
-    x_axis: "product_category",
-    y_axis: "sales",
-    chart_title: "Product Category Distribution",
+    x_axis: "product",
+    y_axis: "quantity",
+    chart_title: "Product Distribution by Quantity",
+    explanation: "Product A represents the largest portion of your inventory, followed by Product C. Product B has the smallest share.",
     data: [
-      { product_category: "Electronics", sales: 10300 },
-      { product_category: "Furniture", sales: 5800 },
-      { product_category: "Clothing", sales: 6400 }
+      { product: 'Product A', quantity: 350 },
+      { product: 'Product B', quantity: 125 },
+      { product: 'Product C', quantity: 225 }
     ],
-    explanation: "This pie chart illustrates the sales distribution across different product categories.",
-    columns: ["product_category", "sales"]
+    columns: ["product", "quantity"]
   },
   regions: {
-    chart_type: "bar",
+    chart_type: "pie",
     x_axis: "region",
     y_axis: "sales",
-    chart_title: "Sales by Region",
+    chart_title: "Regional Sales Distribution",
+    explanation: "The North region contributes the highest percentage of sales, followed by West. The East region shows the lowest performance and may need additional focus.",
     data: [
-      { region: "North", sales: 5500 },
-      { region: "South", sales: 6800 },
-      { region: "East", sales: 4500 },
-      { region: "West", sales: 6100 }
+      { region: 'North', sales: 23500 },
+      { region: 'South', sales: 18700 },
+      { region: 'East', sales: 15200 },
+      { region: 'West', sales: 21800 }
     ],
-    explanation: "This chart displays total sales across different regions, with the South region leading in sales.",
     columns: ["region", "sales"]
   },
   timeSeries: {
     chart_type: "line",
     x_axis: "month",
-    y_axis: "sales",
-    chart_title: "Monthly Sales Trend",
-    data: sampleSalesData,
-    explanation: "This line chart shows the sales trend over the months, indicating a generally increasing pattern.",
-    columns: ["month", "sales"]
+    y_axis: "customers",
+    chart_title: "Customer Acquisition Trends",
+    explanation: "Customer acquisition shows a positive trend with steady growth from January to March, followed by a significant drop in April. May shows a strong recovery with the highest number of new customers.",
+    data: [
+      { month: 'Jan', customers: 45 },
+      { month: 'Feb', customers: 53 },
+      { month: 'Mar', customers: 68 },
+      { month: 'Apr', customers: 32 },
+      { month: 'May', customers: 71 },
+      { month: 'Jun', customers: 62 }
+    ],
+    columns: ["month", "customers"]
   },
   default: {
     chart_type: "bar",
-    x_axis: "default",
+    x_axis: "category",
     y_axis: "value",
-    chart_title: "Default Query Result",
-    data: [{ default: "No specific data available" }],
-    explanation: "This is a default result when no specific query match is found.",
-    columns: ["default"]
+    chart_title: "Data Analysis",
+    explanation: "Here's a general analysis of the data you provided. The categories show varying values with Category C having the highest value.",
+    data: [
+      { category: 'Category A', value: 42 },
+      { category: 'Category B', value: 28 },
+      { category: 'Category C', value: 63 },
+      { category: 'Category D', value: 35 }
+    ],
+    columns: ["category", "value"]
   }
 };

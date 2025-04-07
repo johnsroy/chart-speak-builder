@@ -1,312 +1,195 @@
 
 import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart, LineChart, PieChart, MessageSquare } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { mockSupabaseClient, testNLPQuery, testDataQuery } from '@/utils/test/mockServices';
+import { setupMockSupabaseFunctions, restoreMockSupabaseFunctions } from '@/utils/test/mockServices';
+import { Loader2, Send, BarChart, LineChart, PieChart } from 'lucide-react';
 import EnhancedVisualization from './EnhancedVisualization';
-import { QueryResult } from '@/services/queryService';
-import { setupMockSupabaseFunctions, restoreMockSupabaseFunctions, testDataQuery, testNLPQuery } from '@/utils/test/mockServices';
-import { sampleQueries } from '@/utils/test/sampleData';
-import { toast } from '@/hooks/use-toast';
-import { Input } from '@/components/ui/input';
+import { toast } from "sonner";
 
-export default function TestAnalysisTools() {
-  const [activeTab, setActiveTab] = useState('bar');
-  const [isLoading, setIsLoading] = useState(false);
-  const [testResults, setTestResults] = useState<Record<string, QueryResult | null>>({
-    bar: null,
-    pie: null,
-    line: null,
-    nlp: null
-  });
-  const [nlpQuery, setNlpQuery] = useState("Show me sales by product category");
-  const [mockEnabled, setMockEnabled] = useState(false);
+const TestAnalysisTools = () => {
+  const [inputText, setInputText] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [queryResult, setQueryResult] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<string>('test-nlp');
+  const [debugInfo, setDebugInfo] = useState<string>('');
+  const [activeModel, setActiveModel] = useState<'openai' | 'anthropic'>('openai');
 
-  // Enable/disable mocking
+  // Set up mock services for testing
   useEffect(() => {
-    if (mockEnabled) {
-      setupMockSupabaseFunctions();
-    } else {
-      restoreMockSupabaseFunctions();
-    }
+    console.log('Setting up mock Supabase functions for testing');
+    setupMockSupabaseFunctions();
     
-    // Cleanup on unmount
     return () => {
+      console.log('Restoring original Supabase functions');
       restoreMockSupabaseFunctions();
     };
-  }, [mockEnabled]);
+  }, []);
 
-  // Run query test
-  const runQueryTest = async (queryType: string) => {
+  const handleNLPQuery = async () => {
+    if (!inputText.trim()) {
+      toast.error("Please enter a query");
+      return;
+    }
+    
     setIsLoading(true);
+    setDebugInfo('Processing NLP query...');
+    
+    try {
+      console.log(`Sending NLP query: "${inputText}"`);
+      const result = await testNLPQuery(inputText);
+      console.log('NLP query result:', result);
+      
+      setQueryResult(result);
+      setDebugInfo(`Query successful! Chart type: ${result.chart_type || 'unknown'}`);
+    } catch (error) {
+      console.error('Error processing NLP query:', error);
+      setDebugInfo(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error("Error analyzing data", {
+        description: error instanceof Error ? error.message : "An unknown error occurred"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePresetQuery = async (queryType: string) => {
+    setIsLoading(true);
+    setDebugInfo(`Running preset ${queryType} query...`);
     
     try {
       const result = await testDataQuery(queryType);
-      setTestResults(prev => ({
-        ...prev,
-        [queryType]: result
-      }));
+      console.log(`${queryType} query result:`, result);
       
-      toast({
-        title: "Test completed",
-        description: `${queryType} chart query test successful`,
-      });
+      setQueryResult(result);
+      setDebugInfo(`Preset query successful! Chart type: ${result.chart_type || 'unknown'}`);
     } catch (error) {
-      console.error(`Test error for ${queryType}:`, error);
-      
-      toast({
-        title: "Test failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
-        variant: "destructive"
+      console.error(`Error with ${queryType} query:`, error);
+      setDebugInfo(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error("Error with preset query", {
+        description: error instanceof Error ? error.message : "An unknown error occurred"
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Run NLP query test
-  const runNLPTest = async () => {
-    setIsLoading(true);
-    
-    try {
-      const result = await testNLPQuery(nlpQuery);
-      setTestResults(prev => ({
-        ...prev,
-        nlp: result
-      }));
-      
-      toast({
-        title: "NLP test completed",
-        description: "Natural language query test successful",
-      });
-    } catch (error) {
-      console.error("NLP test error:", error);
-      
-      toast({
-        title: "NLP test failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleNLPQuery();
     }
-  };
-
-  // Get test status message
-  const getTestStatus = (queryType: string) => {
-    const result = testResults[queryType];
-    
-    if (!result) {
-      return "Test not run";
-    }
-    
-    if (result.error) {
-      return `Test failed: ${result.error}`;
-    }
-    
-    return "Test passed";
   };
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Analysis Tools Test</h1>
-        <div className="flex items-center">
-          <label htmlFor="mockToggle" className="mr-2">
-            Use Mock Data
-          </label>
-          <input
-            id="mockToggle"
-            type="checkbox"
-            checked={mockEnabled}
-            onChange={() => setMockEnabled(!mockEnabled)}
-            className="toggle"
-          />
-        </div>
-      </div>
+    <div className="container mx-auto py-8">
+      <h1 className="text-3xl font-bold mb-6">Test Analysis Tools</h1>
       
-      <Tabs defaultValue="bar" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="bar" disabled={isLoading} className="flex items-center gap-2">
-            <BarChart className="h-4 w-4" /> Bar Chart
-          </TabsTrigger>
-          <TabsTrigger value="pie" disabled={isLoading} className="flex items-center gap-2">
-            <PieChart className="h-4 w-4" /> Pie Chart
-          </TabsTrigger>
-          <TabsTrigger value="line" disabled={isLoading} className="flex items-center gap-2">
-            <LineChart className="h-4 w-4" /> Line Chart
-          </TabsTrigger>
-          <TabsTrigger value="nlp" disabled={isLoading} className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" /> NL Query
-          </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+        <TabsList>
+          <TabsTrigger value="test-nlp">Test NLP Queries</TabsTrigger>
+          <TabsTrigger value="test-presets">Test Preset Visualizations</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="bar" className="mt-4">
+        <TabsContent value="test-nlp" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Bar Chart Test</CardTitle>
-              <CardDescription>
-                Tests the bar chart visualization using the query builder.
-              </CardDescription>
+              <CardTitle>Natural Language Queries</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="mb-4">
-                <strong>Test Configuration:</strong>
-                <pre className="bg-gray-800 p-4 mt-2 rounded-md overflow-auto text-xs">
-                  {JSON.stringify(sampleQueries.barChart, null, 2)}
-                </pre>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant={activeModel === 'openai' ? 'default' : 'outline'} 
+                  size="sm" 
+                  onClick={() => setActiveModel('openai')}
+                >
+                  OpenAI
+                </Button>
+                <Button 
+                  variant={activeModel === 'anthropic' ? 'default' : 'outline'} 
+                  size="sm" 
+                  onClick={() => setActiveModel('anthropic')}
+                  className="bg-amber-600 hover:bg-amber-500"
+                >
+                  Claude
+                </Button>
               </div>
               
-              <div className="mb-4">
-                <strong>Status:</strong> {getTestStatus('bar')}
+              <div className="flex items-center gap-2">
+                <Input 
+                  value={inputText} 
+                  onChange={e => setInputText(e.target.value)} 
+                  onKeyDown={handleKeyPress} 
+                  placeholder="Ask a question about your dataset..." 
+                  disabled={isLoading} 
+                  className="flex-1" 
+                />
+                <Button 
+                  onClick={handleNLPQuery} 
+                  disabled={isLoading || !inputText.trim()} 
+                >
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
               </div>
               
-              {testResults.bar && !testResults.bar.error && (
-                <EnhancedVisualization result={testResults.bar} />
-              )}
-            </CardContent>
-            <CardFooter>
-              <Button 
-                onClick={() => runQueryTest('barChart')} 
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading && activeTab === 'bar' ? 'Running Test...' : 'Run Bar Chart Test'}
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="pie" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pie Chart Test</CardTitle>
-              <CardDescription>
-                Tests the pie chart visualization using the query builder.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4">
-                <strong>Test Configuration:</strong>
-                <pre className="bg-gray-800 p-4 mt-2 rounded-md overflow-auto text-xs">
-                  {JSON.stringify(sampleQueries.pieChart, null, 2)}
-                </pre>
-              </div>
-              
-              <div className="mb-4">
-                <strong>Status:</strong> {getTestStatus('pie')}
-              </div>
-              
-              {testResults.pie && !testResults.pie.error && (
-                <EnhancedVisualization result={testResults.pie} />
-              )}
-            </CardContent>
-            <CardFooter>
-              <Button 
-                onClick={() => runQueryTest('pieChart')} 
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading && activeTab === 'pie' ? 'Running Test...' : 'Run Pie Chart Test'}
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="line" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Line Chart Test</CardTitle>
-              <CardDescription>
-                Tests the line chart visualization using the query builder.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4">
-                <strong>Test Configuration:</strong>
-                <pre className="bg-gray-800 p-4 mt-2 rounded-md overflow-auto text-xs">
-                  {JSON.stringify(sampleQueries.lineChart, null, 2)}
-                </pre>
-              </div>
-              
-              <div className="mb-4">
-                <strong>Status:</strong> {getTestStatus('line')}
-              </div>
-              
-              {testResults.line && !testResults.line.error && (
-                <EnhancedVisualization result={testResults.line} />
-              )}
-            </CardContent>
-            <CardFooter>
-              <Button 
-                onClick={() => runQueryTest('lineChart')} 
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading && activeTab === 'line' ? 'Running Test...' : 'Run Line Chart Test'}
-              </Button>
-            </CardFooter>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="nlp" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Natural Language Query Test</CardTitle>
-              <CardDescription>
-                Tests the AI-powered natural language query processing.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4">
-                <label className="block mb-2">Test Query:</label>
-                <div className="flex gap-2">
-                  <Input
-                    value={nlpQuery}
-                    onChange={(e) => setNlpQuery(e.target.value)}
-                    className="flex-1"
-                    placeholder="Enter a natural language query..."
-                    disabled={isLoading}
-                  />
-                  <Button
+              <div className="flex flex-wrap gap-2 mt-4">
+                {['Show sales by region', 'Compare monthly trends', 'What are the top products?', 'Show distribution by category'].map((query) => (
+                  <Button 
+                    key={query}
+                    variant="outline" 
                     size="sm"
-                    onClick={() => setNlpQuery("Show me sales by product category")}
-                    variant="outline"
-                    disabled={isLoading}
+                    onClick={() => setInputText(query)}
                   >
-                    Reset
+                    {query}
                   </Button>
-                </div>
+                ))}
               </div>
-              
-              <div className="mb-4">
-                <strong>Status:</strong> {getTestStatus('nlp')}
-              </div>
-              
-              {testResults.nlp && !testResults.nlp.error && (
-                <EnhancedVisualization result={testResults.nlp} />
-              )}
-              
-              {testResults.nlp && testResults.nlp.explanation && (
-                <div className="mt-4 p-3 bg-blue-950/30 border border-blue-500/20 rounded-md">
-                  <h3 className="text-sm font-medium mb-1">AI Explanation:</h3>
-                  <p className="text-sm">{testResults.nlp.explanation}</p>
-                </div>
-              )}
             </CardContent>
-            <CardFooter>
-              <Button 
-                onClick={runNLPTest} 
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading && activeTab === 'nlp' ? 'Running Test...' : 'Run NLP Test'}
-              </Button>
-            </CardFooter>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="test-presets" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Preset Visualizations</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => handlePresetQuery('barChart')} disabled={isLoading}>
+                  <BarChart className="h-4 w-4 mr-2" /> Bar Chart
+                </Button>
+                <Button onClick={() => handlePresetQuery('lineChart')} disabled={isLoading}>
+                  <LineChart className="h-4 w-4 mr-2" /> Line Chart
+                </Button>
+                <Button onClick={() => handlePresetQuery('pieChart')} disabled={isLoading}>
+                  <PieChart className="h-4 w-4 mr-2" /> Pie Chart
+                </Button>
+              </div>
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+      
+      <div className="mb-4 p-4 bg-gray-800 rounded-md">
+        <h3 className="text-sm font-medium mb-2">Debug Info:</h3>
+        <pre className="text-xs">{debugInfo}</pre>
+      </div>
+      
+      {queryResult && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Visualization Result</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EnhancedVisualization result={queryResult} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
-}
+};
+
+export default TestAnalysisTools;
