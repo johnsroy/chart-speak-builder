@@ -1,6 +1,6 @@
-
 import { Dataset } from "@/services/types/datasetTypes";
 import { SavedQuery } from "@/services/queryService";
+import { QueryResult } from "@/services/types/queryTypes";
 
 /**
  * Sample dataset for testing
@@ -164,4 +164,68 @@ export const chartData = {
     { date: "2025-05", value: 30 },
     { date: "2025-06", value: 40 }
   ]
+};
+
+/**
+ * Sample NLP query responses for testing
+ */
+export const nlpResponses: Record<string, QueryResult> = {
+  sales: {
+    chart_type: "bar",
+    x_axis: "product_category",
+    y_axis: "sales",
+    chart_title: "Sales by Product Category",
+    data: [
+      { product_category: "Electronics", sales: 10300 },
+      { product_category: "Furniture", sales: 5800 },
+      { product_category: "Clothing", sales: 6400 }
+    ],
+    explanation: "This chart shows the total sales for each product category. Electronics has the highest sales, followed by Clothing and Furniture.",
+    columns: ["product_category", "sales"]
+  },
+  products: {
+    chart_type: "pie",
+    x_axis: "product_category",
+    y_axis: "sales",
+    chart_title: "Product Category Distribution",
+    data: [
+      { product_category: "Electronics", sales: 10300 },
+      { product_category: "Furniture", sales: 5800 },
+      { product_category: "Clothing", sales: 6400 }
+    ],
+    explanation: "This pie chart illustrates the sales distribution across different product categories.",
+    columns: ["product_category", "sales"]
+  },
+  regions: {
+    chart_type: "bar",
+    x_axis: "region",
+    y_axis: "sales",
+    chart_title: "Sales by Region",
+    data: [
+      { region: "North", sales: 5500 },
+      { region: "South", sales: 6800 },
+      { region: "East", sales: 4500 },
+      { region: "West", sales: 6100 }
+    ],
+    explanation: "This chart displays total sales across different regions, with the South region leading in sales.",
+    columns: ["region", "sales"]
+  },
+  timeSeries: {
+    chart_type: "line",
+    x_axis: "month",
+    y_axis: "sales",
+    chart_title: "Monthly Sales Trend",
+    data: sampleSalesData,
+    explanation: "This line chart shows the sales trend over the months, indicating a generally increasing pattern.",
+    columns: ["month", "sales"]
+  },
+  default: {
+    chart_type: "bar",
+    x_axis: "default",
+    y_axis: "value",
+    chart_title: "Default Query Result",
+    data: [{ default: "No specific data available" }],
+    explanation: "This is a default result when no specific query match is found.",
+    columns: ["default"]
+  }
 };
