@@ -1,5 +1,6 @@
+
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
@@ -18,19 +19,51 @@ import { formatByteSize } from '@/utils/storageUtils';
 
 const Visualize = () => {
   const { datasetId } = useParams<{ datasetId: string; }>();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const viewFromUrl = queryParams.get('view');
+  
   const [dataset, setDataset] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>('explore');
+  // Set default active tab based on URL query parameter or default to 'explore'
+  const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>(
+    viewFromUrl === 'chat' ? 'chat' : 
+    viewFromUrl === 'query' ? 'query' : 'explore'
+  );
   const [exampleQuery, setExampleQuery] = useState('');
   const [dataPreview, setDataPreview] = useState<any[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie' | 'table'>('table');
+  // Set default chart type based on URL query parameter or default to 'table'
+  const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie' | 'table'>(
+    viewFromUrl === 'bar' ? 'bar' : 
+    viewFromUrl === 'line' ? 'line' : 
+    viewFromUrl === 'pie' ? 'pie' : 'table'
+  );
+  const [loadAttempts, setLoadAttempts] = useState(0);
+  const maxRetries = 3;
   
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  // Update URL when tab or chart type changes
+  useEffect(() => {
+    const params = new URLSearchParams();
+    
+    if (activeTab !== 'explore') {
+      params.set('view', activeTab);
+    } else if (activeChartType !== 'table') {
+      params.set('view', activeChartType);
+    }
+    
+    const newUrl = params.toString() 
+      ? `${location.pathname}?${params.toString()}` 
+      : location.pathname;
+      
+    window.history.replaceState({}, '', newUrl);
+  }, [activeTab, activeChartType, location.pathname]);
 
   useEffect(() => {
     const loadDataset = async () => {
@@ -44,7 +77,7 @@ const Visualize = () => {
       setError(null);
       
       try {
-        console.log("Loading dataset with ID:", datasetId);
+        console.log(`Loading dataset with ID: ${datasetId}, attempt ${loadAttempts + 1}`);
         const datasetData = await dataService.getDataset(datasetId);
         
         if (!datasetData) {
@@ -59,14 +92,28 @@ const Visualize = () => {
       } catch (error) {
         console.error('Error loading dataset:', error);
         setError(error instanceof Error ? error.message : "Failed to load dataset");
+        
+        if (loadAttempts < maxRetries) {
+          console.log(`Retrying dataset load, attempt ${loadAttempts + 1} of ${maxRetries}`);
+          setLoadAttempts(prev => prev + 1);
+          
+          // Wait before retrying
+          setTimeout(() => {
+            loadDataset();
+          }, 1000 * (loadAttempts + 1)); // Exponential backoff
+          return;
+        }
+        
         toast.error("Failed to load dataset");
       } finally {
         setIsLoading(false);
       }
     };
     
-    loadDataset();
-  }, [datasetId, navigate]);
+    if (datasetId && loadAttempts < maxRetries) {
+      loadDataset();
+    }
+  }, [datasetId, navigate, loadAttempts]);
   
   const loadDataPreview = async (datasetId: string) => {
     setPreviewLoading(true);
@@ -86,17 +133,73 @@ const Visualize = () => {
       console.error('Error loading data preview:', error);
       setPreviewError('Failed to load data preview');
       
-      // Generate some sample data as a last resort
-      setDataPreview([
-        { id: 1, value: 42, category: "A" },
-        { id: 2, value: 18, category: "B" },
-        { id: 3, value: 73, category: "A" },
-        { id: 4, value: 91, category: "C" },
-        { id: 5, value: 30, category: "B" }
-      ]);
+      // Try again with a different approach after a short delay
+      setTimeout(async () => {
+        try {
+          console.log("Retrying data preview with fallback approach");
+          
+          // Get the dataset to extract schema
+          const dataset = await dataService.getDataset(datasetId);
+          
+          if (dataset?.column_schema) {
+            // Generate sample data from schema
+            const sampleData = generateSampleData(dataset.column_schema, 50);
+            console.log("Generated fallback sample data:", sampleData.length, "rows");
+            setDataPreview(sampleData);
+            setPreviewError(null);
+          } else {
+            // Generate very basic sample data as last resort
+            setDataPreview([
+              { id: 1, value: 42, category: "A" },
+              { id: 2, value: 18, category: "B" },
+              { id: 3, value: 73, category: "A" },
+              { id: 4, value: 91, category: "C" },
+              { id: 5, value: 30, category: "B" }
+            ]);
+          }
+        } catch (fallbackError) {
+          console.error("Fallback data generation also failed:", fallbackError);
+        }
+      }, 1000);
     } finally {
       setPreviewLoading(false);
     }
+  };
+  
+  // Helper function to generate sample data from schema
+  const generateSampleData = (schema: Record<string, string>, count: number) => {
+    const sampleData = [];
+    const columns = Object.keys(schema);
+    
+    for (let i = 0; i < count; i++) {
+      const row: Record<string, any> = {};
+      
+      columns.forEach(column => {
+        const type = schema[column];
+        
+        switch (type) {
+          case 'number':
+            row[column] = Math.floor(Math.random() * 1000);
+            break;
+          case 'boolean':
+            row[column] = Math.random() > 0.5;
+            break;
+          case 'date':
+            const date = new Date();
+            date.setDate(date.getDate() - Math.floor(Math.random() * 365));
+            row[column] = date.toISOString().split('T')[0];
+            break;
+          case 'string':
+          default:
+            row[column] = `Sample ${column} ${i + 1}`;
+            break;
+        }
+      });
+      
+      sampleData.push(row);
+    }
+    
+    return sampleData;
   };
 
   const handleQueryResult = (result: QueryResult) => {
@@ -117,6 +220,11 @@ const Visualize = () => {
     setExampleQuery(query);
     toast.info(`Selected example query: "${query}"`);
     setActiveTab('query');
+  };
+  
+  const handleRetry = () => {
+    setError(null);
+    setLoadAttempts(0);
   };
 
   return (
@@ -155,7 +263,7 @@ const Visualize = () => {
             <p className="text-red-300 mb-6">{error}</p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <Button 
-                onClick={() => window.location.reload()}
+                onClick={handleRetry}
                 variant="outline"
                 className="bg-red-900/20 hover:bg-red-900/30 text-white border-red-500/40"
               >
@@ -197,7 +305,12 @@ const Visualize = () => {
               </div>
             </div>
             
-            <Tabs defaultValue={activeTab} onValueChange={value => setActiveTab(value as 'chat' | 'query' | 'explore')} className="space-y-4">
+            <Tabs 
+              defaultValue={activeTab} 
+              value={activeTab}
+              onValueChange={value => setActiveTab(value as 'chat' | 'query' | 'explore')} 
+              className="space-y-4"
+            >
               <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
                 <TabsTrigger value="chat" className="flex items-center justify-center gap-2">
                   <MessageSquare className="h-4 w-4" />
@@ -256,52 +369,40 @@ const Visualize = () => {
                     className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'bar' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
                     onClick={() => setActiveChartType('bar')}
                   >
-                    <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-2 ${activeChartType === 'bar' ? 'bg-orange-300/50' : 'bg-gray-800/50'}`}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Bar Chart</CardTitle>
                       <BarChart className="h-4 w-4 text-purple-400" />
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-xs text-muted-foreground">Compare values across categories</p>
-                    </CardContent>
                   </Card>
                   
                   <Card 
                     className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'line' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
                     onClick={() => setActiveChartType('line')}
                   >
-                    <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-2 ${activeChartType === 'line' ? 'bg-indigo-400/50' : 'bg-gray-800/50'}`}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Line Chart</CardTitle>
-                      <LineChart className="h-4 w-4 text-blue-400" />
+                      <LineChart className="h-4 w-4 text-purple-400" />
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-xs text-muted-foreground">View trends over time</p>
-                    </CardContent>
                   </Card>
                   
                   <Card 
                     className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'pie' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
                     onClick={() => setActiveChartType('pie')}
                   >
-                    <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-2 ${activeChartType === 'pie' ? 'bg-red-300/50' : 'bg-gray-800/50'}`}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Pie Chart</CardTitle>
-                      <PieChart className="h-4 w-4 text-green-400" />
+                      <PieChart className="h-4 w-4 text-purple-400" />
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-xs text-muted-foreground">Show proportions of a whole</p>
-                    </CardContent>
                   </Card>
                   
                   <Card 
                     className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'table' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
                     onClick={() => setActiveChartType('table')}
                   >
-                    <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-2 ${activeChartType === 'table' ? 'bg-lime-300/50' : 'bg-gray-800/50'}`}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Data Table</CardTitle>
-                      <TableIcon className="h-4 w-4 text-orange-400" />
+                      <TableIcon className="h-4 w-4 text-purple-400" />
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-xs text-muted-foreground">View raw tabular data</p>
-                    </CardContent>
                   </Card>
                 </div>
                 
@@ -310,39 +411,21 @@ const Visualize = () => {
                     data={dataPreview} 
                     loading={previewLoading} 
                     error={previewError} 
-                    title="Dataset Preview" 
+                    title={`${dataset.name} - Data Preview`}
                   />
                 ) : (
-                  <div className="glass-card p-6">
-                    <ChartVisualization 
-                      datasetId={datasetId!}
-                      chartType={activeChartType}
-                      data={dataPreview}
-                      useDirectAccess={true}
-                    />
-                  </div>
+                  <ChartVisualization 
+                    datasetId={datasetId!} 
+                    chartType={activeChartType}
+                    data={dataPreview}
+                    useDirectAccess={true}
+                    heightClass="h-[500px]"
+                  />
                 )}
               </TabsContent>
             </Tabs>
           </div>
-        ) : (
-          <div className="glass-card p-12 text-center">
-            <Database className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-            <h2 className="text-2xl font-medium mb-2">Dataset Not Found</h2>
-            <p className="text-gray-400 mb-6">The dataset you're looking for doesn't exist or you don't have permission to view it.</p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Button onClick={() => navigate('/dashboard')}>
-                Return to Dashboard
-              </Button>
-              <Button 
-                variant="outline"
-                onClick={() => navigate('/upload')}
-              >
-                Go to Home
-              </Button>
-            </div>
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

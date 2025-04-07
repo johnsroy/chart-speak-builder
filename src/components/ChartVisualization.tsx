@@ -2,10 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import { dataService } from '@/services/dataService';
 import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
 
 interface ChartVisualizationProps {
   datasetId: string;
@@ -36,6 +37,10 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
   const { toast } = useToast();
+  
+  // Add retries tracking
+  const [loadAttempts, setLoadAttempts] = useState(0);
+  const maxRetries = 3;
 
   useEffect(() => {
     if (initialData && initialData.length > 0) {
@@ -48,6 +53,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     const loadData = async () => {
       setLoading(true);
       try {
+        console.log(`Loading chart data for dataset ${datasetId}, attempt ${loadAttempts + 1}`);
         const data = await dataService.previewDataset(datasetId);
         console.log('Chart data loaded:', data);
         
@@ -65,6 +71,19 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       } catch (err) {
         console.error('Error loading chart data:', err);
         setError('Failed to load data for visualization');
+        
+        // Retry loading if we haven't reached max attempts
+        if (loadAttempts < maxRetries) {
+          console.log(`Retrying data load, attempt ${loadAttempts + 1} of ${maxRetries}`);
+          setLoadAttempts(prev => prev + 1);
+          
+          // Wait before retrying
+          setTimeout(() => {
+            loadData();
+          }, 1000 * (loadAttempts + 1)); // Exponential backoff
+          return;
+        }
+        
         toast({
           title: 'Error Visualizing Data',
           description: 'Failed to load dataset for visualization',
@@ -75,32 +94,85 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       }
     };
 
-    if (datasetId) {
+    if (datasetId && loadAttempts < maxRetries) {
       loadData();
     }
-  }, [datasetId, initialData, toast]);
+  }, [datasetId, initialData, toast, loadAttempts]);
 
   const determineAxes = () => {
     if (!chartData || chartData.length === 0 || !availableColumns.length) {
       return { xField: '', yField: '' };
     }
 
-    const xField = xAxis && availableColumns.includes(xAxis) ? xAxis : availableColumns[0];
+    const xField = xAxis && availableColumns.includes(xAxis) 
+      ? xAxis 
+      : findBestXAxisField(chartData, availableColumns);
     
     let yField = '';
     
     if (yAxis && availableColumns.includes(yAxis)) {
       yField = yAxis;
     } else {
-      const firstRow = chartData[0];
-      const numericalColumn = availableColumns.find(
-        col => typeof firstRow[col] === 'number'
-      );
-      
-      yField = numericalColumn || availableColumns[1] || availableColumns[0];
+      yField = findBestYAxisField(chartData, availableColumns, xField);
     }
 
     return { xField, yField };
+  };
+  
+  // Helper function to find the best field for X axis
+  const findBestXAxisField = (data: any[], columns: string[]): string => {
+    // Priority: date fields > categorical fields > first field
+    const firstRow = data[0];
+    
+    // Look for date-like fields
+    const dateField = columns.find(col => {
+      const value = firstRow[col];
+      return typeof value === 'string' && 
+        (value.match(/^\d{4}-\d{2}-\d{2}/) || // ISO date format
+         value.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/)); // MM/DD/YYYY
+    });
+    
+    if (dateField) return dateField;
+    
+    // Look for categorical fields (string fields with repeated values)
+    const categoricalFields = columns.filter(col => {
+      const values = data.map(row => row[col]);
+      const uniqueValues = new Set(values);
+      // If it's a string and has fewer unique values than 50% of total rows
+      return typeof firstRow[col] === 'string' && 
+        uniqueValues.size < data.length * 0.5;
+    });
+    
+    if (categoricalFields.length > 0) return categoricalFields[0];
+    
+    // Default to first non-numeric field or just first field
+    const nonNumericField = columns.find(col => typeof firstRow[col] !== 'number');
+    return nonNumericField || columns[0];
+  };
+  
+  // Helper function to find the best field for Y axis
+  const findBestYAxisField = (data: any[], columns: string[], xField: string): string => {
+    const firstRow = data[0];
+    
+    // Look for numeric fields
+    const numericFields = columns.filter(col => 
+      col !== xField && typeof firstRow[col] === 'number'
+    );
+    
+    // If we have numeric fields, use the first one
+    if (numericFields.length > 0) return numericFields[0];
+    
+    // If no numeric fields, look for any field with number-like strings
+    const numberLikeField = columns.find(col => {
+      if (col === xField) return false;
+      const value = firstRow[col];
+      return typeof value === 'string' && !isNaN(Number(value));
+    });
+    
+    if (numberLikeField) return numberLikeField;
+    
+    // Default to any field that's not the x-axis
+    return columns.find(col => col !== xField) || (columns.length > 1 ? columns[1] : columns[0]);
   };
 
   const getChartOption = () => {
@@ -114,12 +186,19 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       return {};
     }
 
-    const xValues = chartData.map(item => item[xField]);
+    // Extract x and y values, handling various data types
+    const xValues = chartData.map(item => {
+      const val = item[xField];
+      return val !== undefined && val !== null ? String(val) : 'N/A';
+    });
     
     const yValues = chartData.map(item => {
       const val = item[yField];
-      return typeof val === 'number' ? val : isNaN(Number(val)) ? 
-        Math.floor(Math.random() * 1000) : Number(val);
+      // Handle different types of values
+      if (val === undefined || val === null) return 0;
+      if (typeof val === 'number') return val;
+      const numVal = Number(val);
+      return !isNaN(numVal) ? numVal : 0;
     });
     
     const options = {
@@ -211,6 +290,12 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
 
     return options;
   };
+  
+  // Function to retry loading data
+  const handleRetry = () => {
+    setError(null);
+    setLoadAttempts(0);
+  };
 
   if (loading) {
     return (
@@ -227,10 +312,14 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     return (
       <div className={`flex items-center justify-center ${heightClass}`}>
         <div className="text-center">
+          <AlertTriangle className="h-8 w-8 mx-auto text-red-400 mb-2" />
           <p className="text-red-400 mb-2">No data available for visualization</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground mb-4">
             {error || 'Unable to generate chart from the dataset'}
           </p>
+          <Button variant="outline" onClick={handleRetry}>
+            Retry Loading Data
+          </Button>
         </div>
       </div>
     );

@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -31,6 +32,7 @@ export const useFileUpload = () => {
   const [existingDatasets, setExistingDatasets] = useState<any[]>([]);
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const [datasetToOverwrite, setDatasetToOverwrite] = useState<string | null>(null);
+  const [overwriteInProgress, setOverwriteInProgress] = useState(false);
   
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -159,7 +161,7 @@ export const useFileUpload = () => {
 
     // Check if file with same name exists and prompt for overwrite
     const duplicateDataset = existingDatasets.find(dataset => dataset.file_name === selectedFile.name);
-    if (duplicateDataset) {
+    if (duplicateDataset && !overwriteInProgress) {
       setDatasetToOverwrite(duplicateDataset.id);
       setShowOverwriteConfirm(true);
       return;
@@ -195,6 +197,10 @@ export const useFileUpload = () => {
         setDatasetDescription('');
         setSchemaPreview(null);
         
+        // Reset overwrite state
+        setOverwriteInProgress(false);
+        setDatasetToOverwrite(null);
+        
         // Show redirect dialog
         setShowRedirectDialog(true);
         
@@ -203,7 +209,7 @@ export const useFileUpload = () => {
           description: "Your dataset was successfully uploaded.",
           action: {
             label: "View Dataset",
-            onClick: () => window.location.href = `/visualize/${dataset.id}`,
+            onClick: () => window.location.href = `/visualize/${dataset.id}?view=table`,
           },
         });
         
@@ -227,6 +233,8 @@ export const useFileUpload = () => {
         const errorMessage = error instanceof Error ? error.message : "Failed to upload dataset";
         
         setUploadError(errorMessage);
+        setOverwriteInProgress(false);
+        
         toast({
           title: "Upload issue",
           description: errorMessage,
@@ -240,6 +248,8 @@ export const useFileUpload = () => {
       const errorMessage = validationError instanceof Error ? validationError.message : String(validationError);
       
       setUploadError(errorMessage);
+      setOverwriteInProgress(false);
+      
       toast({
         title: "Validation issue",
         description: errorMessage,
@@ -249,34 +259,69 @@ export const useFileUpload = () => {
   };
 
   /**
-   * Handles overwriting an existing file
+   * Handles overwriting an existing file with improved reliability
    */
   const handleOverwriteConfirm = async (isAuthenticated: boolean, userId: string) => {
     setShowOverwriteConfirm(false);
+    setOverwriteInProgress(true);
     
     if (datasetToOverwrite) {
       try {
-        // Delete the existing dataset
-        await dataService.deleteDataset(datasetToOverwrite);
-        sonnerToast("Previous version deleted", {
-          description: "Previous version of the file has been deleted"
-        });
+        // First, we'll need to delete related queries to prevent foreign key constraint errors
+        try {
+          // Delete related queries first
+          const { error: deleteQueriesError } = await supabase
+            .from('queries')
+            .delete()
+            .eq('dataset_id', datasetToOverwrite);
+            
+          if (deleteQueriesError) {
+            console.warn("Warning when deleting related queries:", deleteQueriesError);
+          } else {
+            console.log("Successfully deleted related queries");
+          }
+        } catch (relatedDeleteError) {
+          console.warn("Error when trying to delete related records:", relatedDeleteError);
+          // Continue with deletion attempt
+        }
         
-        // Wait a moment to ensure deletion completes
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Now upload the new dataset
-        await handleUpload(isAuthenticated, userId);
+        // Now delete the dataset itself
+        try {
+          await dataService.deleteDataset(datasetToOverwrite);
+          sonnerToast("Previous version deleted", {
+            description: "Previous version of the file has been deleted"
+          });
+          
+          // Wait a moment to ensure deletion completes
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          
+          // Now upload the new dataset
+          await handleUpload(isAuthenticated, userId);
+        } catch (deleteError) {
+          console.error('Error deleting existing dataset:', deleteError);
+          
+          // If deletion failed, offer a workaround to the user
+          sonnerToast.error("Overwrite failed", {
+            description: "Could not delete existing dataset. Try uploading with a different name.",
+          });
+          
+          setOverwriteInProgress(false);
+          setDatasetToOverwrite(null);
+        }
       } catch (error) {
         console.error('Error during overwrite operation:', error);
+        
         toast({
           title: "Overwrite failed",
           description: error instanceof Error ? error.message : "Failed to overwrite dataset",
           variant: "destructive"
         });
-      } finally {
+        
+        setOverwriteInProgress(false);
         setDatasetToOverwrite(null);
       }
+    } else {
+      setOverwriteInProgress(false);
     }
   };
 
@@ -286,6 +331,7 @@ export const useFileUpload = () => {
   const handleOverwriteCancel = () => {
     setShowOverwriteConfirm(false);
     setDatasetToOverwrite(null);
+    setOverwriteInProgress(false);
   };
 
   /**
@@ -293,6 +339,7 @@ export const useFileUpload = () => {
    */
   const retryUpload = (isAuthenticated: boolean, userId: string) => {
     setUploadError(null);
+    setOverwriteInProgress(false);
     handleUpload(isAuthenticated, userId);
   };
 
@@ -309,6 +356,7 @@ export const useFileUpload = () => {
     showVisualizeAfterUpload,
     showRedirectDialog,
     showOverwriteConfirm,
+    overwriteInProgress,
     setDatasetName,
     setDatasetDescription,
     setUploadedDatasetId,
@@ -325,3 +373,6 @@ export const useFileUpload = () => {
     createStorageBucketIfNeeded: setupStorageBuckets
   };
 };
+
+// Import supabase client for direct operations
+import { supabase } from '@/lib/supabase';

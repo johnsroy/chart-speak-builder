@@ -40,9 +40,17 @@ const Upload = () => {
           // Show the redirect dialog when processing is complete
           setShowRedirectDialog(true);
           
-          // Don't automatically redirect, wait for user choice
+          // Automatically redirect to the data table view after a delay
+          setTimeout(() => {
+            if (event.detail.datasetId) {
+              navigate(`/visualize/${event.detail.datasetId}?view=table`);
+            } else {
+              navigate('/dashboard');
+            }
+          }, 2000);
+          
           toast.success("Dataset processing complete!", {
-            description: "You can now explore your data"
+            description: "Redirecting to data view..."
           });
         }
       }, interval);
@@ -94,6 +102,13 @@ const Upload = () => {
               <Progress value={processingProgress} className="h-2" />
             </div>
             <p className="text-sm text-gray-400">{processingProgress}% complete</p>
+            
+            {processingProgress >= 100 && (
+              <div className="mt-4">
+                <p className="text-green-400 font-medium">Processing complete!</p>
+                <p className="text-sm text-gray-300 mt-2">Redirecting to data view...</p>
+              </div>
+            )}
           </div>
         </div>
       )}

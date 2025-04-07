@@ -1,85 +1,92 @@
 
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { Check, Eye, Lightbulb, BrainCircuit, ChartBar, Sparkles } from 'lucide-react';
+import { BarChart4, Table, CheckCircle } from 'lucide-react';
 
-export interface RedirectDialogProps {
+interface RedirectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  datasetId: string;
-  showVisualize: boolean;
-  setShowVisualize: (show: boolean) => void;
+  datasetId: string | null;
+  showVisualize?: boolean;
+  setShowVisualize?: (show: boolean) => void;
 }
 
 const RedirectDialog: React.FC<RedirectDialogProps> = ({
   open,
   onOpenChange,
   datasetId,
-  showVisualize,
+  showVisualize = true,
   setShowVisualize
 }) => {
   const navigate = useNavigate();
-
-  const handleVisualize = () => {
+  
+  const handleRedirectToDataTable = () => {
+    if (datasetId) {
+      navigate(`/visualize/${datasetId}?view=table`);
+    } else {
+      navigate('/dashboard');
+    }
     onOpenChange(false);
+  };
+
+  const handleRedirectToVisualizer = () => {
     if (datasetId) {
       navigate(`/visualize/${datasetId}`);
+    } else {
+      navigate('/dashboard');
     }
-  };
-
-  const handleUploadAnother = () => {
-    setShowVisualize(false);
     onOpenChange(false);
   };
+  
+  // Auto-redirect to the data table view after 2 seconds
+  React.useEffect(() => {
+    if (open && datasetId) {
+      const timer = setTimeout(() => {
+        handleRedirectToDataTable();
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [open, datasetId]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-background/95 backdrop-blur-sm border-purple-500/20 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-center">
-            <div className="flex items-center justify-center gap-2">
-              <Check className="h-6 w-6 text-green-500" />
-              Upload Complete
-            </div>
-          </DialogTitle>
-          <DialogDescription className="text-center pt-2">
-            Your dataset was uploaded successfully! What would you like to do next?
+      <DialogContent className="glass-card border-none">
+        <DialogHeader className="text-center">
+          <div className="mx-auto w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mb-2">
+            <CheckCircle className="h-6 w-6 text-green-500" />
+          </div>
+          <DialogTitle className="text-xl">Upload Successful!</DialogTitle>
+          <DialogDescription className="text-gray-300">
+            Your data is ready to be explored. Redirecting to view data...
           </DialogDescription>
         </DialogHeader>
         
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-4">
           <Button 
-            variant="default" 
-            className="w-full flex items-center gap-2"
-            onClick={handleVisualize}
+            onClick={handleRedirectToDataTable} 
+            className="flex items-center justify-center gap-2 bg-violet-900 hover:bg-violet-800"
+            variant="default"
           >
-            <Sparkles className="h-4 w-4" />
-            Visualize With Claude 3.7 AI
+            <Table className="h-5 w-5" />
+            View Data Table
           </Button>
+          
           <Button 
-            variant="outline" 
-            className="w-full flex items-center gap-2"
-            onClick={() => {
-              onOpenChange(false);
-              if (datasetId) {
-                navigate(`/analyze/${datasetId}`);
-              }
-            }}
+            onClick={handleRedirectToVisualizer} 
+            variant="outline"
+            className="flex items-center justify-center gap-2"
           >
-            <BrainCircuit className="h-4 w-4" />
-            Ask ChatGPT About Your Data
-          </Button>
-          <Button 
-            variant="ghost" 
-            className="w-full flex items-center gap-2"
-            onClick={handleUploadAnother}
-          >
-            <Lightbulb className="h-4 w-4" />
-            Upload Another Dataset
+            <BarChart4 className="h-5 w-5" />
+            Visualize Data
           </Button>
         </div>
+        
+        <DialogFooter className="sm:justify-center">
+          <p className="text-xs text-gray-400">Automatically redirecting to data view...</p>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
