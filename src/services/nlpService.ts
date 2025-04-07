@@ -33,6 +33,9 @@ export const processNLQuery = async (
     if (result.y_axis && !result.yAxis) {
       result.yAxis = result.y_axis;
     }
+    if (result.chart_type && !result.chartType) {
+      result.chartType = result.chart_type;
+    }
     
     return result;
   } catch (error) {
