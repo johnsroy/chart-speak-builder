@@ -1,5 +1,4 @@
 
-// Create this file if it doesn't exist
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1";
 
@@ -15,36 +14,45 @@ serve(async (req) => {
   }
 
   try {
-    console.log("Storage manager executing action:", req.url);
-
-    // Extract action from request body
-    let body;
+    console.log("Storage manager executing...");
+    
+    // Parse request body
+    let action = "unknown";
+    let body = {};
+    
     try {
       body = await req.json();
-      console.log("Storage manager called with action:", body.action);
+      action = body.action || "unknown";
+      console.log("Request body parsed successfully:", { action });
     } catch (e) {
+      console.error("Error parsing request body:", e);
       // If JSON parsing fails, try to get action from URL
       const url = new URL(req.url);
       const pathParts = url.pathname.split("/");
-      const actionFromUrl = pathParts[pathParts.length - 1];
-      console.log("Storage manager called with action from URL:", actionFromUrl);
-      body = { action: actionFromUrl };
+      action = pathParts[pathParts.length - 1];
+      console.log("Action extracted from URL path:", action);
     }
 
-    // Get required Supabase credentials
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    // Get Supabase URL and service role key
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error("Missing Supabase credentials");
+      console.error("Missing Supabase credentials");
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: "Server configuration error: Missing Supabase credentials" 
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      );
     }
 
-    // Create a Supabase client with the service role key
+    // Create Supabase client with service role key for admin privileges
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const action = body.action || "unknown";
-
-    // Handle different actions
+    
+    console.log("Executing action:", action);
+    
     switch (action) {
       case "setup":
       case "force-create-buckets":
@@ -52,6 +60,7 @@ serve(async (req) => {
       case "sample":
         return await addSampleData(supabase);
       default:
+        console.log("Unknown action requested:", action);
         return new Response(
           JSON.stringify({ success: false, message: `Unknown action: ${action}` }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
@@ -59,9 +68,12 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error("Error in storage-manager:", error);
-    
     return new Response(
-      JSON.stringify({ success: false, message: error.message || "Unknown server error" }),
+      JSON.stringify({ 
+        success: false, 
+        message: error.message || "Unknown server error",
+        stack: error.stack
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
@@ -70,6 +82,7 @@ serve(async (req) => {
 // Function to create storage buckets
 async function createBuckets(supabase) {
   try {
+    console.log("Creating storage buckets...");
     const requiredBuckets = ["datasets", "secure", "cold_storage"];
     const results = [];
 
@@ -77,6 +90,7 @@ async function createBuckets(supabase) {
     const { data: existingBuckets, error: listError } = await supabase.storage.listBuckets();
     
     if (listError) {
+      console.error("Error listing buckets:", listError);
       throw new Error(`Error listing buckets: ${listError.message}`);
     }
     
@@ -87,7 +101,8 @@ async function createBuckets(supabase) {
     for (const bucketName of requiredBuckets) {
       if (!existingBucketNames.includes(bucketName)) {
         try {
-          const { error } = await supabase.storage.createBucket(bucketName, {
+          console.log(`Creating bucket: ${bucketName}`);
+          const { data, error } = await supabase.storage.createBucket(bucketName, {
             public: true,  // Make buckets public
           });
 
@@ -98,12 +113,12 @@ async function createBuckets(supabase) {
           });
 
           if (error) {
-            console.error(`Error creating bucket ${bucketName}:`, error.message);
+            console.error(`Error creating bucket ${bucketName}:`, error);
           } else {
-            console.log(`Created bucket: ${bucketName}`);
+            console.log(`Successfully created bucket: ${bucketName}`);
           }
         } catch (bucketError) {
-          console.error(`Error creating bucket ${bucketName}:`, bucketError);
+          console.error(`Exception creating bucket ${bucketName}:`, bucketError);
           results.push({
             bucket: bucketName,
             created: false,
@@ -128,13 +143,21 @@ async function createBuckets(supabase) {
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: "Storage setup completed", details: results }),
+      JSON.stringify({ 
+        success: true, 
+        message: "Storage setup completed", 
+        details: results 
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
   } catch (error) {
     console.error("Error creating buckets:", error);
     return new Response(
-      JSON.stringify({ success: false, message: error.message || "Error creating buckets" }),
+      JSON.stringify({ 
+        success: false, 
+        message: error.message || "Error creating buckets",
+        stack: error.stack
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
@@ -143,43 +166,56 @@ async function createBuckets(supabase) {
 // Function to add storage policies
 async function addBucketPolicies(supabase) {
   try {
+    console.log("Adding bucket policies...");
     // For each bucket, create policies for public read access
     const requiredBuckets = ["datasets", "secure", "cold_storage"];
     
     for (const bucket of requiredBuckets) {
-      // Add a policy for public read access
-      await supabase.rpc('create_storage_policy', {
-        bucket_name: bucket,
-        policy_name: `${bucket}_public_read`,
-        definition: `bucket_id = '${bucket}'`,
-        operation: 'SELECT',
-        role_name: 'anon'
-      });
-      
-      // Add policies for authenticated user access
-      await supabase.rpc('create_storage_policy', {
-        bucket_name: bucket,
-        policy_name: `${bucket}_auth_insert`,
-        definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
-        operation: 'INSERT',
-        role_name: 'authenticated'
-      });
-      
-      await supabase.rpc('create_storage_policy', {
-        bucket_name: bucket,
-        policy_name: `${bucket}_auth_update`,
-        definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
-        operation: 'UPDATE',
-        role_name: 'authenticated'
-      });
-      
-      await supabase.rpc('create_storage_policy', {
-        bucket_name: bucket,
-        policy_name: `${bucket}_auth_delete`,
-        definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
-        operation: 'DELETE',
-        role_name: 'authenticated'
-      });
+      try {
+        // Add a policy for public read access using SQL query
+        const { error: readError } = await supabase.rpc('create_storage_policy', {
+          bucket_name: bucket,
+          policy_name: `${bucket}_public_read`,
+          definition: `bucket_id = '${bucket}'`,
+          operation: 'SELECT',
+          role_name: 'anon'
+        });
+        
+        if (readError) console.warn(`Error creating read policy for ${bucket}:`, readError);
+        
+        // Add policies for authenticated user access
+        const { error: insertError } = await supabase.rpc('create_storage_policy', {
+          bucket_name: bucket,
+          policy_name: `${bucket}_auth_insert`,
+          definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
+          operation: 'INSERT',
+          role_name: 'authenticated'
+        });
+        
+        if (insertError) console.warn(`Error creating insert policy for ${bucket}:`, insertError);
+        
+        const { error: updateError } = await supabase.rpc('create_storage_policy', {
+          bucket_name: bucket,
+          policy_name: `${bucket}_auth_update`,
+          definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
+          operation: 'UPDATE',
+          role_name: 'authenticated'
+        });
+        
+        if (updateError) console.warn(`Error creating update policy for ${bucket}:`, updateError);
+        
+        const { error: deleteError } = await supabase.rpc('create_storage_policy', {
+          bucket_name: bucket,
+          policy_name: `${bucket}_auth_delete`,
+          definition: `bucket_id = '${bucket}' AND auth.role() = 'authenticated'`,
+          operation: 'DELETE',
+          role_name: 'authenticated'
+        });
+        
+        if (deleteError) console.warn(`Error creating delete policy for ${bucket}:`, deleteError);
+      } catch (e) {
+        console.warn(`Error setting policies for bucket ${bucket}:`, e);
+      }
     }
     
     console.log("Successfully added bucket policies");
@@ -193,6 +229,7 @@ async function addBucketPolicies(supabase) {
 // Function to add sample data to buckets
 async function addSampleData(supabase) {
   try {
+    console.log("Adding sample data to buckets...");
     // Example: Add a sample README.txt to each bucket
     const buckets = ["datasets", "secure", "cold_storage"];
     const results = [];
@@ -238,7 +275,11 @@ async function addSampleData(supabase) {
   } catch (error) {
     console.error("Error adding sample data:", error);
     return new Response(
-      JSON.stringify({ success: false, message: error.message || "Error adding sample data" }),
+      JSON.stringify({ 
+        success: false, 
+        message: error.message || "Error adding sample data",
+        stack: error.stack
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }

@@ -21,100 +21,88 @@ const initializeApp = async () => {
     if (typeof window !== 'undefined') {
       console.log("Initializing app and creating storage buckets...");
       
-      // First try to set up admin user since it doesn't depend on storage
+      // First try to call the edge function directly to create buckets
+      const { callStorageManager } = await import('@/utils/storageUtils');
+      
+      try {
+        console.log("Attempting to create buckets via edge function...");
+        const result = await callStorageManager('force-create-buckets');
+        
+        if (result && result.success) {
+          console.log("Successfully created storage buckets via edge function");
+          
+          // Try to add sample data to the buckets
+          try {
+            await callStorageManager('sample');
+          } catch (sampleError) {
+            console.warn("Failed to add sample data:", sampleError);
+          }
+          
+          // Set up admin user now that storage is ready
+          try {
+            const { authService } = await import('@/services/authService');
+            await authService.setupAdminUser().catch(err => {
+              console.warn("Admin user setup had an issue, but continuing:", err.message);
+            });
+          } catch (authError) {
+            console.warn("Error setting up admin user, but continuing:", authError);
+          }
+          
+          return;
+        } else {
+          console.warn("Edge function bucket creation failed, trying alternate methods");
+        }
+      } catch (edgeFunctionError) {
+        console.warn("Edge function approach failed:", edgeFunctionError);
+      }
+      
+      // Fall back to checking if buckets already exist
+      try {
+        const { verifyStorageBuckets, createStorageBuckets } = await import('@/utils/storageUtils');
+        
+        // Check if buckets already exist
+        const bucketsExist = await verifyStorageBuckets().catch(() => false);
+        
+        if (bucketsExist) {
+          console.log("All required storage buckets already exist");
+          
+          // Try to set up admin user
+          try {
+            const { authService } = await import('@/services/authService');
+            await authService.setupAdminUser().catch(err => {
+              console.warn("Admin user setup had an issue, but continuing:", err.message);
+            });
+          } catch (authError) {
+            console.warn("Error setting up admin user, but continuing:", authError);
+          }
+          
+          return;
+        }
+        
+        // As a last resort, try direct bucket creation
+        console.log("Attempting direct bucket creation via API...");
+        const success = await createStorageBuckets().catch(err => {
+          console.warn("Error in direct bucket creation:", err.message);
+          return false;
+        });
+        
+        if (success) {
+          console.log("Successfully created storage buckets via API");
+        } else {
+          console.warn("All bucket creation methods failed");
+        }
+      } catch (error) {
+        console.warn("Error during storage setup:", error);
+      }
+      
+      // Try to set up admin user even if storage setup failed
       try {
         const { authService } = await import('@/services/authService');
         await authService.setupAdminUser().catch(err => {
-          console.warn("Admin user setup had an issue, but we'll continue:", err.message);
+          console.warn("Admin user setup had an issue, but continuing:", err.message);
         });
       } catch (authError) {
         console.warn("Error setting up admin user, but continuing:", authError);
-      }
-      
-      // Import utilities only when needed to avoid circular dependencies
-      const { verifyStorageBuckets, createStorageBuckets, callStorageManager } = await import('@/utils/storageUtils');
-      
-      // Check if storage buckets already exist, if they do, we can skip the creation process
-      const bucketsExist = await verifyStorageBuckets().catch(() => false);
-      
-      if (bucketsExist) {
-        console.log("All required storage buckets already exist");
-        return;
-      }
-      
-      let storageSetupSuccess = false;
-      let retryCount = 0;
-      const maxRetries = 2;
-      
-      while (!storageSetupSuccess && retryCount <= maxRetries) {
-        try {
-          // First try direct API approach to create buckets
-          console.log("Attempting direct bucket creation via API...");
-          const bucketsCreated = await createStorageBuckets().catch(err => {
-            console.warn("Error in direct bucket creation:", err.message);
-            return false;
-          });
-          
-          if (bucketsCreated) {
-            console.log("Successfully created storage buckets via API");
-            storageSetupSuccess = true;
-          } else {
-            console.log("Direct bucket creation failed, trying edge function...");
-            
-            try {
-              // Try the edge function with properly formatted request
-              const forceCreateResult = await callStorageManager('force-create-buckets').catch(err => {
-                console.warn("Error calling storage manager:", err.message);
-                return null;
-              });
-              
-              if (forceCreateResult && forceCreateResult.success) {
-                console.log("Successfully created storage buckets via edge function:", forceCreateResult);
-                storageSetupSuccess = true;
-                
-                // Add sample data to the buckets for testing
-                try {
-                  const sampleResult = await callStorageManager('sample');
-                  if (sampleResult && sampleResult.success) {
-                    console.log("Added sample data to buckets:", sampleResult);
-                  }
-                } catch (sampleError) {
-                  console.warn("Failed to add sample data:", sampleError);
-                }
-              }
-            } catch (edgeFunctionError) {
-              console.warn("Edge function approach failed:", edgeFunctionError);
-            }
-            
-            if (!storageSetupSuccess) {
-              // Try the regular setup as a fallback
-              try {
-                const setupResult = await callStorageManager('setup');
-                if (setupResult && setupResult.success) {
-                  console.log("Bucket setup fallback successful:", setupResult);
-                  storageSetupSuccess = true;
-                }
-              } catch (setupError) {
-                console.warn("Setup fallback failed:", setupError);
-              }
-            }
-          }
-        } catch (attemptError) {
-          console.warn(`Storage setup attempt ${retryCount + 1} failed:`, attemptError);
-        }
-        
-        retryCount++;
-        
-        if (!storageSetupSuccess && retryCount <= maxRetries) {
-          // Wait before retrying
-          console.log(`Retrying storage setup (${retryCount}/${maxRetries})...`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-      
-      if (!storageSetupSuccess) {
-        console.warn("All storage setup attempts failed. Proceeding without storage initialization.");
-        // We'll still continue with the app - the user can manually create buckets if needed
       }
       
       // Check and log the current session

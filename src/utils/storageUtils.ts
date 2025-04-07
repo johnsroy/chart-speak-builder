@@ -36,10 +36,12 @@ export const verifyStorageBuckets = async (): Promise<boolean> => {
 
 /**
  * Creates required storage buckets directly using the Supabase API
+ * This is now just a fallback method, the edge function is preferred
  * @returns A promise resolving to true if all buckets were created, false otherwise
  */
 export const createStorageBuckets = async (): Promise<boolean> => {
   try {
+    console.log("Attempting to create buckets via direct API...");
     const requiredBuckets = ['datasets', 'secure', 'cold_storage'];
     const existingBuckets = await getBucketNames();
     const results = [];
@@ -107,18 +109,20 @@ const getBucketNames = async (): Promise<string[]> => {
 };
 
 /**
- * Sets up storage buckets
+ * Sets up storage buckets using the edge function
  */
 export const setupStorageBuckets = async () => {
   try {
-    console.log("Setting up storage buckets...");
+    console.log("Setting up storage buckets via edge function...");
     
     // Try to use the edge function first
-    const result = await callStorageManager('setup');
+    const result = await callStorageManager('force-create-buckets');
     
     if (result && result.success) {
       return result;
     }
+    
+    console.log("Edge function approach failed, trying direct API...");
     
     // Fall back to direct API approach
     const success = await createStorageBuckets();
@@ -236,9 +240,13 @@ export const callStorageManager = async (action: string): Promise<any> => {
   try {
     console.log(`Calling storage manager: ${action}`);
     
+    // Prepare the request body
+    const body = { action };
+    
+    // Make the request to the edge function
     const { data, error } = await supabase.functions.invoke('storage-manager', {
       method: 'POST',
-      body: { action }, // Properly formatted JSON body
+      body, // Send the action in the body
       headers: {
         'Content-Type': 'application/json'
       }
@@ -249,6 +257,7 @@ export const callStorageManager = async (action: string): Promise<any> => {
       return { success: false, message: error.message || "Unknown error" };
     }
     
+    console.log(`Storage manager ${action} result:`, data);
     return data || { success: true };
   } catch (error) {
     console.error(`Storage manager ${action} failed:`, error);
