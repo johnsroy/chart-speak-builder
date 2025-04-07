@@ -134,6 +134,12 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     
     if (dateField) return dateField;
     
+    // Special handling for Electric Vehicle data
+    if (columns.includes('Make')) return 'Make';
+    if (columns.includes('make')) return 'make';
+    if (columns.includes('Model')) return 'Model';
+    if (columns.includes('model')) return 'model';
+    
     // Look for categorical fields (string fields with repeated values)
     const categoricalFields = columns.filter(col => {
       const values = data.map(row => row[col]);
@@ -153,6 +159,11 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   // Helper function to find the best field for Y axis
   const findBestYAxisField = (data: any[], columns: string[], xField: string): string => {
     const firstRow = data[0];
+    
+    // Special handling for Electric Vehicle data
+    if (columns.includes('Electric Range')) return 'Electric Range';
+    if (columns.includes('Base MSRP')) return 'Base MSRP';
+    if (columns.includes('price')) return 'price';
     
     // Look for numeric fields
     const numericFields = columns.filter(col => 

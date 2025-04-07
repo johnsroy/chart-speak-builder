@@ -47,6 +47,12 @@ export const queryService = {
       });
 
       if (response.error) {
+        console.log("Error from transform function:", response.error);
+        // If the transform function fails, try processing locally
+        if (config.dataPreview && Array.isArray(config.dataPreview)) {
+          console.log("Falling back to local processing after edge function failure");
+          return processQueryLocally(config);
+        }
         throw new Error(response.error.message || 'Error executing query');
       }
 
@@ -67,6 +73,12 @@ export const queryService = {
       return result;
     } catch (error) {
       console.error('Query execution error:', error);
+      
+      // If we have dataPreview, try to process locally even on error
+      if (config.dataPreview && Array.isArray(config.dataPreview)) {
+        console.log("Error occurred, using direct data processing as fallback");
+        return processQueryLocally(config);
+      }
       
       // Return a valid QueryResult object even on error
       return {

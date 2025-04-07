@@ -56,30 +56,49 @@ const DataTable: React.FC<DataTableProps> = ({
   const generateFallbackData = () => {
     console.log("Generating fallback data for table");
     const fallbackData = [];
-    const columnNames = ['id', 'name', 'value', 'category', 'date'];
     
-    for (let i = 0; i < 10; i++) {
-      const item: Record<string, any> = {
-        id: i + 1,
-        name: `Sample Item ${i + 1}`,
-        value: Math.floor(Math.random() * 100),
-        category: ['A', 'B', 'C'][i % 3],
-        date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0]
-      };
-      
-      // Add some extra columns based on the dataset title
-      if (title && title.includes('Vehicle')) {
-        item.make = ['Toyota', 'Honda', 'Ford', 'Tesla', 'BMW'][i % 5];
-        item.model = ['Model X', 'Civic', 'F-150', 'Corolla', 'X5'][i % 5];
-        item.year = 2018 + (i % 5);
-        item.electric = [true, false, false, true, false][i % 5];
-      } else if (title && title.includes('Sales')) {
-        item.revenue = (Math.random() * 10000).toFixed(2);
-        item.profit = (Math.random() * 2000).toFixed(2);
-        item.region = ['North', 'South', 'East', 'West', 'Central'][i % 5];
+    // Check if title contains hints about the dataset type
+    const isVehicleData = title?.toLowerCase().includes('vehicle') || 
+                          title?.toLowerCase().includes('car') ||
+                          title?.toLowerCase().includes('electric');
+    
+    // Generate more appropriate data based on dataset type
+    if (isVehicleData) {
+      for (let i = 0; i < 10; i++) {
+        fallbackData.push({
+          id: i + 1,
+          make: ['Tesla', 'Nissan', 'Chevrolet', 'Ford', 'BMW'][i % 5],
+          model: ['Model Y', 'Leaf', 'Bolt', 'Mach-E', 'i3'][i % 5],
+          year: 2020 + (i % 4),
+          electric: true,
+          range_miles: 200 + (i * 20),
+          battery_capacity: 60 + (i * 5),
+          state: ['WA', 'CA', 'OR', 'TX', 'NY'][i % 5],
+          city: ['Seattle', 'San Francisco', 'Portland', 'Austin', 'New York'][i % 5],
+          postal_code: `9${i}${i}${i}${i}`,
+          vehicle_location: `Location ${i+1}`
+        });
       }
-      
-      fallbackData.push(item);
+    } else {
+      // Generic fallback data for other types
+      for (let i = 0; i < 10; i++) {
+        const item = {
+          id: i + 1,
+          name: `Sample Item ${i + 1}`,
+          value: Math.floor(Math.random() * 100),
+          category: ['A', 'B', 'C'][i % 3],
+          date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0]
+        };
+        
+        // Add some extra columns based on the dataset title
+        if (title && title.includes('Sales')) {
+          item.revenue = (Math.random() * 10000).toFixed(2);
+          item.profit = (Math.random() * 2000).toFixed(2);
+          item.region = ['North', 'South', 'East', 'West', 'Central'][i % 5];
+        }
+        
+        fallbackData.push(item);
+      }
     }
     return fallbackData;
   };
