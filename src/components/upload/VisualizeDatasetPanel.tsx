@@ -3,6 +3,8 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { MessageSquare } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export interface VisualizeDatasetPanelProps {
   datasets: { id: string }[];
@@ -17,6 +19,16 @@ const VisualizeDatasetPanel: React.FC<VisualizeDatasetPanelProps> = ({
   setShowVisualize,
   onVisualizeClick
 }) => {
+  const navigate = useNavigate();
+
+  const handleTalkToDataClick = () => {
+    if (datasets.length > 0) {
+      navigate(`/visualize/${datasets[0].id}?view=chat`);
+    } else if (onVisualizeClick) {
+      onVisualizeClick();
+    }
+  };
+  
   return (
     <div className="glass-card p-6">
       <h2 className="text-xl font-medium mb-4 text-left">Dataset Visualization Settings</h2>
@@ -38,7 +50,10 @@ const VisualizeDatasetPanel: React.FC<VisualizeDatasetPanelProps> = ({
           <p className="text-sm text-gray-300 mb-4">
             Dataset ID: {datasets[0].id}
           </p>
-          <Button onClick={onVisualizeClick}>Talk to me</Button>
+          <Button onClick={handleTalkToDataClick} className="flex items-center gap-2 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500">
+            <MessageSquare className="h-4 w-4" />
+            Talk to me
+          </Button>
         </div>
       ) : (
         <div className="mt-6 text-center py-8 text-gray-400">

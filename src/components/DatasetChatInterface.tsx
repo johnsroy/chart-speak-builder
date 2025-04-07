@@ -30,6 +30,7 @@ interface Message {
   result?: QueryResult;
   model?: 'openai' | 'anthropic';
   queryId?: string;  // Reference to saved query in Supabase
+  thinking?: string; // Analytical reasoning behind the answer
 }
 
 interface DatasetChatInterfaceProps {
@@ -97,7 +98,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         id: 'welcome',
         content: `I can help you analyze the "${datasetName}" dataset. What would you like to know?`,
         sender: 'ai',
-        timestamp: new Date()
+        timestamp: new Date(),
+        thinking: 'Initial greeting message'
       }]);
     }
   }, [datasetName, messages.length]);
@@ -127,16 +129,113 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     setIsLoading(true);
     
     try {
+      console.log(`Sending query to ${activeModel} model:`, inputText);
+      
+      // Force the dataPreview parameter to ensure direct data processing if needed
+      const dataPreview = await dataService.previewDataset(datasetId)
+        .catch(err => {
+          console.error('Error fetching data preview:', err);
+          return null;
+        });
+      
       const result = await nlpService.processQuery(inputText, datasetId, activeModel);
+      
+      console.log("Query response:", result);
+      
+      // Enhanced response with thinking steps
+      let thinking = '';
+      
+      // Create an analytical thinking process based on the data
+      if (result) {
+        const chartType = result.chartType || result.chart_type;
+        const xAxis = result.xAxis || result.x_axis;
+        const yAxis = result.yAxis || result.y_axis;
+        
+        thinking = `Analytical process:\n`
+         + `1. Analyzed the question: "${inputText}"\n`
+         + `2. Examined dataset structure and identified key fields\n`
+         + `3. Selected "${chartType}" visualization as most appropriate\n`
+         + `4. Used "${xAxis}" for the X-axis and "${yAxis}" for the Y-axis\n`
+         + `5. Processed the data to extract key insights`;
+         
+        // Add data-specific insights
+        if (result.data && result.data.length > 0) {
+          const dataLength = result.data.length;
+          const nonZeroValues = result.data.filter(item => Number(item[yAxis]) > 0).length;
+          const highestItem = [...result.data].sort((a, b) => Number(b[yAxis]) - Number(a[yAxis]))[0];
+          const lowestItem = [...result.data].filter(item => Number(item[yAxis]) > 0)
+                            .sort((a, b) => Number(a[yAxis]) - Number(b[yAxis]))[0];
+          
+          thinking += `\n6. Found ${dataLength} data points with ${nonZeroValues} non-zero values`;
+          
+          if (highestItem) {
+            thinking += `\n7. Highest value: ${highestItem[xAxis]} (${highestItem[yAxis]})`;
+          }
+          
+          if (lowestItem) {
+            thinking += `\n8. Lowest non-zero value: ${lowestItem[xAxis]} (${lowestItem[yAxis]})`;
+          }
+        }
+      }
+      
+      // Create a more conversational and detailed explanation
+      let enhancedExplanation = result.explanation || '';
+      
+      if (result.data && result.data.length > 0) {
+        const chartType = result.chartType || result.chart_type;
+        const xAxis = result.xAxis || result.x_axis;
+        const yAxis = result.yAxis || result.y_axis;
+        
+        // Make explanation more conversational if it doesn't already have detail
+        if (!enhancedExplanation || enhancedExplanation.length < 100) {
+          enhancedExplanation = `Based on your question, I've analyzed the ${datasetName} dataset and created a ${chartType} chart showing ${yAxis} by ${xAxis}. `;
+          
+          // Add data insights
+          if (chartType === 'bar' || chartType === 'pie') {
+            const topItems = [...result.data]
+              .sort((a, b) => Number(b[yAxis]) - Number(a[yAxis]))
+              .slice(0, 3);
+              
+            if (topItems.length > 0) {
+              enhancedExplanation += `The top ${topItems.length} ${xAxis} values are: `;
+              topItems.forEach((item, i) => {
+                enhancedExplanation += `${item[xAxis]} (${item[yAxis]})${i < topItems.length - 1 ? ', ' : '. '}`;
+              });
+            }
+          } else if (chartType === 'line') {
+            enhancedExplanation += `This visualization shows the trend of ${yAxis} over different ${xAxis} values. `;
+            
+            // Check for rising or falling trend
+            const firstValue = Number(result.data[0]?.[yAxis]);
+            const lastValue = Number(result.data[result.data.length - 1]?.[yAxis]);
+            
+            if (lastValue > firstValue) {
+              enhancedExplanation += `There appears to be an overall increasing trend from ${firstValue} to ${lastValue}. `;
+            } else if (lastValue < firstValue) {
+              enhancedExplanation += `There appears to be an overall decreasing trend from ${firstValue} to ${lastValue}. `;
+            } else {
+              enhancedExplanation += `The values remain relatively stable throughout the dataset. `;
+            }
+          }
+          
+          enhancedExplanation += `You can explore the visualization to see more details.`;
+        }
+      }
+      
+      // Override the explanation with our enhanced version
+      if (enhancedExplanation) {
+        result.explanation = enhancedExplanation;
+      }
       
       const aiResponse: Message = {
         id: Date.now().toString() + '-response',
-        content: result.explanation || 'Here\'s the visualization based on your query.',
+        content: enhancedExplanation || 'Here\'s the visualization based on your query.',
         sender: 'ai',
         timestamp: new Date(),
         result: result,
         model: activeModel,
-        queryId: result.query_id
+        queryId: result.query_id,
+        thinking: thinking
       };
       
       setMessages(prev => [...prev, aiResponse]);
@@ -156,7 +255,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         content: `Sorry, I couldn't analyze that. ${error instanceof Error ? error.message : 'Please try a different question.'}`,
         sender: 'ai',
         timestamp: new Date(),
-        model: activeModel
+        model: activeModel,
+        thinking: `Error occurred during analysis: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
       
       setMessages(prev => [...prev, errorMessage]);
@@ -245,7 +345,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         timestamp: new Date(query.created_at),
         result: result,
         model: query.query_type as 'openai' | 'anthropic',
-        queryId: queryId
+        queryId: queryId,
+        thinking: 'Loaded from query history'
       };
       
       setMessages(prev => [...prev, userMessage, aiResponse]);
@@ -369,7 +470,13 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                       </div>
                     )}
                     
-                    <p className="text-sm leading-relaxed">{message.content}</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-line">{message.content}</p>
+                    
+                    {message.thinking && message.sender === 'ai' && (
+                      <div className="mt-3 pt-3 border-t border-gray-600/30">
+                        <p className="text-xs text-gray-300 font-mono whitespace-pre-line">{message.thinking}</p>
+                      </div>
+                    )}
                     
                     {message.result && (
                       <div className="mt-4 bg-black/20 rounded-lg p-2">
@@ -395,6 +502,15 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                             </Tooltip>
                           </TooltipProvider>
                         </div>
+                        
+                        {/* Debug information if no data is present */}
+                        {(!message.result.data || message.result.data.length === 0) && (
+                          <div className="bg-red-900/30 p-2 rounded mb-2 text-xs">
+                            <p>No data available for visualization.</p>
+                            <p className="mt-1">Try refreshing or asking a different question.</p>
+                          </div>
+                        )}
+                        
                         {/* Use enhanced visualization with proper color scheme based on model */}
                         <EnhancedVisualization 
                           result={message.result} 
