@@ -66,104 +66,125 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
     <Card className="p-4">
       <div className="w-full" style={{ height: `${height}px` }}>
         <ResponsiveContainer width="100%" height="100%">
-          {chartType === 'bar' && (
-            <RechartsBarChart
-              data={chartData}
-              margin={{ top: 20, right: 20, left: 20, bottom: 50 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-              <XAxis 
-                dataKey="name" 
-                angle={-45} 
-                textAnchor="end" 
-                height={70} 
-                stroke="#888"
-                tick={{ fill: '#ccc', fontSize: 12 }}
-              />
-              <YAxis stroke="#888" tick={{ fill: '#ccc' }} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
-                labelStyle={{ color: '#eee' }}
-              />
-              <Legend wrapperStyle={{ paddingTop: 10 }} />
-              <Bar 
-                dataKey="value" 
-                name={yAxis} 
-                fill="url(#colorGradient)" 
-                radius={[4, 4, 0, 0]} 
-              />
-              <defs>
-                <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#8884d8" stopOpacity={0.3}/>
-                </linearGradient>
-              </defs>
-            </RechartsBarChart>
-          )}
-          
-          {chartType === 'line' && (
-            <RechartsLineChart
-              data={chartData}
-              margin={{ top: 20, right: 20, left: 20, bottom: 50 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-              <XAxis 
-                dataKey="name" 
-                angle={-45} 
-                textAnchor="end" 
-                height={70} 
-                stroke="#888"
-                tick={{ fill: '#ccc', fontSize: 12 }}
-              />
-              <YAxis stroke="#888" tick={{ fill: '#ccc' }} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
-                labelStyle={{ color: '#eee' }}
-              />
-              <Legend wrapperStyle={{ paddingTop: 10 }} />
-              <Line 
-                type="monotone" 
-                dataKey="value" 
-                name={yAxis} 
-                stroke="#8884d8" 
-                strokeWidth={2}
-                dot={{ r: 4 }}
-                activeDot={{ r: 8 }}
-              />
-            </RechartsLineChart>
-          )}
-          
-          {chartType === 'pie' && (
-            <RechartsPieChart
-              margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
-            >
-              <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
-                labelStyle={{ color: '#eee' }}
-                formatter={(value, name) => [`${value}`, `${name}`]}
-              />
-              <Legend layout="vertical" verticalAlign="middle" align="right" />
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-                nameKey="name"
-                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-              >
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-            </RechartsPieChart>
-          )}
+          {renderChart(chartType, chartData, xAxis, yAxis)}
         </ResponsiveContainer>
       </div>
     </Card>
   );
+};
+
+// Helper function to render the appropriate chart type
+const renderChart = (chartType: string, chartData: any[], xAxis?: string, yAxis?: string) => {
+  switch (chartType) {
+    case 'bar':
+      return (
+        <RechartsBarChart
+          data={chartData}
+          margin={{ top: 20, right: 20, left: 20, bottom: 50 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+          <XAxis 
+            dataKey="name" 
+            angle={-45} 
+            textAnchor="end" 
+            height={70} 
+            stroke="#888"
+            tick={{ fill: '#ccc', fontSize: 12 }}
+          />
+          <YAxis stroke="#888" tick={{ fill: '#ccc' }} />
+          <Tooltip 
+            contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
+            labelStyle={{ color: '#eee' }}
+          />
+          <Legend wrapperStyle={{ paddingTop: 10 }} />
+          <Bar 
+            dataKey="value" 
+            name={yAxis} 
+            fill="url(#colorGradient)" 
+            radius={[4, 4, 0, 0]} 
+          />
+          <defs>
+            <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
+              <stop offset="95%" stopColor="#8884d8" stopOpacity={0.3}/>
+            </linearGradient>
+          </defs>
+        </RechartsBarChart>
+      );
+    case 'line':
+      return (
+        <RechartsLineChart
+          data={chartData}
+          margin={{ top: 20, right: 20, left: 20, bottom: 50 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+          <XAxis 
+            dataKey="name" 
+            angle={-45} 
+            textAnchor="end" 
+            height={70} 
+            stroke="#888"
+            tick={{ fill: '#ccc', fontSize: 12 }}
+          />
+          <YAxis stroke="#888" tick={{ fill: '#ccc' }} />
+          <Tooltip 
+            contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
+            labelStyle={{ color: '#eee' }}
+          />
+          <Legend wrapperStyle={{ paddingTop: 10 }} />
+          <Line 
+            type="monotone" 
+            dataKey="value" 
+            name={yAxis} 
+            stroke="#8884d8" 
+            strokeWidth={2}
+            dot={{ r: 4 }}
+            activeDot={{ r: 8 }}
+          />
+        </RechartsLineChart>
+      );
+    case 'pie':
+      return (
+        <RechartsPieChart
+          margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
+        >
+          <Tooltip 
+            contentStyle={{ backgroundColor: 'rgba(30, 30, 30, 0.9)', borderColor: '#666' }}
+            labelStyle={{ color: '#eee' }}
+            formatter={(value, name) => [`${value}`, `${name}`]}
+          />
+          <Legend layout="vertical" verticalAlign="middle" align="right" />
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            labelLine={false}
+            outerRadius={80}
+            fill="#8884d8"
+            dataKey="value"
+            nameKey="name"
+            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+            ))}
+          </Pie>
+        </RechartsPieChart>
+      );
+    default:
+      return (
+        <RechartsBarChart
+          data={chartData}
+          margin={{ top: 20, right: 20, left: 20, bottom: 50 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+          <XAxis dataKey="name" />
+          <YAxis />
+          <Tooltip />
+          <Bar dataKey="value" fill="#8884d8" />
+        </RechartsBarChart>
+      );
+  }
 };
 
 // Helper function to prepare chart data from various formats
