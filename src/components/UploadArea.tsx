@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, Database, Library, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -291,7 +290,7 @@ const UploadArea = () => {
         setDatasetName={setDatasetName}
         datasetDescription={datasetDescription}
         setDatasetDescription={setDatasetDescription}
-        schemaPreview={schemaPreview as any[]} // Fix: Cast to any[] to resolve the type error
+        schemaPreview={schemaPreview}
         isUploading={isUploading}
         uploadProgress={uploadProgress}
         uploadError={uploadError}

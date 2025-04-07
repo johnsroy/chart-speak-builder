@@ -8,12 +8,14 @@ export interface VisualizeDatasetPanelProps {
   datasets: { id: string }[];
   showVisualize: boolean;
   setShowVisualize: (show: boolean) => void;
+  onVisualizeClick?: () => void;  // Added this prop
 }
 
 const VisualizeDatasetPanel: React.FC<VisualizeDatasetPanelProps> = ({
   datasets,
   showVisualize,
   setShowVisualize,
+  onVisualizeClick
 }) => {
   return (
     <div className="glass-card p-6">
@@ -36,7 +38,7 @@ const VisualizeDatasetPanel: React.FC<VisualizeDatasetPanelProps> = ({
           <p className="text-sm text-gray-300 mb-4">
             Dataset ID: {datasets[0].id}
           </p>
-          <Button>View Dataset</Button>
+          <Button onClick={onVisualizeClick}>View Dataset</Button>
         </div>
       ) : (
         <div className="mt-6 text-center py-8 text-gray-400">

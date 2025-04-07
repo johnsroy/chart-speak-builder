@@ -26,7 +26,7 @@ interface UploadTabContentProps {
   setDatasetName: (name: string) => void;
   datasetDescription: string;
   setDatasetDescription: (desc: string) => void;
-  schemaPreview: any[] | null;
+  schemaPreview: Record<string, string> | null;
   isUploading: boolean;
   uploadProgress: number;
   uploadError: string | null;
@@ -96,7 +96,7 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
             setDatasetName={setDatasetName}
             datasetDescription={datasetDescription}
             setDatasetDescription={setDatasetDescription}
-            schemaPreview={schemaPreview ? schemaPreview : null}
+            schemaPreview={schemaPreview}
             isUploading={isUploading}
             uploadProgress={uploadProgress}
             uploadError={uploadError}
@@ -233,6 +233,7 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
           datasets={selectedDatasetId ? [{ id: selectedDatasetId }] : []}
           showVisualize={showVisualizeAfterUpload}
           setShowVisualize={setShowVisualizeAfterUpload}
+          onVisualizeClick={() => setActiveTab('visualize')}
         />
       )}
       
