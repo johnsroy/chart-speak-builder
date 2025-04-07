@@ -208,8 +208,11 @@ Return ONLY a JSON object with the following structure:
     // Return the complete response with data
     const result = {
       chart_type: aiResponse.chart_type,
+      chartType: aiResponse.chart_type,
       x_axis: aiResponse.x_axis,
       y_axis: aiResponse.y_axis,
+      xAxis: aiResponse.x_axis,
+      yAxis: aiResponse.y_axis, 
       chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
       explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
       data: dataToAnalyze,

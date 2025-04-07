@@ -38,7 +38,21 @@ export const queryService = {
         throw new Error(response.error.message || 'Error executing query');
       }
 
-      return response.data as QueryResult;
+      // Normalize the response to ensure property consistency
+      const result = response.data as QueryResult;
+      
+      // Add property aliases for consistency
+      if (result.x_axis && !result.xAxis) {
+        result.xAxis = result.x_axis;
+      }
+      if (result.y_axis && !result.yAxis) {
+        result.yAxis = result.y_axis;
+      }
+      if (result.chart_type && !result.chartType) {
+        result.chartType = result.chart_type;
+      }
+
+      return result;
     } catch (error) {
       console.error('Query execution error:', error);
       return {

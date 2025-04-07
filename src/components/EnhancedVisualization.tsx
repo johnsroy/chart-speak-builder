@@ -4,7 +4,6 @@ import { Card } from "@/components/ui/card";
 import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { QueryResult } from '@/services/types/queryTypes';
-import { BarChart, LineChart, PieChart } from 'recharts';
 import { 
   BarChart as RechartsBarChart,
   LineChart as RechartsLineChart,
@@ -51,7 +50,7 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   // Define chart type, defaulting to bar chart if not specified
   const chartType = result.chartType || result.chart_type || 'bar';
   
-  // Get axis names either from result or using the original column names
+  // Get axis names - use both naming conventions for compatibility
   const xAxis = result.xAxis || result.x_axis;
   const yAxis = result.yAxis || result.y_axis;
   
@@ -175,7 +174,7 @@ const prepareChartData = (result: QueryResult) => {
   }
   
   try {
-    // Get axis names from result
+    // Get axis names from result (use either naming convention)
     const xAxis = result.xAxis || result.x_axis;
     const yAxis = result.yAxis || result.y_axis;
     

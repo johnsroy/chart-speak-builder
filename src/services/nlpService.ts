@@ -24,7 +24,17 @@ export const processNLQuery = async (
     }
     
     console.log('AI query response:', response.data);
-    return response.data as QueryResult;
+    
+    // Normalize property names for consistency
+    const result = response.data as QueryResult;
+    if (result.x_axis && !result.xAxis) {
+      result.xAxis = result.x_axis;
+    }
+    if (result.y_axis && !result.yAxis) {
+      result.yAxis = result.y_axis;
+    }
+    
+    return result;
   } catch (error) {
     console.error('Error in NLP query:', error);
     return {
