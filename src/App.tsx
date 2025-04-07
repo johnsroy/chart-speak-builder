@@ -19,6 +19,7 @@ import TestAnalysisTools from "./components/TestAnalysisTools";
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './hooks/useAuth';
 import Visualize from './pages/Visualize';
+import Upload from './pages/Upload';
 
 function App() {
   const { isLoading } = useAuth();
@@ -34,7 +35,6 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
-        <NavBar />
         <main className="container mx-auto px-4 py-8">
           <Routes>
             <Route path="/" element={<Home />} />
@@ -42,7 +42,8 @@ function App() {
             
             {/* Expose main data visualization routes */}
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/upload" element={<UploadPage />} />
+            <Route path="/upload" element={<Upload />} />
+            <Route path="/upload-old" element={<UploadPage />} />
             <Route path="/visualize/:datasetId" element={<Visualize />} />
             <Route path="/visualize" element={<VisualizePage />} />
             <Route path="/analyze/:datasetId" element={<AnalyzePage />} />
