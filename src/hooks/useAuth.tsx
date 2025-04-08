@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
@@ -130,13 +131,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log("Attempting signup for:", email);
       
-      // First check for existing users with this email
+      // Check for existing users with this email
       const { data: existingUsers, error: checkError } = await supabase.auth.admin.listUsers();
       
       if (checkError) {
         console.error("Error checking existing users:", checkError);
       } else if (existingUsers) {
-        const userExists = existingUsers.users.some(user => user.email === email);
+        // Fixed TypeScript error: Use optional chaining and type checking to safely access users
+        const users = existingUsers.users || [];
+        const userExists = users.some(user => user && user.email === email);
+        
         if (userExists) {
           console.log("User already exists:", email);
           return { success: false, error: 'This email is already registered. Please try logging in instead.' };
