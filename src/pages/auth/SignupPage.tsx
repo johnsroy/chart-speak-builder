@@ -16,7 +16,7 @@ const SignupPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { register, isAuthenticated } = useAuth();
+  const { signup, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   // Redirect authenticated users
@@ -32,10 +32,21 @@ const SignupPage = () => {
     setError(null);
 
     try {
-      // Fix: Only pass email and password to register function
-      await register(email, password);
-      setRegistrationComplete(true);
-      toast.success('Account created! Check your email to confirm registration.');
+      const result = await signup(email, password);
+      
+      if (result.success) {
+        setRegistrationComplete(true);
+        toast.success('Account created! Check your email to confirm registration.');
+      } else if (result.error) {
+        if (result.error.includes('already registered')) {
+          setError('This email is already registered. Please try logging in instead.');
+          toast.error('Email already registered');
+        } else {
+          setError(result.error);
+          toast.error('Registration failed');
+        }
+        console.error('Registration error:', result.error);
+      }
     } catch (error: any) {
       setError(error.message || 'Failed to register');
       toast.error('Registration failed');
@@ -81,7 +92,21 @@ const SignupPage = () => {
             <CardContent className="pt-0">
               <Alert variant="destructive" className="bg-red-900/40 border border-red-800 text-white">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>
+                  {error}
+                  {error.includes('already registered') && (
+                    <div className="mt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-white hover:text-white hover:bg-purple-500/30"
+                        onClick={() => navigate('/login')}
+                      >
+                        Go to Login
+                      </Button>
+                    </div>
+                  )}
+                </AlertDescription>
               </Alert>
             </CardContent>
           )}

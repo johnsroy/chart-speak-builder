@@ -8,7 +8,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, LogIn, Mail, Lock, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/lib/supabase';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -16,7 +15,7 @@ const LoginPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [resendingEmail, setResendingEmail] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, resendConfirmationEmail } = useAuth();
   const navigate = useNavigate();
 
   // Redirect authenticated users
@@ -26,7 +25,7 @@ const LoginPage = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  const resendConfirmationEmail = async () => {
+  const handleResendConfirmation = async () => {
     if (!email) {
       toast.error('Please enter your email address');
       return;
@@ -34,16 +33,15 @@ const LoginPage = () => {
 
     setResendingEmail(true);
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email,
-      });
-
-      if (error) throw error;
-      toast.success('Confirmation email has been sent');
-      setError('Please check your email for the confirmation link');
-    } catch (err) {
-      toast.error('Failed to resend confirmation email');
+      const result = await resendConfirmationEmail(email);
+      if (result.success) {
+        toast.success('Confirmation email has been sent');
+        setError('Please check your email for the confirmation link');
+      } else {
+        throw new Error(result.error || 'Failed to resend confirmation email');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to resend confirmation email');
       console.error('Resend error:', err);
     } finally {
       setResendingEmail(false);
@@ -56,18 +54,23 @@ const LoginPage = () => {
     setError(null);
 
     try {
-      await login(email, password);
-      toast.success('Welcome back!');
-      navigate('/dashboard');
+      const result = await login(email, password);
+      
+      if (result.success) {
+        toast.success('Welcome back!');
+        navigate('/dashboard');
+      } else if (result.error) {
+        if (result.error.includes('Email not confirmed')) {
+          setError('Email not confirmed. Please check your inbox or click below to resend the confirmation email.');
+        } else {
+          setError(result.error);
+          toast.error('Login failed');
+        }
+      }
     } catch (error: any) {
       console.error('Login error:', error);
-      
-      if (error.message?.includes('Email not confirmed')) {
-        setError('Email not confirmed. Please check your inbox or click below to resend the confirmation email.');
-      } else {
-        setError(error.message || 'Failed to log in');
-        toast.error('Login failed');
-      }
+      setError(error.message || 'Failed to log in');
+      toast.error('Login failed');
     } finally {
       setIsLoading(false);
     }
@@ -108,7 +111,7 @@ const LoginPage = () => {
                       variant="ghost"
                       size="sm"
                       className="mt-2 text-white hover:text-white hover:bg-purple-500/30"
-                      onClick={resendConfirmationEmail}
+                      onClick={handleResendConfirmation}
                       disabled={resendingEmail}
                     >
                       {resendingEmail ? (

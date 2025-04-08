@@ -18,6 +18,8 @@ interface AuthContextProps {
   session: Session | null;
   subscription: UserSubscription | null;
   resendConfirmationEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  updatePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 interface AuthProviderProps {
@@ -100,9 +102,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error) {
         // Handle specific error types
         if (error.message.includes('Email not confirmed')) {
-          throw new Error('Email not confirmed. Please check your inbox for a confirmation email.');
+          return { success: false, error: 'Email not confirmed. Please check your inbox for a confirmation email.' };
         }
-        throw error;
+        return { success: false, error: error.message };
       }
       
       return { success: true };
@@ -114,6 +116,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signup = async (email: string, password: string) => {
     try {
+      // Check if user already exists
+      const { data: existingUsers, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email);
+      
+      if (existingUsers && existingUsers.length > 0) {
+        return { success: false, error: 'This email is already registered. Please try logging in instead.' };
+      }
+      
       const { data, error } = await supabase.auth.signUp({ 
         email, 
         password,
@@ -122,11 +134,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        return { success: false, error: error.message };
+      }
       
       // Check if email confirmation is required
       if (data.user && data.user.identities && data.user.identities.length === 0) {
-        throw new Error('This email is already registered. Try logging in instead.');
+        return { success: false, error: 'This email is already registered. Try logging in instead.' };
       }
       
       return { success: true };
@@ -139,7 +153,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = async () => {
     try {
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (error) {
+        return { success: false, error: error.message };
+      }
       return { success: true };
     } catch (error) {
       console.error('Logout error:', error);
@@ -154,11 +170,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         email
       });
       
-      if (error) throw error;
+      if (error) {
+        return { success: false, error: error.message };
+      }
       
       return { success: true };
     } catch (error) {
       console.error('Resend confirmation email error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/reset-password',
+      });
+      
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Password reset error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Password update error:', error);
       return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
     }
   };
@@ -216,7 +268,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       register,
       session,
       subscription,
-      resendConfirmationEmail
+      resendConfirmationEmail,
+      resetPassword,
+      updatePassword
     }}>
       {children}
     </AuthContext.Provider>

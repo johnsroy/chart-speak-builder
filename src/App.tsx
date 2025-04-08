@@ -19,12 +19,12 @@ import PaymentSuccessPage from './pages/payment/PaymentSuccessPage';
 import PaymentCanceledPage from './pages/payment/PaymentCanceledPage';
 import TestAnalysisTools from "./components/TestAnalysisTools";
 import ProtectedRoute from './components/ProtectedRoute';
-import { useAuth } from './hooks/useAuth';
+import { AuthProvider, useAuth } from './hooks/useAuth';
 import Visualize from './pages/Visualize';
 import Upload from './pages/Upload';
 import { Helmet } from 'react-helmet';
 
-function App() {
+function AppContent() {
   const { isLoading, isAdmin } = useAuth();
   
   if (isLoading) {
@@ -36,44 +36,52 @@ function App() {
   }
 
   return (
-    <Router>
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
-        <Helmet>
-          <title>GenBI - Generative Business Intelligence</title>
-          <meta name="description" content="Transform your data into actionable insights with our AI-powered business intelligence platform. Ask questions in plain English and get visualization instantly." />
-        </Helmet>
-        <NavBar />
-        <main className="container mx-auto px-4 py-8">
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<Home />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            
-            {/* Protected routes - require authentication */}
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
-            <Route path="/upload-old" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
-            <Route path="/visualize/:datasetId" element={<ProtectedRoute><Visualize /></ProtectedRoute>} />
-            <Route path="/visualize" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
-            <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
-            <Route path="/analyze" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
-            <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
-            
-            {/* Account & payment routes */}
-            <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="/payment-success" element={<ProtectedRoute><PaymentSuccessPage /></ProtectedRoute>} />
-            <Route path="/payment-cancelled" element={<ProtectedRoute><PaymentCanceledPage /></ProtectedRoute>} />
-            
-            {/* Admin route */}
-            {isAdmin && <Route path="/test" element={<ProtectedRoute requireAdmin={true}><TestAnalysisTools /></ProtectedRoute>} />}
-          </Routes>
-        </main>
-      </div>
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
+      <Helmet>
+        <title>GenBI - Generative Business Intelligence</title>
+        <meta name="description" content="Transform your data into actionable insights with our AI-powered business intelligence platform. Ask questions in plain English and get visualization instantly." />
+      </Helmet>
+      <NavBar />
+      <main className="container mx-auto px-4 py-8">
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          
+          {/* Protected routes - require authentication */}
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+          <Route path="/upload-old" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
+          <Route path="/visualize/:datasetId" element={<ProtectedRoute><Visualize /></ProtectedRoute>} />
+          <Route path="/visualize" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
+          <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+          <Route path="/analyze" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+          <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
+          
+          {/* Account & payment routes */}
+          <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/payment-success" element={<ProtectedRoute><PaymentSuccessPage /></ProtectedRoute>} />
+          <Route path="/payment-cancelled" element={<ProtectedRoute><PaymentCanceledPage /></ProtectedRoute>} />
+          
+          {/* Admin route */}
+          {isAdmin && <Route path="/test" element={<ProtectedRoute requireAdmin={true}><TestAnalysisTools /></ProtectedRoute>} />}
+        </Routes>
+      </main>
       <Toaster />
       <SonnerToaster position="top-right" richColors />
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </Router>
   );
 }
