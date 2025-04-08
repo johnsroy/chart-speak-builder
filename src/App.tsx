@@ -40,6 +40,7 @@ function App() {
           <title>GenBI - Generative Business Intelligence</title>
           <meta name="description" content="Transform your data into actionable insights with our AI-powered business intelligence platform. Ask questions in plain English and get visualization instantly." />
         </Helmet>
+        <NavBar />
         <main className="container mx-auto px-4 py-8">
           <Routes>
             <Route path="/" element={<Home />} />

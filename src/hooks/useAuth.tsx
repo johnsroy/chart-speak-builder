@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
@@ -11,6 +12,8 @@ interface AuthContextProps {
   adminLogin: () => Promise<{ success: boolean; error?: string }>;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  register: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  session: Session | null;
 }
 
 interface AuthProviderProps {
@@ -29,6 +32,7 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -36,8 +40,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
+        setSession(session);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        setSession(null);
       }
       setIsLoading(false);
     });
@@ -46,6 +52,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
+        setSession(session);
       }
       setIsLoading(false);
     });
@@ -81,12 +88,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      return { success: true };
+      return { success: true, session: null };
     } catch (error) {
       console.error('Logout error:', error);
       return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
     }
   };
+
+  // Alias for signup to fix TypeScript errors
+  const register = signup;
 
   // For demo purposes - allow admin login regardless of credentials
   const adminLogin = async () => {
@@ -142,7 +152,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       logout, 
       adminLogin, 
       isAuthenticated,
-      isAdmin
+      isAdmin,
+      register,
+      session
     }}>
       {children}
     </AuthContext.Provider>
