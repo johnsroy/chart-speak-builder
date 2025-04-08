@@ -21,7 +21,8 @@ const NavBar = () => {
   const { user, logout: signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  const navigationItems = [
+  // Navigation items for authenticated users
+  const authenticatedNavItems = [
     {
       name: "Home",
       path: "/",
@@ -66,6 +67,31 @@ const NavBar = () => {
     },
   ];
 
+  // Navigation items for non-authenticated users
+  const publicNavItems = [
+    {
+      name: "Home",
+      path: "/",
+      icon: <HomeIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+    {
+      name: "Features",
+      path: "/#features",
+      icon: <LayoutDashboardIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+    {
+      name: "Subscribe",
+      path: "/signup",
+      icon: <BarChartIcon className="h-5 w-5" />,
+      adminOnly: false,
+    },
+  ];
+
+  // Choose which navigation items to show based on authentication state
+  const navigationItems = user ? authenticatedNavItems : publicNavItems;
+
   // Filter items based on admin status
   const filteredNavItems = navigationItems.filter(
     item => !item.adminOnly || isAdmin
@@ -95,9 +121,9 @@ const NavBar = () => {
         </ul>
       </div>
 
-      {/* User Avatar and Dropdown */}
-      {user && (
-        <div>
+      {/* User Avatar and Dropdown or Login Button */}
+      <div>
+        {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -126,8 +152,24 @@ const NavBar = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      )}
+        ) : (
+          <div className="flex gap-2">
+            <Button 
+              variant="ghost" 
+              onClick={() => navigate('/login')}
+              className="border border-purple-500/30 hover:bg-purple-500/20"
+            >
+              Login
+            </Button>
+            <Button 
+              onClick={() => navigate('/signup')}
+              className="purple-gradient"
+            >
+              Sign Up
+            </Button>
+          </div>
+        )}
+      </div>
     </nav>
   );
 };

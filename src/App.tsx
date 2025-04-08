@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from './components/ui/toaster';
 import { Toaster as SonnerToaster } from 'sonner';
 import NavBar from './components/NavBar';
@@ -45,33 +45,30 @@ function App() {
         <NavBar />
         <main className="container mx-auto px-4 py-8">
           <Routes>
+            {/* Public routes */}
             <Route path="/" element={<Home />} />
-            
-            {/* Only show Test Tools to admins */}
-            {isAdmin && <Route path="/test" element={<TestAnalysisTools />} />}
-            
-            {/* Expose main data visualization routes */}
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/upload" element={<Upload />} />
-            <Route path="/upload-old" element={<UploadPage />} />
-            <Route path="/visualize/:datasetId" element={<Visualize />} />
-            <Route path="/visualize" element={<VisualizePage />} />
-            <Route path="/analyze/:datasetId" element={<AnalyzePage />} />
-            <Route path="/analyze" element={<AnalyzePage />} />
-            <Route path="/dataset/:datasetId" element={<DatasetPage />} />
-            
-            {/* Protected routes */}
-            <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            
-            {/* Payment routes */}
-            <Route path="/payment-success" element={<ProtectedRoute><PaymentSuccessPage /></ProtectedRoute>} />
-            <Route path="/payment-cancelled" element={<ProtectedRoute><PaymentCanceledPage /></ProtectedRoute>} />
-
-            {/* Auth routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            
+            {/* Protected routes - require authentication */}
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+            <Route path="/upload-old" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
+            <Route path="/visualize/:datasetId" element={<ProtectedRoute><Visualize /></ProtectedRoute>} />
+            <Route path="/visualize" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
+            <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+            <Route path="/analyze" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+            <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
+            
+            {/* Account & payment routes */}
+            <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/payment-success" element={<ProtectedRoute><PaymentSuccessPage /></ProtectedRoute>} />
+            <Route path="/payment-cancelled" element={<ProtectedRoute><PaymentCanceledPage /></ProtectedRoute>} />
+            
+            {/* Admin route */}
+            {isAdmin && <Route path="/test" element={<ProtectedRoute requireAdmin={true}><TestAnalysisTools /></ProtectedRoute>} />}
           </Routes>
         </main>
       </div>

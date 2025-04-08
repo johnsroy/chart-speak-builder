@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Helmet } from 'react-helmet';
+import KeyOfferings from '@/components/KeyOfferings';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -30,10 +30,8 @@ const Home = () => {
   const [activeChart, setActiveChart] = useState(0);
 
   useEffect(() => {
-    // Trigger animation after component mount
     setIsVisible(true);
 
-    // Setup intersection observer for scroll animations
     const observerOptions = {
       threshold: 0.1,
       rootMargin: '0px 0px -50px 0px'
@@ -49,13 +47,11 @@ const Home = () => {
       });
     }, observerOptions);
 
-    // Observe all elements with the animate-on-scroll class
     document.querySelectorAll('.animate-on-scroll').forEach(el => {
       el.classList.add('opacity-0');
       observer.observe(el);
     });
 
-    // Rotate through charts every 3 seconds
     const chartInterval = setInterval(() => {
       setActiveChart((prev) => (prev + 1) % 4);
     }, 3000);
@@ -65,8 +61,7 @@ const Home = () => {
       clearInterval(chartInterval);
     };
   }, []);
-  
-  // Function to handle the dashboard or login button click
+
   const handleDashboardClick = () => {
     if (!isAuthenticated && !user) {
       adminLogin();
@@ -75,7 +70,6 @@ const Home = () => {
     }
   };
 
-  // Function to determine the best CTA based on user subscription status
   const renderMainCTA = () => {
     if (isAuthenticated) {
       if (subscription?.isPremium) {
@@ -115,7 +109,6 @@ const Home = () => {
     }
   };
 
-  // Demo chart data for animation
   const renderActiveChart = () => {
     switch (activeChart) {
       case 0:
@@ -345,6 +338,8 @@ const Home = () => {
           </div>
         </div>
       </section>
+      
+      <KeyOfferings />
       
       <section className="py-16 px-4 relative animate-on-scroll" id="how-it-works">
         <div className="max-w-6xl mx-auto">
