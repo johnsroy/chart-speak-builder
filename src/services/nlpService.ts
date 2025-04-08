@@ -10,7 +10,7 @@ export const processNLQuery = async (
   model: 'openai' | 'anthropic' = 'openai'
 ): Promise<QueryResult> => {
   try {
-    console.log(`Calling AI query function for dataset ${datasetId} with model ${model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'}`);
+    console.log(`Calling AI query function for dataset ${datasetId} with model ${model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'}`);
     
     // First ensure we can access the dataset
     const { data: dataset, error: datasetError } = await supabase
@@ -108,7 +108,7 @@ export const processNLQuery = async (
       
       // Ensure model_used is set
       if (!result.model_used) {
-        result.model_used = model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o';
+        result.model_used = model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o';
       }
       
       // Make sure data is included in the result
@@ -367,7 +367,7 @@ const processQueryLocally = async (
       }
     });
     
-    const modelName = model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o';
+    const modelName = model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o';
     
     // Create a descriptive title and explanation
     const chartTitle = `${yAxis} by ${xAxis}`;
@@ -464,7 +464,7 @@ const processQueryLocally = async (
     explanation += `\n\nStep 5: The visualization shows ${chartType === 'pie' ? 'the proportional distribution' : 'the relationship'} between ${xAxis} and ${yAxis}, helping you understand ${chartType === 'line' ? 'trends over time' : chartType === 'pie' ? 'relative proportions' : 'comparative values'}.`;
     
     if (model === 'anthropic') {
-      explanation += "\n\n(Note: This analysis was processed locally as Claude 3.7 Sonnet was unavailable)";
+      explanation += "\n\n(Note: This analysis was processed locally as Claude 3 Haiku was unavailable)";
     } else {
       explanation += "\n\n(Note: This was processed locally with direct data processing)";
     }
@@ -523,7 +523,7 @@ const processQueryLocally = async (
 export const nlpService = {
   processQuery: async (query: string, datasetId: string, model: 'openai' | 'anthropic' = 'openai'): Promise<QueryResult> => {
     try {
-      console.log(`Processing query using ${model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'} model: "${query}"`);
+      console.log(`Processing query using ${model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'} model: "${query}"`);
 
       // Process query through Edge function with fallback
       const result = await processNLQuery(datasetId, query, model);

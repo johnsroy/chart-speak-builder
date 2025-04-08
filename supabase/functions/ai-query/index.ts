@@ -101,9 +101,9 @@ Return ONLY a JSON object with the following structure:
     let aiResponse;
     
     if (model === 'anthropic' && anthropicApiKey) {
-      console.log('Using Claude 3.7 API for analysis');
+      console.log('Using Claude API for analysis');
       
-      // Call Anthropic API with fixed format for Claude 3.7 Sonnet
+      // Call Anthropic API with updated model name for Claude 3
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -112,7 +112,7 @@ Return ONLY a JSON object with the following structure:
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-3-sonnet-20240229',
+          model: 'claude-3-haiku-20240307',
           max_tokens: 1000,
           system: systemPrompt,
           messages: [
@@ -246,7 +246,7 @@ Return ONLY a JSON object with the following structure:
           data: previewData,
           columns: columnNames,
           query_id: savedQuery?.id,
-          model_used: model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'
+          model_used: model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'
         };
         
         console.log(`Analysis complete: Chart type=${result.chart_type}, x=${result.x_axis}, y=${result.y_axis}`);
@@ -271,7 +271,7 @@ Return ONLY a JSON object with the following structure:
       explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
       data: previewData,
       columns: columnNames,
-      model_used: model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o'
+      model_used: model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'
     };
     
     console.log(`Analysis complete: Chart type=${result.chart_type}, x=${result.x_axis}, y=${result.y_axis}`);
