@@ -69,6 +69,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth state change event:", event);
+      
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
         setSession(session);
@@ -81,7 +83,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(false);
     });
 
+    // Fetch initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("Initial session:", session ? "Present" : "Not present");
+      
       if (session?.user) {
         setUser(session.user);
         setSession(session);
@@ -97,16 +102,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log("Attempting login for:", email);
+      
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       
       if (error) {
-        // Handle specific error types
+        console.error("Login error from Supabase:", error);
+        
+        // Check for email confirmation error
         if (error.message.includes('Email not confirmed')) {
           return { success: false, error: 'Email not confirmed. Please check your inbox for a confirmation email.' };
         }
+        
         return { success: false, error: error.message };
       }
       
+      console.log("Login successful:", data.user?.email);
       return { success: true };
     } catch (error) {
       console.error('Login error:', error);
@@ -126,6 +137,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: false, error: 'This email is already registered. Please try logging in instead.' };
       }
       
+      // Check if user exists in auth.users (we can't query directly, but we can try to sign in)
+      const { error: signInError } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password: "dummy-password-for-check"  // We expect this to fail, we're just checking if the account exists
+      });
+      
+      // If we get an invalid credentials error but not a user not found error, the user exists
+      if (signInError && !signInError.message.includes('user not found') && 
+          signInError.message.includes('Invalid login credentials')) {
+        return { success: false, error: 'This email is already registered. Please try logging in instead.' };
+      }
+      
+      console.log("Attempting signup for:", email);
+      
       const { data, error } = await supabase.auth.signUp({ 
         email, 
         password,
@@ -135,6 +160,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
       
       if (error) {
+        console.error("Signup error from Supabase:", error);
         return { success: false, error: error.message };
       }
       
@@ -143,6 +169,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: false, error: 'This email is already registered. Try logging in instead.' };
       }
       
+      console.log("Signup successful:", data.user?.email);
       return { success: true };
     } catch (error) {
       console.error('Signup error:', error);
