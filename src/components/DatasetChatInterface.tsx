@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +28,8 @@ interface Message {
   timestamp: Date;
   result?: QueryResult;
   model?: 'openai' | 'anthropic';
-  queryId?: string;  // Reference to saved query in Supabase
-  thinking?: string; // Analytical reasoning behind the answer
+  queryId?: string;
+  thinking?: string;
 }
 
 interface DatasetChatInterfaceProps {
@@ -52,7 +51,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Get the current user ID
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,7 +71,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         const suggestedQueries = nlpService.getRecommendationsForDataset(datasetData);
         setRecommendations(suggestedQueries);
         
-        // Load previous queries
         const queries = await nlpService.getPreviousQueries(datasetId);
         setPreviousQueries(queries);
         
@@ -131,21 +128,43 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     try {
       console.log(`Sending query to ${activeModel} model:`, inputText);
       
-      // Force the dataPreview parameter to ensure direct data processing if needed
       const dataPreview = await dataService.previewDataset(datasetId)
         .catch(err => {
           console.error('Error fetching data preview:', err);
           return null;
         });
       
+      if (!dataPreview || !Array.isArray(dataPreview) || dataPreview.length === 0) {
+        console.warn('No data preview available, fetching dataset directly');
+        try {
+          const { data, error } = await supabase
+            .from('dataset_data')
+            .select('*')
+            .eq('dataset_id', datasetId)
+            .limit(100);
+          
+          if (error) {
+            console.error('Error getting dataset data:', error);
+            throw new Error('Failed to retrieve dataset data');
+          }
+          
+          if (data && Array.isArray(data) && data.length > 0) {
+            console.log('Successfully retrieved data directly:', data.length, 'rows');
+          } else {
+            throw new Error('No data returned from direct query');
+          }
+        } catch (dataError) {
+          toast.error('Could not load dataset data');
+          throw new Error('Failed to load dataset data for analysis');
+        }
+      }
+      
       const result = await nlpService.processQuery(inputText, datasetId, activeModel);
       
       console.log("Query response:", result);
       
-      // Enhanced response with thinking steps
       let thinking = '';
       
-      // Create an analytical thinking process based on the data
       if (result) {
         const chartType = result.chartType || result.chart_type;
         const xAxis = result.xAxis || result.x_axis;
@@ -158,7 +177,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
          + `4. Used "${xAxis}" for the X-axis and "${yAxis}" for the Y-axis\n`
          + `5. Processed the data to extract key insights`;
          
-        // Add data-specific insights
         if (result.data && result.data.length > 0) {
           const dataLength = result.data.length;
           const nonZeroValues = result.data.filter(item => Number(item[yAxis]) > 0).length;
@@ -178,51 +196,72 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         }
       }
       
-      // Create a more conversational and detailed explanation
       let enhancedExplanation = result.explanation || '';
       
-      if (result.data && result.data.length > 0) {
+      if (!enhancedExplanation.includes('Step') && result.data && result.data.length > 0) {
         const chartType = result.chartType || result.chart_type;
         const xAxis = result.xAxis || result.x_axis;
         const yAxis = result.yAxis || result.y_axis;
         
-        // Make explanation more conversational if it doesn't already have detail
-        if (!enhancedExplanation || enhancedExplanation.length < 100) {
-          enhancedExplanation = `Based on your question, I've analyzed the ${datasetName} dataset and created a ${chartType} chart showing ${yAxis} by ${xAxis}. `;
+        enhancedExplanation = `I analyzed your question about ${datasetName}.\n\nStep 1: I identified that you're interested in ${yAxis} in relation to ${xAxis}.\n\nStep 2: After examining the data structure, I determined a ${chartType} chart would be most appropriate.\n\n`;
+        
+        if (chartType === 'bar' || chartType === 'pie') {
+          const sortedData = [...result.data].sort((a, b) => Number(b[yAxis]) - Number(a[yAxis]));
           
-          // Add data insights
-          if (chartType === 'bar' || chartType === 'pie') {
-            const topItems = [...result.data]
-              .sort((a, b) => Number(b[yAxis]) - Number(a[yAxis]))
-              .slice(0, 3);
-              
-            if (topItems.length > 0) {
-              enhancedExplanation += `The top ${topItems.length} ${xAxis} values are: `;
-              topItems.forEach((item, i) => {
-                enhancedExplanation += `${item[xAxis]} (${item[yAxis]})${i < topItems.length - 1 ? ', ' : '. '}`;
-              });
+          enhancedExplanation += `Step 3: I analyzed the distribution and found that:\n`;
+          
+          if (sortedData.length > 0) {
+            enhancedExplanation += `- The highest ${yAxis} is in ${sortedData[0][xAxis]} with a value of ${sortedData[0][yAxis]}.\n`;
+            
+            if (sortedData.length > 1) {
+              enhancedExplanation += `- The lowest ${yAxis} is in ${sortedData[sortedData.length - 1][xAxis]} with a value of ${sortedData[sortedData.length - 1][yAxis]}.\n`;
             }
-          } else if (chartType === 'line') {
-            enhancedExplanation += `This visualization shows the trend of ${yAxis} over different ${xAxis} values. `;
             
-            // Check for rising or falling trend
-            const firstValue = Number(result.data[0]?.[yAxis]);
-            const lastValue = Number(result.data[result.data.length - 1]?.[yAxis]);
+            const total = sortedData.reduce((sum, item) => sum + Number(item[yAxis]), 0);
+            const avg = total / sortedData.length;
+            enhancedExplanation += `- The average ${yAxis} across all categories is ${avg.toFixed(2)}.\n`;
             
-            if (lastValue > firstValue) {
-              enhancedExplanation += `There appears to be an overall increasing trend from ${firstValue} to ${lastValue}. `;
-            } else if (lastValue < firstValue) {
-              enhancedExplanation += `There appears to be an overall decreasing trend from ${firstValue} to ${lastValue}. `;
-            } else {
-              enhancedExplanation += `The values remain relatively stable throughout the dataset. `;
+            if (sortedData.length > 2) {
+              const topThree = sortedData.slice(0, 3);
+              const topThreeSum = topThree.reduce((sum, item) => sum + Number(item[yAxis]), 0);
+              enhancedExplanation += `- The top 3 categories (${topThree.map(item => item[xAxis]).join(', ')}) account for ${((topThreeSum / total) * 100).toFixed(1)}% of the total.\n`;
             }
           }
           
-          enhancedExplanation += `You can explore the visualization to see more details.`;
+          enhancedExplanation += `\nStep 4: The ${chartType} chart visualizes this distribution, making it easy to compare ${yAxis} across different ${xAxis} categories.`;
+        } else if (chartType === 'line') {
+          let timeData = [...result.data];
+          try {
+            timeData.sort((a, b) => {
+              const dateA = new Date(a[xAxis]);
+              const dateB = new Date(b[xAxis]);
+              return dateA.getTime() - dateB.getTime();
+            });
+          } catch (e) {
+            // If date sorting fails, keep original order
+          }
+          
+          enhancedExplanation += `Step 3: I analyzed the trends over time and found:\n`;
+          
+          if (timeData.length > 1) {
+            const firstVal = Number(timeData[0][yAxis]);
+            const lastVal = Number(timeData[timeData.length - 1][yAxis]);
+            const change = lastVal - firstVal;
+            const percentChange = (change / firstVal * 100).toFixed(1);
+            
+            enhancedExplanation += `- From ${timeData[0][xAxis]} to ${timeData[timeData.length - 1][xAxis]}, there was a ${change >= 0 ? 'increase' : 'decrease'} of ${Math.abs(change).toFixed(2)} (${percentChange}%).\n`;
+            
+            const maxItem = timeData.reduce((max, item) => Number(item[yAxis]) > Number(max[yAxis]) ? item : max, timeData[0]);
+            const minItem = timeData.reduce((min, item) => Number(item[yAxis]) < Number(min[yAxis]) ? item : min, timeData[0]);
+            
+            enhancedExplanation += `- The peak value was ${maxItem[yAxis]} on ${maxItem[xAxis]}.\n`;
+            enhancedExplanation += `- The lowest value was ${minItem[yAxis]} on ${minItem[xAxis]}.\n`;
+          }
+          
+          enhancedExplanation += `\nStep 4: The line chart visualizes these trends over time, showing how ${yAxis} has changed across the ${xAxis} timeline.`;
         }
       }
       
-      // Override the explanation with our enhanced version
       if (enhancedExplanation) {
         result.explanation = enhancedExplanation;
       }
@@ -240,7 +279,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       
       setMessages(prev => [...prev, aiResponse]);
       
-      // Update the previous queries list
       if (result.query_id) {
         const newQuery = await nlpService.getQueryById(result.query_id);
         if (newQuery) {
@@ -297,7 +335,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     toast.success("Download started", {
       description: "Your visualization is being prepared for download"
     });
-    // In a real implementation, this would generate a chart image or export data
   };
 
   const loadPreviousQuery = async (queryId: string) => {
@@ -311,7 +348,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         throw new Error('Query not found');
       }
       
-      // Get the visualization data
       const data = await dataService.previewDataset(datasetId);
       
       const config = query.query_config;
@@ -423,7 +459,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                             <span className="font-medium">{query.name}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge variant="secondary" className="text-xs font-medium">
                               {query.query_type === 'anthropic' ? 'Claude' : 'GPT-4o'} 
                             </Badge>
                             <Badge variant="outline" className="text-xs">
@@ -503,7 +539,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                           </TooltipProvider>
                         </div>
                         
-                        {/* Debug information if no data is present */}
                         {(!message.result.data || message.result.data.length === 0) && (
                           <div className="bg-red-900/30 p-2 rounded mb-2 text-xs">
                             <p>No data available for visualization.</p>
@@ -511,14 +546,12 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                           </div>
                         )}
                         
-                        {/* Use enhanced visualization with proper color scheme based on model */}
                         <EnhancedVisualization 
                           result={message.result} 
                           colorPalette={message.model === 'anthropic' ? 'professional' : 'vibrant'}
                           showTitle={false}
                         />
                         
-                        {/* Show model info */}
                         {message.result.model_used && (
                           <div className="flex justify-end mt-2">
                             <Badge variant="outline" className="text-xs opacity-70">

@@ -84,7 +84,8 @@ Instructions:
 2. Determine the most appropriate chart type (bar, line, pie, scatter, etc.) based on the query and data.
 3. Select appropriate columns for x-axis and y-axis based on the data types.
 4. Provide a descriptive title and brief explanation for the visualization.
-5. Never include your reasoning or explanations in the response - ONLY return a JSON object.
+5. Include step-by-step reasoning in your explanation.
+6. Never include your reasoning or explanations in the response - ONLY return a JSON object.
 
 Return ONLY a JSON object with the following structure:
 {
@@ -92,7 +93,7 @@ Return ONLY a JSON object with the following structure:
   "x_axis": "column_name",
   "y_axis": "column_name",
   "chart_title": "Descriptive title",
-  "explanation": "Brief explanation of what the visualization shows"
+  "explanation": "Detailed explanation of what the visualization shows, including step-by-step insights about the data"
 }
 `;
 
@@ -102,7 +103,7 @@ Return ONLY a JSON object with the following structure:
     if (model === 'anthropic' && anthropicApiKey) {
       console.log('Using Claude 3.7 API for analysis');
       
-      // Call Anthropic API - Fixed format to match Claude API requirements
+      // Call Anthropic API with fixed format for Claude 3.7 Sonnet
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -113,7 +114,7 @@ Return ONLY a JSON object with the following structure:
         body: JSON.stringify({
           model: 'claude-3-sonnet-20240229',
           max_tokens: 1000,
-          system: systemPrompt, // Use system as a top-level parameter, not in messages
+          system: systemPrompt,
           messages: [
             { role: 'user', content: query }
           ],

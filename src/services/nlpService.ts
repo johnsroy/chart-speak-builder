@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 import { toast } from 'sonner';
@@ -199,7 +198,7 @@ const generateSampleData = (datasetName: string, fileName: string, count: number
   return data;
 };
 
-// Local fallback function for when the edge function is unavailable
+// Enhanced function for local query processing with improved analysis
 const processQueryLocally = async (
   query: string, 
   previewData: any[],
@@ -216,24 +215,44 @@ const processQueryLocally = async (
     // Get the column names from the first row
     const columns = Object.keys(previewData[0]);
     
-    // Find likely numeric columns for analysis
+    // Find likely numeric columns for analysis - improved detection
     const numericColumns = columns.filter(col => {
-      const firstVal = previewData[0][col];
-      return typeof firstVal === 'number' || 
-        (typeof firstVal === 'string' && !isNaN(parseFloat(firstVal)));
+      // Check multiple rows to improve accuracy of type detection
+      const sampleSize = Math.min(5, previewData.length);
+      let numericCount = 0;
+      
+      for (let i = 0; i < sampleSize; i++) {
+        const val = previewData[i][col];
+        if (typeof val === 'number' || (typeof val === 'string' && !isNaN(parseFloat(val)))) {
+          numericCount++;
+        }
+      }
+      // Consider it numeric if most samples are numeric
+      return numericCount >= Math.ceil(sampleSize / 2);
     });
     
-    // Find likely categorical columns
-    const categoricalColumns = columns.filter(col => 
-      typeof previewData[0][col] === 'string' && 
-      !numericColumns.includes(col)
-    );
+    // Find likely categorical columns - more robust detection
+    const categoricalColumns = columns.filter(col => {
+      // Check if column has a reasonable number of distinct values
+      const distinctValues = new Set();
+      const sampleSize = Math.min(20, previewData.length);
+      
+      for (let i = 0; i < sampleSize; i++) {
+        distinctValues.add(String(previewData[i][col]));
+      }
+      
+      // Likely categorical if it has few distinct values compared to sample size
+      // or if it's not numeric and has string values
+      return (distinctValues.size <= sampleSize / 2) || 
+             (typeof previewData[0][col] === 'string' && !numericColumns.includes(col));
+    });
     
-    // Find likely date columns
+    // Find likely date columns - improved detection
     const dateColumns = columns.filter(col => {
       const val = String(previewData[0][col]);
       return /^\d{4}-\d{2}-\d{2}/.test(val) || // ISO date
-        /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(val); // MM/DD/YYYY
+             /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(val) || // MM/DD/YYYY
+             /^\d{1,2}-\d{1,2}-\d{2,4}/.test(val); // MM-DD-YYYY
     });
     
     console.log('Detected columns:', {
@@ -242,40 +261,107 @@ const processQueryLocally = async (
       date: dateColumns
     });
     
-    // Simple logic to determine chart type and axes based on the query
+    // Enhanced logic to determine chart type and axes based on the query and data structure
     let chartType = 'bar';
     let xAxis = categoricalColumns.length > 0 ? categoricalColumns[0] : columns[0];
     let yAxis = numericColumns.length > 0 ? numericColumns[0] : columns[1] || columns[0];
     
-    // Look for chart type hints in the query
-    if (/trend|over time|time series|change|growth/i.test(query)) {
+    // More intelligent chart type detection based on query content and data structure
+    const lowerQuery = query.toLowerCase();
+    
+    // For time series data, prefer line charts
+    if (dateColumns.length > 0 && 
+        (/trend|over time|time series|change|growth|history|progress|timeline/i.test(lowerQuery))) {
       chartType = 'line';
-      // For line charts, prefer date columns for x-axis
-      if (dateColumns.length > 0) {
-        xAxis = dateColumns[0];
+      xAxis = dateColumns[0]; // Use the first date column for x-axis
+      
+      // Find a suitable numeric column that might reflect the trend being asked about
+      if (numericColumns.length > 0) {
+        // Try to find the most relevant numeric column based on query terms
+        const queryTerms = lowerQuery.split(/\s+/);
+        for (const col of numericColumns) {
+          const lowerCol = col.toLowerCase();
+          if (queryTerms.some(term => lowerCol.includes(term))) {
+            yAxis = col;
+            break;
+          }
+        }
       }
-    } else if (/distribution|breakdown|percentage|ratio|proportion|pie/i.test(query)) {
+    } 
+    // For distribution/proportion data, prefer pie charts
+    else if (/distribution|breakdown|percentage|ratio|proportion|pie|share/i.test(lowerQuery)) {
       chartType = 'pie';
-      // For pie charts, we need a good categorical column
+      
+      // For pie charts, we need a good categorical column and a numeric column
+      if (categoricalColumns.length > 0) {
+        xAxis = categoricalColumns[0];
+        
+        // If query mentions a specific category, try to use it
+        for (const col of categoricalColumns) {
+          if (lowerQuery.includes(col.toLowerCase())) {
+            xAxis = col;
+            break;
+          }
+        }
+      }
+      
+      // Choose most appropriate metric based on query context
+      if (numericColumns.length > 0) {
+        // Look for metrics mentioned in query
+        for (const col of numericColumns) {
+          if (lowerQuery.includes(col.toLowerCase())) {
+            yAxis = col;
+            break;
+          }
+        }
+      }
+    } 
+    // For comparison data, use bar charts
+    else if (/compare|comparison|bar|rank|highest|lowest|top|bottom/i.test(lowerQuery)) {
+      chartType = 'bar';
+      
+      // For bar charts, categorical on x-axis is usually best
       if (categoricalColumns.length > 0) {
         xAxis = categoricalColumns[0];
       }
-    } else if (/compare|comparison|bar/i.test(query)) {
-      chartType = 'bar';
+      
+      // Try to find the measurement being compared
+      if (numericColumns.length > 0) {
+        // Check if the query mentions a specific metric
+        for (const col of numericColumns) {
+          if (lowerQuery.includes(col.toLowerCase().replace(/_/g, ' '))) {
+            yAxis = col;
+            break;
+          }
+        }
+      }
+    }
+    // For relationships between variables, use scatter plots
+    else if (/relation|relationship|correlation|scatter|versus|vs\.?|against/i.test(lowerQuery)) {
+      chartType = 'scatter';
+      
+      // For scatter plots, ideally both axes are numeric
+      if (numericColumns.length >= 2) {
+        xAxis = numericColumns[0];
+        yAxis = numericColumns[1];
+      } else if (numericColumns.length === 1) {
+        yAxis = numericColumns[0];
+      }
     }
     
-    // Look for specific column mentions in the query
+    // Look for specific column mentions in the query - improved matching
     columns.forEach(col => {
-      const normalizedCol = col.toLowerCase().replace(/_/g, ' ');
+      const normalizedCol = col.toLowerCase().replace(/[_\s-]/g, ' ');
       const normalizedQuery = query.toLowerCase();
       
+      // Check if column is explicitly mentioned
       if (normalizedQuery.includes(normalizedCol)) {
-        // If a column is mentioned and it's numeric, it's likely the y-axis
+        // If a column is mentioned and it's numeric, it might be the y-axis
         if (numericColumns.includes(col)) {
           yAxis = col;
         } 
-        // If a column is mentioned and it's categorical, it's likely the x-axis
-        else if (categoricalColumns.includes(col)) {
+        // If a column is mentioned and it's categorical or a date, it might be the x-axis
+        else if (categoricalColumns.includes(col) || dateColumns.includes(col)) {
           xAxis = col;
         }
       }
@@ -286,49 +372,133 @@ const processQueryLocally = async (
     // Create a descriptive title and explanation
     const chartTitle = `${yAxis} by ${xAxis}`;
     
-    // Generate a more detailed explanation based on the data
-    let explanation = `Analysis of ${yAxis} by ${xAxis} from your dataset "${datasetName}"`;
+    // Generate a detailed explanation with step-by-step analysis
+    let explanation = `I analyzed your request: "${query}"\n\nStep 1: I examined your ${datasetName} dataset with ${previewData.length} records.\n\nStep 2: Based on your question, I identified that you're interested in the relationship between ${xAxis} and ${yAxis}.`;
     
-    // Add data-specific insights
+    // Add data-specific insights with sequential analysis - improved insights
     if (chartType === 'bar' || chartType === 'pie') {
       // Sort data for insights
-      const sortedData = [...previewData].sort((a, b) => 
-        Number(b[yAxis]) - Number(a[yAxis])
-      );
+      const groupedData: Record<string, { count: number, sum: number }> = {};
       
-      // Add top values insight
-      if (sortedData.length > 0) {
-        const top = sortedData[0];
-        explanation += `\n\nThe highest ${yAxis} is in ${top[xAxis]} with a value of ${top[yAxis]}.`;
+      // Group and summarize data
+      previewData.forEach(row => {
+        const key = String(row[xAxis]);
+        if (!groupedData[key]) {
+          groupedData[key] = { count: 0, sum: 0 };
+        }
+        groupedData[key].count += 1;
+        groupedData[key].sum += Number(row[yAxis]) || 0;
+      });
+      
+      // Convert grouped data to sortable array
+      const sortedEntries = Object.entries(groupedData)
+        .map(([key, data]) => ({ key, count: data.count, sum: data.sum }))
+        .sort((a, b) => b.sum - a.sum);
+      
+      // Add insights about top values
+      explanation += `\n\nStep 3: I analyzed the distribution of data and found these insights:`;
+      
+      if (sortedEntries.length > 0) {
+        explanation += `\n\n- The highest ${yAxis} is in the ${xAxis} category "${sortedEntries[0].key}" with a value of ${sortedEntries[0].sum.toFixed(2)}.`;
+        
+        // Add comparison to average
+        const total = sortedEntries.reduce((acc, item) => acc + item.sum, 0);
+        const average = total / sortedEntries.length;
+        explanation += `\n- The average ${yAxis} across categories is ${average.toFixed(2)}.`;
+        
+        // Add insight about the range
+        if (sortedEntries.length > 1) {
+          const lowest = sortedEntries[sortedEntries.length - 1];
+          explanation += `\n- The range between highest and lowest values is ${(sortedEntries[0].sum - lowest.sum).toFixed(2)}.`;
+        }
+        
+        // Add distribution insight
+        explanation += `\n- The top 3 ${xAxis} categories represent ${((sortedEntries.slice(0, 3).reduce((acc, item) => acc + item.sum, 0) / total) * 100).toFixed(1)}% of the total ${yAxis}.`;
       }
       
-      // Add total insight for numeric data
-      const total = previewData.reduce((sum, item) => sum + Number(item[yAxis] || 0), 0);
-      explanation += `\n\nThe total ${yAxis} across all ${xAxis} categories is ${total.toFixed(2)}.`;
+      // Top categories summary
+      explanation += `\n\nStep 4: I selected a ${chartType} chart to best visualize this distribution and highlight the relative proportions of different ${xAxis} categories.`;
+      
     } else if (chartType === 'line') {
-      // For time series, mention trends
-      const firstValue = Number(previewData[0][yAxis]);
-      const lastValue = Number(previewData[previewData.length - 1][yAxis]);
+      // Time series analysis
+      explanation += `\n\nStep 3: Since you're interested in trends over time, I analyzed how ${yAxis} changes over different ${xAxis} values:`;
       
-      if (lastValue > firstValue) {
-        const increase = ((lastValue - firstValue) / firstValue * 100).toFixed(1);
-        explanation += `\n\nThere is an upward trend in ${yAxis}, with an overall increase of approximately ${increase}% from the first to last data point.`;
-      } else if (lastValue < firstValue) {
-        const decrease = ((firstValue - lastValue) / firstValue * 100).toFixed(1);
-        explanation += `\n\nThere is a downward trend in ${yAxis}, with an overall decrease of approximately ${decrease}% from the first to last data point.`;
-      } else {
-        explanation += `\n\nThe ${yAxis} remains relatively stable across the timeline.`;
+      // Sort data chronologically for time series analysis if possible
+      let sortedData = [...previewData];
+      try {
+        sortedData.sort((a, b) => {
+          const dateA = new Date(a[xAxis]).getTime();
+          const dateB = new Date(b[xAxis]).getTime();
+          return dateA - dateB;
+        });
+      } catch (e) {
+        // If date sorting fails, use the data as-is
       }
+      
+      // Calculate trend statistics
+      const firstValue = Number(sortedData[0]?.[yAxis]) || 0;
+      const lastValue = Number(sortedData[sortedData.length - 1]?.[yAxis]) || 0;
+      const changeAmount = lastValue - firstValue;
+      const changePercent = firstValue !== 0 ? (changeAmount / firstValue) * 100 : 0;
+      
+      // Add trend insights
+      if (changePercent > 0) {
+        explanation += `\n\n- There is an upward trend of ${changePercent.toFixed(1)}% in ${yAxis} from ${firstValue.toFixed(1)} to ${lastValue.toFixed(1)}.`;
+      } else if (changePercent < 0) {
+        explanation += `\n\n- There is a downward trend of ${Math.abs(changePercent).toFixed(1)}% in ${yAxis} from ${firstValue.toFixed(1)} to ${lastValue.toFixed(1)}.`;
+      } else {
+        explanation += `\n\n- The ${yAxis} remains relatively stable across the timeline at around ${firstValue.toFixed(1)}.`;
+      }
+      
+      // Find peak value
+      const peakValue = Math.max(...sortedData.map(item => Number(item[yAxis]) || 0));
+      const peakItem = sortedData.find(item => Number(item[yAxis]) === peakValue);
+      
+      if (peakItem) {
+        explanation += `\n- The peak ${yAxis} was ${peakValue.toFixed(1)} at ${peakItem[xAxis]}.`;
+      }
+      
+      explanation += `\n\nStep 4: I selected a line chart to best visualize this time series data and highlight the trends over time.`;
     }
     
-    explanation += `\n\nThis visualization was created based on your query: "${query}"`;
+    explanation += `\n\nStep 5: The visualization shows ${chartType === 'pie' ? 'the proportional distribution' : 'the relationship'} between ${xAxis} and ${yAxis}, helping you understand ${chartType === 'line' ? 'trends over time' : chartType === 'pie' ? 'relative proportions' : 'comparative values'}.`;
+    
     if (model === 'anthropic') {
-      explanation += "\n\n(Note: This was processed locally as Claude 3.7 Sonnet was unavailable)";
+      explanation += "\n\n(Note: This analysis was processed locally as Claude 3.7 Sonnet was unavailable)";
     } else {
       explanation += "\n\n(Note: This was processed locally with direct data processing)";
     }
     
     console.log(`Local processing complete - Using ${chartType} chart with X: ${xAxis}, Y: ${yAxis}`);
+    
+    // Prepare data for visualization - improve data preprocessing
+    let processedData = [...previewData]; 
+    
+    // For bar and pie charts, aggregate data by the x-axis category
+    if (chartType === 'bar' || chartType === 'pie') {
+      const aggregated: Record<string, number> = {};
+      const counts: Record<string, number> = {};
+      
+      previewData.forEach(item => {
+        const key = String(item[xAxis] || 'Unknown');
+        const value = Number(item[yAxis] || 0);
+        
+        if (!aggregated[key]) {
+          aggregated[key] = 0;
+          counts[key] = 0;
+        }
+        
+        aggregated[key] += value;
+        counts[key] += 1;
+      });
+      
+      // Convert aggregated data back to array format
+      processedData = Object.entries(aggregated).map(([key, value]) => ({
+        [xAxis]: key,
+        [yAxis]: value,
+        count: counts[key]
+      }));
+    }
     
     // Return the result in the expected format
     return {
@@ -340,7 +510,7 @@ const processQueryLocally = async (
       y_axis: yAxis,
       chart_title: chartTitle,
       explanation,
-      data: previewData,
+      data: processedData,
       model_used: `Local processing (${modelName} unavailable)`
     };
   } catch (error) {
