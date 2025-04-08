@@ -48,6 +48,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               console.log("User subscription loaded:", sub.isPremium ? "Premium" : "Free");
               setSubscription(sub);
             }
+          }).catch(err => {
+            console.error("Error fetching subscription:", err);
           });
         }, 0);
       } else if (event === 'SIGNED_OUT') {
@@ -76,6 +78,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             console.log("User subscription loaded:", sub.isPremium ? "Premium" : "Free");
             setSubscription(sub);
           }
+        }).catch(err => {
+          console.error("Error fetching subscription:", err);
         });
       }
       setIsLoading(false);
@@ -116,6 +120,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const register = signup;
 
+  // Check if user is admin - this could be expanded to include roles from database
   const isAdmin = user?.email === 'admin@example.com';
   
   const isAuthenticated = !!user && !!session;

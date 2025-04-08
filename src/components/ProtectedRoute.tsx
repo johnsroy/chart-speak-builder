@@ -1,11 +1,11 @@
 
 import React, { ReactNode, useEffect } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from "sonner";
 
 interface ProtectedRouteProps {
-  children: ReactNode;
+  children?: ReactNode;
   requireAdmin?: boolean;
 }
 
@@ -43,7 +43,12 @@ const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps)
     return <Navigate to="/" replace />;
   }
   
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <Outlet /> {/* This allows nested routes to render their elements */}
+    </>
+  );
 };
 
 export default ProtectedRoute;
