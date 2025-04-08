@@ -9,7 +9,10 @@ import { Button } from '@/components/ui/button';
 import { ChartType } from '@/utils/chartSuggestionUtils';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-// Fix: Import modules as modules rather than as functions
+
+// Import Highcharts modules
+// Note: These are imported as ES modules but they are actually UMD modules
+// that attach themselves to the Highcharts namespace when executed
 import HighchartsMore from 'highcharts/highcharts-more';
 import HighchartsSankey from 'highcharts/modules/sankey';
 import HighchartsHeatmap from 'highcharts/modules/heatmap';
@@ -17,14 +20,21 @@ import HighchartsTreemap from 'highcharts/modules/treemap';
 import HighchartsFunnel from 'highcharts/modules/funnel';
 import HighchartsExporting from 'highcharts/modules/exporting';
 
-// Initialize Highcharts modules correctly
-if (typeof Highcharts === 'object') {
-  HighchartsMore(Highcharts);
-  HighchartsSankey(Highcharts);
-  HighchartsHeatmap(Highcharts);
-  HighchartsTreemap(Highcharts);
-  HighchartsFunnel(Highcharts);
-  HighchartsExporting(Highcharts);
+// Initialize Highcharts modules safely
+// We need to check if we're in a browser environment and Highcharts is properly loaded
+if (typeof Highcharts === 'object' && Highcharts) {
+  // Apply each module to the Highcharts object
+  try {
+    HighchartsMore(Highcharts);
+    HighchartsSankey(Highcharts);
+    HighchartsHeatmap(Highcharts);
+    HighchartsTreemap(Highcharts);
+    HighchartsFunnel(Highcharts);
+    HighchartsExporting(Highcharts);
+    console.log('Highcharts modules initialized successfully');
+  } catch (e) {
+    console.error('Error initializing Highcharts modules:', e);
+  }
 }
 
 // Define the dark theme for Highcharts
