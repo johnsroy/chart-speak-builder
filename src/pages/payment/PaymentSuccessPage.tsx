@@ -12,16 +12,20 @@ const PaymentSuccessPage = () => {
   const location = useLocation();
   const { user, login } = useAuth();
   const [email, setEmail] = useState<string | null>(null);
+  const [password, setPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isAdminTest, setIsAdminTest] = useState(false);
   const [processingComplete, setProcessingComplete] = useState(false);
+  const [loginAttempted, setLoginAttempted] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const emailParam = params.get('email');
     const testParam = params.get('test');
+    const tempPassParam = params.get('temp');
     
     setEmail(emailParam);
+    setPassword(tempPassParam);
     setIsAdminTest(testParam === 'true');
     
     // If this is an admin test payment, we need to manually update their subscription
@@ -57,35 +61,66 @@ const PaymentSuccessPage = () => {
     };
     
     handleAdminTestPayment();
-    
+  }, [location.search, isAdminTest]);
+
+  useEffect(() => {
     // Auto-login if we have email but no user
     const autoLogin = async () => {
-      if (emailParam === 'admin@example.com' && !user) {
+      // Only attempt login once
+      if (loginAttempted) return;
+      
+      if (email && !user) {
         setLoading(true);
+        setLoginAttempted(true);
+        
         try {
-          const result = await login('admin@example.com', 'password123');
-          if (result.success) {
-            toast.success("Logged in as admin");
-            setProcessingComplete(true);
+          if (email === 'admin@example.com') {
+            // Admin login with hardcoded password for demo
+            const result = await login('admin@example.com', 'password123');
+            if (result.success) {
+              toast.success("Logged in as admin");
+              setProcessingComplete(true);
+            } else {
+              toast.error("Admin auto-login failed");
+              console.error("Admin login failed:", result.error);
+            }
+          } else if (password) {
+            // Try to login with the temporary password if provided
+            console.log("Attempting to log in with temporary password");
+            const result = await login(email, password);
+            
+            if (result.success) {
+              toast.success("Logged in successfully");
+              setProcessingComplete(true);
+            } else {
+              console.error("Auto-login failed with temp password:", result.error);
+              toast.error("Couldn't log in automatically. Please use the login link below.");
+            }
           } else {
-            toast.error("Auto-login failed");
+            console.log("No temporary password available for auto-login");
           }
         } catch (error) {
           console.error("Auto-login failed:", error);
-          toast.error("Auto-login failed");
+          toast.error("Couldn't log in automatically");
         } finally {
           setLoading(false);
         }
-      } else {
+      } else if (user) {
+        // User is already logged in
         setProcessingComplete(true);
       }
     };
     
     autoLogin();
-  }, [location.search, user, login, isAdminTest]);
+  }, [email, user, login, password, loginAttempted]);
 
   const handleDashboardRedirect = () => {
-    navigate('/upload'); // Redirect to the upload page which is available
+    if (user) {
+      navigate('/upload'); // Redirect to the upload page if logged in
+    } else {
+      // If auto-login failed, direct them to login page with their email prefilled
+      navigate(`/login?email=${encodeURIComponent(email || '')}`);
+    }
   };
 
   return (
@@ -134,12 +169,21 @@ const PaymentSuccessPage = () => {
             
             {email && !user && (
               <div className="bg-purple-900/30 border border-purple-500/20 rounded-lg p-4 mb-6">
-                <p className="text-sm mb-2">
+                <p className="text-sm mb-3">
                   We've created an account for you using: <strong>{email}</strong>
                 </p>
-                <p className="text-sm text-gray-300">
+                <p className="text-sm text-gray-300 mb-2">
                   A confirmation email has been sent to your inbox.
                 </p>
+                {!isAdminTest && (
+                  <Button 
+                    variant="outline" 
+                    className="text-sm border-purple-500/30 hover:bg-purple-500/20 mt-2"
+                    onClick={() => navigate(`/login?email=${encodeURIComponent(email || '')}`)}
+                  >
+                    Go to login page
+                  </Button>
+                )}
               </div>
             )}
             

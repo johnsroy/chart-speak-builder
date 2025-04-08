@@ -251,6 +251,16 @@ serve(async (req) => {
 
       console.log("Created price:", price.id);
 
+      // Build success URL with parameters to enable auto-login
+      const successParams = new URLSearchParams({
+        email: userEmail,
+      });
+      
+      // Add temp password parameter if available, for auto-login
+      if (tempPassword) {
+        successParams.append('temp', tempPassword);
+      }
+
       // Create the checkout session using the newly created price
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -261,7 +271,7 @@ serve(async (req) => {
           },
         ],
         mode: "subscription",
-        success_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-success?email=${encodeURIComponent(userEmail)}`,
+        success_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-success?${successParams.toString()}`,
         cancel_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-cancelled`,
         subscription_data: {
           metadata: {
