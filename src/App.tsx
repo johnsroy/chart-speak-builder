@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from './components/ui/toaster';
 import { Toaster as SonnerToaster } from 'sonner';
 import NavBar from './components/NavBar';
-import Home from './pages/Home';
+import Index from './pages/Index';
 import Dashboard from './pages/Dashboard';
 import UploadPage from './pages/UploadPage';
 import VisualizePage from './pages/VisualizePage';
@@ -42,38 +42,49 @@ function AppContent() {
         <title>GenBI - Generative Business Intelligence</title>
         <meta name="description" content="Transform your data into actionable insights with our AI-powered business intelligence platform. Ask questions in plain English and get visualization instantly." />
       </Helmet>
-      <NavBar />
-      <main className="container mx-auto px-4 py-8">
-        <Routes>
-          {/* Public routes */}
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/pay-now" element={<PayNowPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          
-          {/* Payment response routes - don't need authentication */}
-          <Route path="/payment-success" element={<PaymentSuccessPage />} />
-          <Route path="/payment-cancelled" element={<PaymentCanceledPage />} />
-          
-          {/* Protected routes - require authentication */}
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
-          <Route path="/upload-old" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
-          <Route path="/visualize/:datasetId" element={<ProtectedRoute><Visualize /></ProtectedRoute>} />
-          <Route path="/visualize" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
-          <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
-          <Route path="/analyze" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
-          <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
-          
-          {/* Account & payment routes */}
-          <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          
-          {/* Admin route */}
-          {isAdmin && <Route path="/test" element={<ProtectedRoute requireAdmin={true}><TestAnalysisTools /></ProtectedRoute>} />}
-        </Routes>
-      </main>
+      <Routes>
+        {/* Public routes - don't show navbar on landing page */}
+        <Route 
+          path="/" 
+          element={<Index />}
+        />
+        
+        {/* Routes with NavBar */}
+        <Route element={<>
+          <NavBar />
+          <main className="container mx-auto px-4 py-8">
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              <Route path="/pay-now" element={<PayNowPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              
+              {/* Payment response routes - don't need authentication */}
+              <Route path="/payment-success" element={<PaymentSuccessPage />} />
+              <Route path="/payment-cancelled" element={<PaymentCanceledPage />} />
+              
+              {/* Protected routes - require authentication */}
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+              <Route path="/upload-old" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
+              <Route path="/visualize/:datasetId" element={<ProtectedRoute><Visualize /></ProtectedRoute>} />
+              <Route path="/visualize" element={<ProtectedRoute><VisualizePage /></ProtectedRoute>} />
+              <Route path="/analyze/:datasetId" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+              <Route path="/analyze" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+              <Route path="/dataset/:datasetId" element={<ProtectedRoute><DatasetPage /></ProtectedRoute>} />
+              
+              {/* Account & payment routes */}
+              <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+              
+              {/* Admin route */}
+              {isAdmin && <Route path="/test" element={<ProtectedRoute requireAdmin={true}><TestAnalysisTools /></ProtectedRoute>} />}
+            </Routes>
+          </main>
+        </>}>
+        </Route>
+      </Routes>
       <Toaster />
       <SonnerToaster position="top-right" richColors />
     </div>

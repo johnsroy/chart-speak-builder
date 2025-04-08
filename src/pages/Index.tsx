@@ -7,6 +7,7 @@ import HowItWorks from '@/components/HowItWorks';
 import Benefits from '@/components/Benefits';
 import Testimonials from '@/components/Testimonials';
 import Footer from '@/components/Footer';
+import KeyOfferings from '@/components/KeyOfferings';
 import { useAuth } from '@/hooks/useAuth';
 
 const Index = () => {
@@ -29,6 +30,7 @@ const Index = () => {
       <Hero />
       <Features />
       <HowItWorks />
+      <KeyOfferings />
       <Benefits />
       <Testimonials />
       <Footer />
