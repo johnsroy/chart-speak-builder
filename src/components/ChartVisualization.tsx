@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,32 +9,30 @@ import { ChartType } from '@/utils/chartSuggestionUtils';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 
-// Import Highcharts modules
-// Note: These are imported as ES modules but they are actually UMD modules
-// that attach themselves to the Highcharts namespace when executed
-import HighchartsMore from 'highcharts/highcharts-more';
-import HighchartsSankey from 'highcharts/modules/sankey';
-import HighchartsHeatmap from 'highcharts/modules/heatmap';
-import HighchartsTreemap from 'highcharts/modules/treemap';
-import HighchartsFunnel from 'highcharts/modules/funnel';
-import HighchartsExporting from 'highcharts/modules/exporting';
-
-// Initialize Highcharts modules safely
-// We need to check if we're in a browser environment and Highcharts is properly loaded
-if (typeof Highcharts === 'object' && Highcharts) {
-  // Apply each module to the Highcharts object
-  try {
-    HighchartsMore(Highcharts);
-    HighchartsSankey(Highcharts);
-    HighchartsHeatmap(Highcharts);
-    HighchartsTreemap(Highcharts);
-    HighchartsFunnel(Highcharts);
-    HighchartsExporting(Highcharts);
-    console.log('Highcharts modules initialized successfully');
-  } catch (e) {
-    console.error('Error initializing Highcharts modules:', e);
+// Handle Highcharts module imports properly
+// Instead of trying to import the modules directly, we'll import them using require
+// and handle them in a way that works with the bundled code
+const initHighchartsModules = () => {
+  if (typeof Highcharts === 'object' && Highcharts) {
+    try {
+      // Use require for CommonJS modules
+      require('highcharts/highcharts-more')(Highcharts);
+      require('highcharts/modules/sankey')(Highcharts);
+      require('highcharts/modules/heatmap')(Highcharts);
+      require('highcharts/modules/treemap')(Highcharts);
+      require('highcharts/modules/funnel')(Highcharts);
+      require('highcharts/modules/exporting')(Highcharts);
+      console.log('Highcharts modules initialized successfully');
+    } catch (e) {
+      console.error('Error initializing Highcharts modules:', e);
+    }
+  } else {
+    console.warn('Highcharts not available, modules not initialized');
   }
-}
+};
+
+// Initialize modules
+initHighchartsModules();
 
 // Define the dark theme for Highcharts
 const darkTheme = {
