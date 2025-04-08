@@ -65,7 +65,10 @@ const PayNowPage = () => {
       }
       
       const { data, error: checkoutError } = await supabase.functions.invoke('create-checkout', {
-        body: { email: paymentEmail, tempPassword }
+        body: { 
+          email: paymentEmail, 
+          tempPassword 
+        }
       });
 
       if (checkoutError) {

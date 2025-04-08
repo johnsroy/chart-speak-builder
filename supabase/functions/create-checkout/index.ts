@@ -236,7 +236,7 @@ serve(async (req) => {
       }
     }
 
-    // Create a price on the fly
+    // Create a price on the fly - FIX THE PRODUCT DATA FORMAT
     try {
       const price = await stripe.prices.create({
         currency: 'usd',
@@ -245,8 +245,7 @@ serve(async (req) => {
           interval: 'month',
         },
         product_data: {
-          name: 'GenBI Premium Subscription',
-          description: 'Monthly subscription to GenBI Premium features',
+          name: 'GenBI Premium Subscription'
         },
       });
 
