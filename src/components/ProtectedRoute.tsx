@@ -1,6 +1,6 @@
 
-import React, { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { ReactNode, useEffect } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from "sonner";
 
@@ -10,7 +10,17 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, isAdmin } = useAuth();
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    console.log("ProtectedRoute - Auth state:", { 
+      isAuthenticated, 
+      isLoading, 
+      userEmail: user?.email,
+      isAdmin 
+    });
+  }, [isAuthenticated, isLoading, user, isAdmin]);
   
   if (isLoading) {
     return (
@@ -28,7 +38,7 @@ const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps)
     return <Navigate to="/login" replace />;
   }
   
-  if (requireAdmin && user?.role !== 'admin') {
+  if (requireAdmin && !isAdmin) {
     toast.error("Admin permission required");
     return <Navigate to="/" replace />;
   }

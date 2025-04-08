@@ -41,12 +41,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log("User signed in:", session.user.email);
         setUser(session.user);
         setSession(session);
-        fetchUserSubscription(session.user.id).then(sub => {
-          if (sub) {
-            console.log("User subscription loaded:", sub.isPremium ? "Premium" : "Free");
-            setSubscription(sub);
-          }
-        });
+        // Use setTimeout to avoid potential Supabase deadlocks when fetching additional data
+        setTimeout(() => {
+          fetchUserSubscription(session.user.id).then(sub => {
+            if (sub) {
+              console.log("User subscription loaded:", sub.isPremium ? "Premium" : "Free");
+              setSubscription(sub);
+            }
+          });
+        }, 0);
       } else if (event === 'SIGNED_OUT') {
         console.log("User signed out");
         setUser(null);

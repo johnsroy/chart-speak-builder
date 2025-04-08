@@ -26,7 +26,7 @@ import Upload from './pages/Upload';
 import { Helmet } from 'react-helmet';
 
 function AppContent() {
-  const { isLoading, isAdmin } = useAuth();
+  const { isLoading, isAdmin, isAuthenticated } = useAuth();
   
   if (isLoading) {
     return (

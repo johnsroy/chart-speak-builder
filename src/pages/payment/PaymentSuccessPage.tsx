@@ -77,6 +77,11 @@ const PaymentSuccessPage = () => {
             if (result.success) {
               toast.success("Logged in as admin");
               setProcessingComplete(true);
+              
+              // Add a small delay to ensure auth state is updated before redirect
+              setTimeout(() => {
+                navigate('/dashboard', { replace: true });
+              }, 500);
             } else {
               toast.error("Admin auto-login failed");
               console.error("Admin login failed:", result.error);
@@ -97,18 +102,26 @@ const PaymentSuccessPage = () => {
         // User is already logged in
         setProcessingComplete(true);
         toast.success("Payment successful! Your premium features are now active.");
+        
+        // Add a small delay to ensure auth state is updated before redirect
+        setTimeout(() => {
+          navigate('/dashboard', { replace: true });
+        }, 500);
       }
     };
     
     autoLogin();
-  }, [email, user, login, loginAttempted]);
+  }, [email, user, login, loginAttempted, navigate]);
 
   const handleDashboardRedirect = () => {
     if (user) {
-      navigate('/upload'); // Redirect to the upload page if logged in
+      navigate('/dashboard', { replace: true }); // Use replace to prevent back button issues
     } else {
       // If auto-login failed, direct them to login page with their email prefilled
-      navigate(`/login?email=${encodeURIComponent(email || '')}`);
+      navigate(`/login?email=${encodeURIComponent(email || '')}`, { 
+        replace: true,
+        state: { fromPayment: true } 
+      });
     }
   };
 

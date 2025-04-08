@@ -32,10 +32,11 @@ const LoginPage = () => {
     }
   }, [location]);
 
-  // Redirect authenticated users
+  // Redirect authenticated users to dashboard
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard');
+      console.log("User is authenticated, redirecting to dashboard");
+      navigate('/dashboard', { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -56,6 +57,9 @@ const LoginPage = () => {
         if (location.state?.fromPayment) {
           toast.success('Your premium features are now active!');
         }
+        
+        // Navigate to dashboard after successful login
+        navigate('/dashboard', { replace: true });
       }
     } catch (error: any) {
       console.error('Login error:', error);
@@ -77,6 +81,8 @@ const LoginPage = () => {
         toast.error('Admin login failed');
       } else {
         toast.success('Logged in as admin');
+        // Navigate to dashboard after successful admin login
+        navigate('/dashboard', { replace: true });
       }
     } catch (error: any) {
       console.error('Admin login error:', error);
