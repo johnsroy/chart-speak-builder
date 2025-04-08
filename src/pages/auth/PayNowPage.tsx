@@ -38,19 +38,24 @@ const PayNowPage = () => {
         body: { email, tempPassword }
       });
 
-      if (checkoutError || !data?.url) {
-        console.error("Checkout error:", checkoutError || "No URL returned");
+      if (checkoutError) {
+        console.error("Checkout error:", checkoutError);
         setError(checkoutError?.message || 'Failed to create payment session');
-        toast.error('Payment setup failed');
+        toast.error('Payment setup failed. Please try again.');
+      } else if (!data?.url) {
+        console.error("No URL returned");
+        setError('Failed to create payment session. No checkout URL returned.');
+        toast.error('Payment setup failed. Please try again.');
       } else {
         console.log("Redirecting to payment page");
+        toast.info('Redirecting to Stripe...');
         // Redirect to Stripe checkout
         window.location.href = data.url;
       }
     } catch (error: any) {
       console.error("Payment error:", error);
       setError(error.message || 'An unexpected error occurred');
-      toast.error('Payment setup failed');
+      toast.error('Payment setup failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

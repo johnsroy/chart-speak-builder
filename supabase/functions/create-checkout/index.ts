@@ -8,9 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Create a price ID for $50/month
-const PRICE_ID = "price_1OvBCIKLaKlEjRbOOVQaBB1w"; // This should be your actual Stripe price ID
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -159,12 +156,27 @@ serve(async (req) => {
       }
     }
 
-    // Create the checkout session
+    // Create a price on the fly
+    const price = await stripe.prices.create({
+      currency: 'usd',
+      unit_amount: 5000, // $50.00
+      recurring: {
+        interval: 'month',
+      },
+      product_data: {
+        name: 'GenBI Premium Subscription',
+        description: 'Monthly subscription to GenBI Premium features',
+      },
+    });
+
+    console.log("Created price:", price.id);
+
+    // Create the checkout session using the newly created price
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       line_items: [
         {
-          price: PRICE_ID,
+          price: price.id,
           quantity: 1,
         },
       ],
