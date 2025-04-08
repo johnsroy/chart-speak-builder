@@ -49,7 +49,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setSubscription(sub);
             } else {
               // If no subscription found, create a default subscription object
-              // This ensures all users can use features without being admin
               console.log("No subscription found, creating default subscription");
               setSubscription({
                 userId: session.user.id,
@@ -59,6 +58,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 isPremium: false,
                 stripeCustomerId: null,
                 stripeSubscriptionId: null,
+                datasetsUsed: 0,
+                queriesUsed: 0,
+                datasetQuota: 5,
+                queryQuota: 100,
                 features: {
                   maxDatasets: 5,
                   maxQueries: 100,
@@ -79,6 +82,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               isPremium: false,
               stripeCustomerId: null,
               stripeSubscriptionId: null,
+              datasetsUsed: 0,
+              queriesUsed: 0,
+              datasetQuota: 5,
+              queryQuota: 100,
               features: {
                 maxDatasets: 5,
                 maxQueries: 100,
@@ -125,6 +132,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               isPremium: false,
               stripeCustomerId: null,
               stripeSubscriptionId: null,
+              datasetsUsed: 0,
+              queriesUsed: 0,
+              datasetQuota: 5,
+              queryQuota: 100,
               features: {
                 maxDatasets: 5,
                 maxQueries: 100,
@@ -145,6 +156,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             isPremium: false,
             stripeCustomerId: null,
             stripeSubscriptionId: null,
+            datasetsUsed: 0,
+            queriesUsed: 0,
+            datasetQuota: 5,
+            queryQuota: 100,
             features: {
               maxDatasets: 5,
               maxQueries: 100,
@@ -172,7 +187,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logoutUser = async () => {
-    return authLogout();
+    await authLogout();
+    return Promise.resolve();
   };
 
   const resendConfirmation = async (email: string) => {

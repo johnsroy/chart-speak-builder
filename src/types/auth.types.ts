@@ -9,7 +9,7 @@ export interface AuthContextProps {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  canUseAIFeatures: boolean; // Added this property
+  canUseAIFeatures: boolean;
   login: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
   signup: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
   register: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
