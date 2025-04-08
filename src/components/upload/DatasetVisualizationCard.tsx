@@ -18,6 +18,7 @@ import DataTable from '@/components/DataTable';
 import { dataService } from '@/services/dataService';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ChartType, getSuitableChartTypes, getChartTypeName } from '@/utils/chartSuggestionUtils';
+import { queryService } from '@/services/queryService';
 
 export interface DatasetVisualizationCardProps {
   datasetId?: string;
@@ -96,12 +97,23 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     
     try {
       console.log("Loading dataset preview for ID:", datasetId);
+      
+      const loadedData = await queryService.loadDataset(datasetId);
+      
+      if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
+        console.log(`Successfully loaded ${loadedData.length} rows using queryService.loadDataset`);
+        setDataPreview(loadedData);
+        setPreviewLoading(false);
+        return;
+      }
+      
       const data = await dataService.previewDataset(datasetId);
       
       if (!data || !Array.isArray(data) || data.length === 0) {
         throw new Error('No preview data available');
       }
       
+      console.log(`Loaded ${data.length} rows with dataService.previewDataset`);
       setDataPreview(data);
     } catch (error) {
       console.error('Error loading data preview:', error);

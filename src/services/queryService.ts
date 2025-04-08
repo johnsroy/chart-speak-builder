@@ -1,6 +1,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
+import { toast } from 'sonner';
 
 export interface QueryConfig {
   datasetId: string;
@@ -37,42 +38,142 @@ export const queryService = {
     try {
       console.log("Executing query with config:", config);
       
-      // Always try to get full dataset first if not provided
-      if (!config.dataPreview || !Array.isArray(config.dataPreview) || config.dataPreview.length < 100) {
-        console.log("No sufficient data preview provided, attempting to get full dataset");
+      // Try multiple approaches to get the full dataset
+      let fullData: any[] | null = null;
+      let dataLoadingMethod = '';
+      
+      // Approach 1: Use provided preview data if it's substantial
+      if (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length >= 100) {
+        console.log(`Using provided preview data with ${config.dataPreview.length} rows`);
+        fullData = config.dataPreview;
+        dataLoadingMethod = 'preview';
+      } 
+      
+      // Approach 2: Try to get data from dataset_data table
+      if (!fullData || fullData.length < 100) {
         try {
-          const { data: fullData, error } = await supabase
+          console.log("Attempting to get full dataset from dataset_data table");
+          const { data: tableData, error } = await supabase
             .from('dataset_data')
             .select('*')
             .eq('dataset_id', config.datasetId)
             .limit(10000);
             
-          if (!error && fullData && Array.isArray(fullData) && fullData.length > 0) {
-            console.log(`Successfully loaded ${fullData.length} rows for processing`);
-            config.dataPreview = fullData;
-            config.useDirectAccess = true;
+          if (!error && tableData && Array.isArray(tableData) && tableData.length > 0) {
+            console.log(`Successfully loaded ${tableData.length} rows from dataset_data table`);
+            fullData = tableData;
+            dataLoadingMethod = 'database';
+          } else if (error) {
+            console.log("Error fetching from dataset_data table:", error.message);
           }
         } catch (err) {
-          console.error("Error fetching full dataset:", err);
+          console.error("Exception when accessing dataset_data:", err);
         }
       }
       
-      // Check if we should use direct data access
-      if ((config.useDirectAccess && config.dataPreview && Array.isArray(config.dataPreview)) || 
-          (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0)) {
-        console.log("Using direct data access for query execution with", config.dataPreview.length, "rows");
+      // Approach 3: Try to get data directly from storage
+      if (!fullData || fullData.length < 100) {
+        try {
+          console.log("Attempting to load dataset from storage");
+          
+          // Get dataset info to find storage path
+          const { data: dataset, error: datasetError } = await supabase
+            .from('datasets')
+            .select('*')
+            .eq('id', config.datasetId)
+            .single();
+            
+          if (datasetError) {
+            console.error("Error getting dataset info:", datasetError);
+          } else if (dataset && dataset.storage_path) {
+            // Try to download the file from storage
+            const { data: fileData, error: storageError } = await supabase
+              .storage
+              .from(dataset.storage_type || 'datasets')
+              .download(dataset.storage_path);
+              
+            if (storageError) {
+              console.error("Error downloading dataset file:", storageError);
+            } else {
+              // Parse CSV content
+              const text = await fileData.text();
+              const rows = text.split('\n');
+              const headers = rows[0].split(',').map(h => h.trim());
+              
+              const parsedData = [];
+              const maxRows = Math.min(rows.length, 10000); // Limit to 10,000 rows for performance
+              
+              for (let i = 1; i < maxRows; i++) {
+                if (!rows[i].trim()) continue;
+                
+                const values = rows[i].split(',');
+                const row: any = {};
+                
+                headers.forEach((header, index) => {
+                  row[header] = values[index]?.trim() || '';
+                });
+                
+                parsedData.push(row);
+              }
+              
+              console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
+              fullData = parsedData;
+              dataLoadingMethod = 'storage';
+            }
+          }
+        } catch (storageErr) {
+          console.error("Error loading from storage:", storageErr);
+        }
+      }
+      
+      // Approach 4: Fallback to session/local storage if we saved data there previously
+      if (!fullData || fullData.length < 100) {
+        try {
+          console.log("Checking session storage for dataset cache");
+          const sessionKey = `dataset_${config.datasetId}`;
+          const cachedData = sessionStorage.getItem(sessionKey);
+          
+          if (cachedData) {
+            const parsedCache = JSON.parse(cachedData);
+            if (Array.isArray(parsedCache) && parsedCache.length > 0) {
+              console.log(`Found ${parsedCache.length} rows in session storage cache`);
+              fullData = parsedCache;
+              dataLoadingMethod = 'cache';
+            }
+          }
+        } catch (cacheErr) {
+          console.error("Error accessing cache:", cacheErr);
+        }
+      }
+      
+      // If we have the full dataset now, assign it to config.dataPreview and enable direct access
+      if (fullData && fullData.length > 0) {
+        config.dataPreview = fullData;
+        config.useDirectAccess = true;
+        
+        // Try to cache the data for future use
+        try {
+          const sessionKey = `dataset_${config.datasetId}`;
+          sessionStorage.setItem(sessionKey, JSON.stringify(fullData.slice(0, 1000))); // Store up to 1000 rows
+          console.log("Dataset cached in session storage for future use");
+        } catch (cacheErr) {
+          console.warn("Could not cache dataset:", cacheErr);
+        }
+        
+        console.log(`Using direct data access with ${fullData.length} rows (source: ${dataLoadingMethod})`);
         return processQueryLocally(config);
       }
       
-      // Otherwise use the edge function
-      console.log("Using edge function for query execution");
+      // If we still have no data, try using the edge function
+      console.log("Unable to access full dataset directly, using edge function");
       const response = await supabase.functions.invoke('transform', {
         body: { config },
       });
 
       if (response.error) {
         console.log("Error from transform function:", response.error);
-        // If the transform function fails, try processing locally
+        
+        // If the transform function fails and we have some preview data, use that
         if (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0) {
           console.log("Falling back to local processing after edge function failure");
           return processQueryLocally(config);
@@ -91,7 +192,7 @@ export const queryService = {
         }
       }
       
-      console.log("Query executed successfully:", result);
+      console.log("Query executed successfully via edge function:", result);
       
       // Add property aliases for consistency
       if (result.x_axis && !result.xAxis) {
@@ -123,6 +224,135 @@ export const queryService = {
         xAxis: 'Category',
         yAxis: 'Value'
       };
+    }
+  },
+  
+  /**
+   * Load dataset directly without executing a query
+   * @param datasetId The dataset ID to load
+   * @returns Promise resolving to the dataset data or null if not found
+   */
+  loadDataset: async (datasetId: string): Promise<any[] | null> => {
+    try {
+      console.log(`Loading dataset ${datasetId} directly`);
+      
+      // Try multiple approaches to get the full dataset
+      let fullData: any[] | null = null;
+      
+      // Approach 1: Try to get data from dataset_data table
+      try {
+        console.log("Attempting to get dataset from dataset_data table");
+        const { data: tableData, error } = await supabase
+          .from('dataset_data')
+          .select('*')
+          .eq('dataset_id', datasetId)
+          .limit(10000);
+          
+        if (!error && tableData && Array.isArray(tableData) && tableData.length > 0) {
+          console.log(`Successfully loaded ${tableData.length} rows from dataset_data table`);
+          fullData = tableData;
+          
+          // Cache the result for future use
+          try {
+            sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(tableData.slice(0, 1000)));
+          } catch (e) {
+            console.warn("Could not cache dataset in session storage", e);
+          }
+          
+          return fullData;
+        } else if (error) {
+          console.log("Error fetching from dataset_data table:", error.message);
+        }
+      } catch (err) {
+        console.error("Exception when accessing dataset_data:", err);
+      }
+      
+      // Approach 2: Try to get data directly from storage
+      try {
+        console.log("Attempting to load dataset from storage");
+        
+        // Get dataset info to find storage path
+        const { data: dataset, error: datasetError } = await supabase
+          .from('datasets')
+          .select('*')
+          .eq('id', datasetId)
+          .single();
+          
+        if (datasetError) {
+          console.error("Error getting dataset info:", datasetError);
+        } else if (dataset && dataset.storage_path) {
+          // Try to download the file from storage
+          const { data: fileData, error: storageError } = await supabase
+            .storage
+            .from(dataset.storage_type || 'datasets')
+            .download(dataset.storage_path);
+            
+          if (storageError) {
+            console.error("Error downloading dataset file:", storageError);
+          } else {
+            // Parse CSV content
+            const text = await fileData.text();
+            const rows = text.split('\n');
+            const headers = rows[0].split(',').map(h => h.trim());
+            
+            const parsedData = [];
+            const maxRows = Math.min(rows.length, 10000); // Limit to 10,000 rows for performance
+            
+            for (let i = 1; i < maxRows; i++) {
+              if (!rows[i].trim()) continue;
+              
+              const values = rows[i].split(',');
+              const row: any = {};
+              
+              headers.forEach((header, index) => {
+                row[header] = values[index]?.trim() || '';
+              });
+              
+              parsedData.push(row);
+            }
+            
+            console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
+            fullData = parsedData;
+            
+            // Cache the result for future use
+            try {
+              sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsedData.slice(0, 1000)));
+            } catch (e) {
+              console.warn("Could not cache dataset in session storage", e);
+            }
+            
+            return parsedData;
+          }
+        }
+      } catch (storageErr) {
+        console.error("Error loading from storage:", storageErr);
+      }
+      
+      // Approach 3: Check session/local storage if we saved data there previously
+      try {
+        console.log("Checking session storage for dataset cache");
+        const sessionKey = `dataset_${datasetId}`;
+        const cachedData = sessionStorage.getItem(sessionKey);
+        
+        if (cachedData) {
+          const parsedCache = JSON.parse(cachedData);
+          if (Array.isArray(parsedCache) && parsedCache.length > 0) {
+            console.log(`Found ${parsedCache.length} rows in session storage cache`);
+            return parsedCache;
+          }
+        }
+      } catch (cacheErr) {
+        console.error("Error accessing cache:", cacheErr);
+      }
+      
+      console.log("Could not load dataset from any source");
+      return null;
+    } catch (error) {
+      console.error("Error loading dataset:", error);
+      toast.error("Could not load dataset data", {
+        description: error instanceof Error ? error.message : 'Unknown error'
+      });
+      return null;
     }
   },
   

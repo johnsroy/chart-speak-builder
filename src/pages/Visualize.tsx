@@ -128,21 +128,33 @@ const Visualize = () => {
     try {
       console.log("Loading full dataset for ID:", datasetId);
       
-      const { data: fullData, error: fullDataError } = await supabase
-        .from('dataset_data')
-        .select('*')
-        .eq('dataset_id', datasetId)
-        .limit(5000);
+      const loadedData = await queryService.loadDataset(datasetId);
       
-      if (fullDataError) {
-        console.error('Error loading full dataset:', fullDataError);
-        throw new Error(fullDataError.message);
+      if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
+        console.log(`Successfully loaded ${loadedData.length} rows using queryService.loadDataset`);
+        setDataPreview(loadedData);
+        return;
       }
       
-      if (fullData && Array.isArray(fullData) && fullData.length > 0) {
-        console.log(`Successfully loaded ${fullData.length} rows from dataset`);
-        setDataPreview(fullData);
-        return;
+      try {
+        const { data: fullData, error: fullDataError } = await supabase
+          .from('dataset_data')
+          .select('*')
+          .eq('dataset_id', datasetId)
+          .limit(5000);
+        
+        if (fullDataError) {
+          console.error('Error loading full dataset:', fullDataError);
+          throw new Error(fullDataError.message);
+        }
+        
+        if (fullData && Array.isArray(fullData) && fullData.length > 0) {
+          console.log(`Successfully loaded ${fullData.length} rows from dataset`);
+          setDataPreview(fullData);
+          return;
+        }
+      } catch (dbErr) {
+        console.error("Database fetch error:", dbErr);
       }
       
       console.log("No data found in dataset_data table, falling back to preview method");
@@ -157,6 +169,56 @@ const Visualize = () => {
     } catch (error) {
       console.error('Error loading data preview:', error);
       setPreviewError('Failed to load data preview');
+      
+      try {
+        console.log("Retrying data preview with fallback approach");
+        
+        const dataset = await dataService.getDataset(datasetId);
+        
+        if (dataset?.storage_path && dataset?.storage_type) {
+          console.log("Attempting to load data from storage path:", dataset.storage_path);
+          
+          try {
+            const { data: fileData, error: storageError } = await supabase.storage
+              .from(dataset.storage_type)
+              .download(dataset.storage_path);
+              
+            if (storageError) {
+              console.error("Storage error:", storageError);
+              throw storageError;
+            }
+            
+            const text = await fileData.text();
+            const rows = text.split('\n');
+            const headers = rows[0].split(',').map(h => h.trim());
+            
+            const parsedData = [];
+            const maxRows = Math.min(rows.length, 5000); // Limit to 5000 rows for performance
+            
+            for (let i = 1; i < maxRows; i++) {
+              if (!rows[i].trim()) continue;
+              
+              const values = rows[i].split(',');
+              const row: any = {};
+              
+              headers.forEach((header, index) => {
+                row[header] = values[index]?.trim() || '';
+              });
+              
+              parsedData.push(row);
+            }
+            
+            console.log(`Successfully parsed ${parsedData.length} rows from storage`);
+            setDataPreview(parsedData);
+            setPreviewError(null);
+            return;
+          } catch (fileErr) {
+            console.error("Error processing file from storage:", fileErr);
+          }
+        }
+      } catch (fallbackErr) {
+        console.error("Error in storage fallback:", fallbackErr);
+      }
       
       setTimeout(async () => {
         try {

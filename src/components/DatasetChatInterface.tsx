@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { nlpService } from '@/services/nlpService';
 import { dataService } from '@/services/dataService';
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from '@/services/types/queryTypes';
+import { queryService } from '@/services/queryService';
 
 import ModelSelector from './chat/ModelSelector';
 import ChatContainer from './chat/ChatContainer';
@@ -95,9 +95,19 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     try {
       console.log("Fetching full dataset for analysis");
       
-      // Try to load from the dataset_data table first
+      // Use the new loadDataset method from queryService
+      const loadedData = await queryService.loadDataset(datasetId);
+      
+      if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
+        console.log(`Successfully loaded ${loadedData.length} rows using queryService`);
+        setFullDataset(loadedData);
+        setLoadingDataset(false);
+        return;
+      }
+      
+      // If that failed, try the original method
       try {
-        console.log("Attempting to fetch from dataset_data table");
+        console.log("Attempting to fetch from dataset_data table with original method");
         const { data, error } = await supabase
           .from('dataset_data')
           .select('*')
