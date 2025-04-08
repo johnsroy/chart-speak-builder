@@ -1,6 +1,8 @@
+
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
+import { UserSubscription } from '@/models/UserSubscription';
 
 interface AuthContextProps {
   user: User | null;
@@ -13,6 +15,7 @@ interface AuthContextProps {
   isAdmin: boolean;
   register: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   session: Session | null;
+  subscription: UserSubscription | null;
 }
 
 interface AuthProviderProps {
@@ -33,15 +36,43 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [subscription, setSubscription] = useState<UserSubscription | null>(null);
+
+  // Fetch user subscription data
+  const fetchSubscriptionData = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('*')
+        .eq('userId', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching subscription:', error);
+        return;
+      }
+
+      if (data) {
+        setSubscription({
+          ...data,
+          trialEndDate: data.trialEndDate ? new Date(data.trialEndDate) : null
+        });
+      }
+    } catch (error) {
+      console.error('Error in subscription handling:', error);
+    }
+  };
 
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
         setSession(session);
+        fetchSubscriptionData(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setSession(null);
+        setSubscription(null);
       }
       setIsLoading(false);
     });
@@ -50,6 +81,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (session?.user) {
         setUser(session.user);
         setSession(session);
+        fetchSubscriptionData(session.user.id);
       }
       setIsLoading(false);
     });
@@ -143,7 +175,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       isAuthenticated,
       isAdmin,
       register,
-      session
+      session,
+      subscription
     }}>
       {children}
     </AuthContext.Provider>
