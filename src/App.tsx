@@ -52,6 +52,10 @@ function AppContent() {
           <Route path="/pay-now" element={<PayNowPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           
+          {/* Payment response routes - don't need authentication */}
+          <Route path="/payment-success" element={<PaymentSuccessPage />} />
+          <Route path="/payment-cancelled" element={<PaymentCanceledPage />} />
+          
           {/* Protected routes - require authentication */}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
@@ -65,8 +69,6 @@ function AppContent() {
           {/* Account & payment routes */}
           <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          <Route path="/payment-success" element={<ProtectedRoute><PaymentSuccessPage /></ProtectedRoute>} />
-          <Route path="/payment-cancelled" element={<ProtectedRoute><PaymentCanceledPage /></ProtectedRoute>} />
           
           {/* Admin route */}
           {isAdmin && <Route path="/test" element={<ProtectedRoute requireAdmin={true}><TestAnalysisTools /></ProtectedRoute>} />}
