@@ -31,23 +31,6 @@ const initializeApp = async () => {
           
           if (result && result.success) {
             console.log("Successfully created storage buckets via edge function");
-            
-            // Set up admin user now that storage is ready
-            try {
-              const { authService } = await import('@/services/authService');
-              await authService.setupAdminUser().catch(err => {
-                console.warn("Admin user setup had an issue, but continuing:", err.message);
-              });
-              
-              // Check and log the current session
-              const { data: { session } } = await supabase.auth.getSession();
-              console.log("Current session after setup:", session ? "Present" : "Not present");
-              
-              return;
-            } catch (authError) {
-              console.warn("Error setting up admin user, but continuing:", authError);
-            }
-            
             return;
           }
         } catch (edgeFunctionError) {
@@ -82,10 +65,20 @@ const initializeApp = async () => {
       
       // Try to set up admin user regardless of storage setup
       try {
-        const { authService } = await import('@/services/authService');
-        await authService.setupAdminUser().catch(err => {
-          console.warn("Admin user setup had an issue, but continuing:", err.message);
+        // Try to call the admin-setup function
+        const response = await fetch(`https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`
+          }
         });
+
+        if (response.ok) {
+          console.log("Admin user setup successful");
+        } else {
+          console.warn("Admin user setup had an issue, but continuing");
+        }
         
         // Check and log the current session
         const { data: { session } } = await supabase.auth.getSession();

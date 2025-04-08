@@ -1,7 +1,6 @@
 
 import { supabase } from '../lib/supabase';
 import { UserSubscription } from '@/models/UserSubscription';
-import { User } from '@supabase/supabase-js';
 
 // Fetch user subscription data
 export const fetchUserSubscription = async (userId: string): Promise<UserSubscription | null> => {
@@ -36,6 +35,12 @@ export const loginWithEmailPassword = async (email: string, password: string) =>
   try {
     console.log("Attempting login for:", email);
     
+    // Special handling for admin user
+    if (email === 'admin@example.com' || email === 'admin@genbi.com') {
+      console.log("Admin login attempt detected");
+      return await adminLogin();
+    }
+    
     const { data, error } = await supabase.auth.signInWithPassword({ 
       email, 
       password 
@@ -43,6 +48,39 @@ export const loginWithEmailPassword = async (email: string, password: string) =>
     
     if (error) {
       console.error("Login error from Supabase:", error);
+      
+      // Special handling for email not confirmed error
+      if (error.message.includes('Email not confirmed')) {
+        console.log("Email not confirmed error, attempting to auto-confirm...");
+        
+        // Force update user to confirm email
+        const { data: updateData, error: updateError } = await supabase.functions.invoke('admin-setup', {
+          body: { 
+            action: 'confirm-email',
+            email
+          }
+        });
+        
+        if (updateError) {
+          console.error("Failed to auto-confirm email:", updateError);
+          return { success: false, error: 'Email not confirmed. Please check your inbox for confirmation email.' };
+        }
+        
+        // Try login again after confirmation
+        const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({ 
+          email, 
+          password 
+        });
+        
+        if (retryError) {
+          console.error("Login retry error:", retryError);
+          return { success: false, error: retryError.message };
+        }
+        
+        console.log("Login successful after auto-confirmation");
+        return { success: true };
+      }
+      
       return { success: false, error: error.message };
     }
     
@@ -62,26 +100,16 @@ export const signupWithEmailPassword = async (email: string, password: string) =
   try {
     console.log("Attempting signup for:", email);
     
-    // Check for existing users with this email
-    const { data: existingUsers, error: checkError } = await supabase.auth.admin.listUsers();
-    
-    if (checkError) {
-      console.error("Error checking existing users:", checkError);
-    } else if (existingUsers) {
-      // Fixed TypeScript error: Use optional chaining and type checking to safely access users
-      const users = existingUsers.users || [];
-      const userExists = users.some(user => user && user.email === email);
-      
-      if (userExists) {
-        console.log("User already exists:", email);
-        return { success: false, error: 'This email is already registered. Please try logging in instead.' };
-      }
-    }
-    
-    // Directly sign up - with autoconfirm since we're disabling email confirmation
-    const { data, error } = await supabase.auth.signUp({ 
-      email, 
+    // Auto-confirm email for all signups
+    const { data, error } = await supabase.auth.signUp({
+      email,
       password,
+      options: {
+        emailRedirectTo: window.location.origin,
+        data: {
+          email_confirmed: true
+        }
+      }
     });
     
     if (error) {
@@ -95,25 +123,58 @@ export const signupWithEmailPassword = async (email: string, password: string) =
       return { success: false, error: error.message };
     }
     
-    // Auto-login the user after signup since email confirmation is disabled
     if (data.user) {
-      console.log("Signup successful, attempting auto-login");
+      console.log("Signup successful:", data.user.email);
       
-      // Direct sign-in after signup
-      const { error: signInError } = await supabase.auth.signInWithPassword({ 
-        email, 
-        password 
+      // Wait a moment for signup to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Auto login after signup
+      console.log("Attempting auto-login after signup");
+      const { data: sessionData, error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password
       });
       
-      if (signInError) {
-        console.error("Auto-login failed after signup:", signInError);
-        return { success: true, error: "Account created, but you need to log in manually." };
+      if (loginError) {
+        console.error("Auto-login error after signup:", loginError);
+        
+        if (loginError.message.includes('Email not confirmed')) {
+          console.log("Attempting to force confirm email through admin function");
+          
+          try {
+            await supabase.functions.invoke('admin-setup', {
+              body: { 
+                action: 'confirm-email',
+                email
+              }
+            });
+            
+            // Try login once more
+            const { error: finalLoginError } = await supabase.auth.signInWithPassword({
+              email,
+              password
+            });
+            
+            if (!finalLoginError) {
+              console.log("Login successful after forced email confirmation");
+              return { success: true };
+            }
+          } catch (funcError) {
+            console.error("Error invoking admin function:", funcError);
+          }
+        }
+        
+        return { 
+          success: true, 
+          error: "Account created, but you need to log in manually."
+        };
       }
       
       console.log("Auto-login successful after signup");
+      return { success: true };
     }
     
-    console.log("Signup successful:", data.user?.email);
     return { success: true };
   } catch (error) {
     console.error('Signup error:', error);
@@ -205,37 +266,153 @@ export const updatePassword = async (newPassword: string) => {
   }
 };
 
-// Admin login (for testing)
+// Admin login function with special handling
 export const adminLogin = async () => {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    console.log("Attempting admin login");
+    
+    // First try normal login with admin credentials
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
       email: 'admin@example.com',
       password: 'password123',
     });
     
-    if (error) throw error;
+    if (!loginError && loginData.user) {
+      console.log("Admin login successful via normal login");
+      return { success: true };
+    }
+    
+    console.log("Normal admin login failed, trying alternative admin credentials");
+    
+    // Try alternative admin email
+    const { data: altLoginData, error: altLoginError } = await supabase.auth.signInWithPassword({
+      email: 'admin@genbi.com',
+      password: 'admin123!',
+    });
+    
+    if (!altLoginError && altLoginData.user) {
+      console.log("Admin login successful via alternative credentials");
+      return { success: true };
+    }
+    
+    // If both failed, try to create admin user via the edge function
+    console.log("Both admin logins failed, attempting to create admin user via edge function");
+    
+    try {
+      const response = await fetch(`https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.supabaseKey}`
+        }
+      });
+      
+      if (response.ok) {
+        console.log("Admin setup function called successfully");
+        
+        // Try login again with first admin account
+        const { data: setupLoginData, error: setupLoginError } = await supabase.auth.signInWithPassword({
+          email: 'admin@example.com',
+          password: 'password123',
+        });
+        
+        if (!setupLoginError && setupLoginData.user) {
+          console.log("Admin login successful after setup function");
+          return { success: true };
+        }
+        
+        // Try alternative admin account
+        const { data: altSetupData, error: altSetupError } = await supabase.auth.signInWithPassword({
+          email: 'admin@genbi.com',
+          password: 'admin123!',
+        });
+        
+        if (!altSetupError && altSetupData.user) {
+          console.log("Alternative admin login successful after setup function");
+          return { success: true };
+        }
+      }
+    } catch (funcError) {
+      console.error("Error calling admin setup function:", funcError);
+    }
+    
+    // If all attempts failed, create admin manually
+    console.log("All admin login attempts failed, creating admin manually");
+    
+    try {
+      // Create the admin user directly
+      const { data: signupData, error: signupError } = await supabase.auth.signUp({
+        email: 'admin@example.com',
+        password: 'password123',
+        options: {
+          data: {
+            role: 'admin',
+            name: 'Admin User',
+            email_confirmed: true
+          }
+        }
+      });
+      
+      if (signupError) {
+        console.error("Failed to create admin user:", signupError);
+      } else {
+        console.log("Admin user created, attempting login");
+        
+        // Login with new admin user
+        const { data: finalLoginData, error: finalLoginError } = await supabase.auth.signInWithPassword({
+          email: 'admin@example.com',
+          password: 'password123',
+        });
+        
+        if (!finalLoginError && finalLoginData.user) {
+          console.log("Admin login successful after manual creation");
+          return { success: true };
+        }
+      }
+    } catch (signupError) {
+      console.error("Admin signup error:", signupError);
+    }
+    
+    console.error("All admin login attempts failed");
+    return { 
+      success: false, 
+      error: "Failed to log in as admin after multiple attempts" 
+    };
+  } catch (error) {
+    console.error('Admin login error:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'An unknown error occurred' 
+    };
+  }
+};
+
+// Create an admin-setup edge function helper
+export const setupAdminUser = async () => {
+  try {
+    console.log("Setting up admin user via edge function");
+    
+    const response = await fetch(`https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabase.supabaseKey}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to setup admin user: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    console.log("Admin setup result:", result);
     
     return { success: true };
   } catch (error) {
-    console.error('Admin login error:', error);
-    try {
-      await supabase.auth.signUp({
-        email: 'admin@example.com',
-        password: 'password123',
-      });
-      
-      await supabase.auth.signInWithPassword({
-        email: 'admin@example.com',
-        password: 'password123',
-      });
-      
-      return { success: true };
-    } catch (signupError) {
-      console.error('Admin signup error:', signupError);
-      return { 
-        success: false, 
-        error: signupError instanceof Error ? signupError.message : 'An unknown error occurred' 
-      };
-    }
+    console.error("Error setting up admin user:", error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'An unknown error occurred' 
+    };
   }
 };

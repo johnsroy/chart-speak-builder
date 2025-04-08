@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, LogIn, Mail, Lock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Loader2, LogIn, Mail, Lock, AlertTriangle, User } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const LoginPage = () => {
@@ -71,6 +71,35 @@ const LoginPage = () => {
       console.error('Login error:', error);
       setError(error.message || 'Failed to log in');
       toast.error('Login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAdminLogin = async () => {
+    setEmail('admin@example.com');
+    setPassword('password123');
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log("Admin login clicked, submitting with admin credentials");
+      const result = await login('admin@example.com', 'password123');
+      
+      if (result.success) {
+        console.log("Admin login success, redirecting to dashboard");
+        toast.success('Welcome, Admin!');
+        navigate('/dashboard');
+      } else if (result.error) {
+        console.error("Admin login error:", result.error);
+        setError(`Admin login failed: ${result.error}`);
+        toast.error('Admin login failed');
+      }
+    } catch (error: any) {
+      console.error('Admin login error:', error);
+      setError(error.message || 'Failed to log in as admin');
+      toast.error('Admin login failed');
     } finally {
       setIsLoading(false);
     }
@@ -183,12 +212,23 @@ const LoginPage = () => {
                 )}
               </Button>
               
-              <div className="text-center text-sm">
+              <div className="text-center text-sm mb-3">
                 Don't have an account?{" "}
                 <a href="/signup" className="text-purple-300 hover:text-white hover:underline">
                   Sign Up
                 </a>
               </div>
+              
+              <Button
+                type="button"
+                variant="outline" 
+                onClick={handleAdminLogin}
+                className="w-full bg-purple-900/20 border-purple-400/30 hover:bg-purple-800/30"
+                disabled={isLoading}
+              >
+                <User className="mr-2 h-4 w-4" />
+                Sign in as Admin
+              </Button>
             </CardFooter>
           </form>
         </Card>
