@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -32,25 +31,23 @@ const SignupPage = () => {
     setError(null);
 
     try {
+      console.log("Signup form submitted for:", email);
       const result = await signup(email, password);
       
       if (result.success) {
+        console.log("Signup successful, redirecting to dashboard");
         setRegistrationComplete(true);
-        toast.success('Account created! Check your email to confirm registration.');
+        navigate('/dashboard'); // Auto-redirect to dashboard since email confirmation is disabled
+        toast.success('Account created successfully!');
       } else if (result.error) {
-        if (result.error.includes('already registered')) {
-          setError('This email is already registered. Please try logging in instead.');
-          toast.error('Email already registered');
-        } else {
-          setError(result.error);
-          toast.error('Registration failed');
-        }
-        console.error('Registration error:', result.error);
+        console.error("Signup error:", result.error);
+        setError(result.error);
+        toast.error('Registration failed');
       }
     } catch (error: any) {
+      console.error('Registration error:', error);
       setError(error.message || 'Failed to register');
       toast.error('Registration failed');
-      console.error('Registration error:', error);
     } finally {
       setIsLoading(false);
     }

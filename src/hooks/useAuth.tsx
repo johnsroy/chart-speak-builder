@@ -109,11 +109,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error) {
         console.error("Login error from Supabase:", error);
         
-        // Check for email confirmation error
-        if (error.message.includes('Email not confirmed')) {
-          return { success: false, error: 'Email not confirmed. Please check your inbox for a confirmation email.' };
-        }
-        
+        // Don't check for email confirmation since we're disabling it
         return { success: false, error: error.message };
       }
       
@@ -127,30 +123,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signup = async (email: string, password: string) => {
     try {
-      // Check if user already exists
-      const { data: existingUsers, error: checkError } = await supabase
+      console.log("Attempting signup for:", email);
+      
+      // First check if email exists in profiles table
+      const { data: profilesCheck, error: profilesError } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', email);
       
-      if (existingUsers && existingUsers.length > 0) {
+      if (profilesError) {
+        console.error("Error checking profiles:", profilesError);
+      }
+      
+      if (profilesCheck && profilesCheck.length > 0) {
+        console.error("Email already exists in profiles:", email);
         return { success: false, error: 'This email is already registered. Please try logging in instead.' };
       }
       
-      // Check if user exists in auth.users (we can't query directly, but we can try to sign in)
-      const { error: signInError } = await supabase.auth.signInWithPassword({ 
-        email, 
-        password: "dummy-password-for-check"  // We expect this to fail, we're just checking if the account exists
-      });
-      
-      // If we get an invalid credentials error but not a user not found error, the user exists
-      if (signInError && !signInError.message.includes('user not found') && 
-          signInError.message.includes('Invalid login credentials')) {
-        return { success: false, error: 'This email is already registered. Please try logging in instead.' };
-      }
-      
-      console.log("Attempting signup for:", email);
-      
+      // Directly try to sign up without the dummy password check
       const { data, error } = await supabase.auth.signUp({ 
         email, 
         password,
@@ -161,12 +151,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (error) {
         console.error("Signup error from Supabase:", error);
+        
+        // Check if the error is because user already exists
+        if (error.message.includes('already registered')) {
+          return { success: false, error: 'This email is already registered. Please try logging in instead.' };
+        }
+        
         return { success: false, error: error.message };
       }
       
-      // Check if email confirmation is required
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        return { success: false, error: 'This email is already registered. Try logging in instead.' };
+      // Auto-login the user after signup if email confirmation is disabled
+      // Note: In production, this should respect the email confirmation setting
+      if (data.user) {
+        // Try to sign in immediately
+        const { error: signInError } = await supabase.auth.signInWithPassword({ 
+          email, 
+          password 
+        });
+        
+        if (!signInError) {
+          console.log("Auto-login successful after signup");
+        }
       }
       
       console.log("Signup successful:", data.user?.email);

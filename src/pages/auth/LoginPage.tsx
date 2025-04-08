@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -54,18 +53,17 @@ const LoginPage = () => {
     setError(null);
 
     try {
+      console.log("Login form submitted for:", email);
       const result = await login(email, password);
       
       if (result.success) {
+        console.log("Login success, redirecting to dashboard");
         toast.success('Welcome back!');
         navigate('/dashboard');
       } else if (result.error) {
-        if (result.error.includes('Email not confirmed')) {
-          setError('Email not confirmed. Please check your inbox or click below to resend the confirmation email.');
-        } else {
-          setError(result.error);
-          toast.error('Login failed');
-        }
+        console.error("Login error:", result.error);
+        setError(result.error);
+        toast.error('Login failed');
       }
     } catch (error: any) {
       console.error('Login error:', error);
