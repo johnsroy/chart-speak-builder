@@ -206,7 +206,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
               const first = result.data[0];
               const last = result.data[result.data.length - 1];
               const change = Number(last[yAxis]) - Number(first[yAxis]);
-              const percentChange = (change / (firstVal || 1) * 100).toFixed(1);
+              const firstValue = Number(first[yAxis]);
+              const percentChange = (change / (firstValue || 1) * 100).toFixed(1);
               
               thinking += `\n7. Change from ${first[xAxis]} to ${last[xAxis]}: ${change > 0 ? '+' : ''}${change.toFixed(2)} (${change > 0 ? '+' : ''}${percentChange}%)`;
             } catch (e) {
