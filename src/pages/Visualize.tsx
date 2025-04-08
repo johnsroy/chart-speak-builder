@@ -1,7 +1,9 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
 import { dataService } from '@/services/dataService';
+import { queryService } from '@/services/queryService';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Loader2, ChevronLeft, Database, BarChart, LineChart, PieChart, Table as TableIcon, Download, Share2, BrainCircuit, MessageSquare, Home, RefreshCcw } from 'lucide-react';
