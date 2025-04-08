@@ -1,164 +1,150 @@
+import { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { Session, User } from '@supabase/supabase-js';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authService, User } from '@/services/authService';
-import { supabase } from '@/lib/supabase';
-import { Session } from '@supabase/supabase-js';
-
-interface AuthContextType {
+interface AuthContextProps {
   user: User | null;
-  session: Session | null;
   isLoading: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<{ success: boolean; error?: string }>;
+  adminLogin: () => Promise<{ success: boolean; error?: string }>;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  adminLogin: () => Promise<{ user: User | null; session: Session | null } | void>;
-  register: (email: string, password: string, name?: string) => Promise<void>;
-  logout: () => Promise<void>;
+  isAdmin: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+interface AuthProviderProps {
+  children: React.ReactNode;
+}
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+const AuthContext = createContext<AuthContextProps | undefined>(undefined);
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   useEffect(() => {
-    // First, set up the auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, currentSession) => {
-        console.log("Auth state changed:", event);
-        setSession(currentSession);
-        
-        if (currentSession?.user) {
-          // Use setTimeout to prevent deadlock with Supabase auth
-          setTimeout(async () => {
-            try {
-              const currentUser = await authService.getCurrentUser();
-              setUser(currentUser);
-            } catch (error) {
-              console.error('Error updating user after auth change:', error);
-            } finally {
-              setIsLoading(false);
-            }
-          }, 0);
-        } else {
-          setUser(null);
-          setIsLoading(false);
-        }
+    // Initial auth check
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
       }
-    );
-    
-    // Then check for an existing session
-    const checkSession = async () => {
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        setSession(currentSession);
-        
-        if (currentSession?.user) {
-          const currentUser = await authService.getCurrentUser();
-          setUser(currentUser);
-        }
-      } catch (error) {
-        console.error('Error checking session:', error);
-      } finally {
-        setIsLoading(false);
+      setIsLoading(false);
+    });
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
       }
-    };
-    
-    checkSession();
-    
+      setIsLoading(false);
+    });
+
     return () => {
-      subscription.unsubscribe();
+      authListener?.subscription.unsubscribe();
     };
   }, []);
-  
+
   const login = async (email: string, password: string) => {
-    setIsLoading(true);
     try {
-      await authService.login(email, password);
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      setSession(currentSession);
-      const currentUser = await authService.getCurrentUser();
-      setUser(currentUser);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  const adminLogin = async () => {
-    setIsLoading(true);
-    try {
-      console.log("Starting admin login process...");
-      const result = await authService.adminLogin();
-      console.log("Admin login completed:", result);
-      
-      if (result) {
-        setSession(result.session);
-        setUser(result.user);
-        return result; // Important: Return the authentication result
-      }
-      
-      // Fallback: try to get current user if session exists
-      if (!user) {
-        const currentUser = await authService.getCurrentUser();
-        if (currentUser) {
-          setUser(currentUser);
-        }
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      return { success: true };
     } catch (error) {
-      console.error("Admin login error:", error);
-      throw error;
-    } finally {
-      setIsLoading(false);
+      console.error('Login error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
     }
   };
-  
-  const register = async (email: string, password: string, name?: string) => {
-    setIsLoading(true);
+
+  const signup = async (email: string, password: string) => {
     try {
-      await authService.register(email, password, name);
-      // Auto login after registration
-      await authService.login(email, password);
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      setSession(currentSession);
-      const currentUser = await authService.getCurrentUser();
-      setUser(currentUser);
-    } finally {
-      setIsLoading(false);
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Signup error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
     }
   };
-  
+
   const logout = async () => {
-    setIsLoading(true);
     try {
-      await authService.logout();
-      setUser(null);
-      setSession(null);
-    } finally {
-      setIsLoading(false);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Logout error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
     }
   };
+
+  // For demo purposes - allow admin login regardless of credentials
+  const adminLogin = async () => {
+    try {
+      // This is for demo purposes only - in a real app, you would authenticate properly
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: 'admin@example.com',
+        password: 'password123',
+      });
+      
+      if (error) throw error;
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Admin login error:', error);
+      // Auto-create admin account if it doesn't exist (for demo purposes)
+      try {
+        await supabase.auth.signUp({
+          email: 'admin@example.com',
+          password: 'password123',
+        });
+        
+        // Try login again
+        await supabase.auth.signInWithPassword({
+          email: 'admin@example.com',
+          password: 'password123',
+        });
+        
+        return { success: true };
+      } catch (signupError) {
+        console.error('Admin signup error:', signupError);
+        return { 
+          success: false, 
+          error: signupError instanceof Error ? signupError.message : 'An unknown error occurred' 
+        };
+      }
+    }
+  };
+
+  // Check if the current user is an admin (for demo purposes)
+  // In a real app, you would check against roles in your database
+  const isAdmin = user?.email === 'admin@example.com';
   
+  // Check if the user is authenticated
+  const isAuthenticated = !!user;
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      session,
-      isLoading,
-      isAuthenticated: !!user && !!session,
-      login,
-      adminLogin,
-      register,
-      logout
+    <AuthContext.Provider value={{ 
+      user, 
+      isLoading, 
+      login, 
+      signup, 
+      logout, 
+      adminLogin, 
+      isAuthenticated,
+      isAdmin
     }}>
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };

@@ -20,9 +20,10 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './hooks/useAuth';
 import Visualize from './pages/Visualize';
 import Upload from './pages/Upload';
+import { Helmet } from 'react-helmet';
 
 function App() {
-  const { isLoading } = useAuth();
+  const { isLoading, isAdmin } = useAuth();
   
   if (isLoading) {
     return (
@@ -35,10 +36,16 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
+        <Helmet>
+          <title>GenBI - Generative Business Intelligence</title>
+          <meta name="description" content="Transform your data into actionable insights with our AI-powered business intelligence platform. Ask questions in plain English and get visualization instantly." />
+        </Helmet>
         <main className="container mx-auto px-4 py-8">
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/test" element={<TestAnalysisTools />} />
+            
+            {/* Only show Test Tools to admins */}
+            {isAdmin && <Route path="/test" element={<TestAnalysisTools />} />}
             
             {/* Expose main data visualization routes */}
             <Route path="/dashboard" element={<Dashboard />} />

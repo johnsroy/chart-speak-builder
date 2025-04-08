@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
 const NavBar = () => {
-  const { user, logout: signOut } = useAuth();
+  const { user, logout: signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   const navigationItems = [
@@ -62,9 +62,14 @@ const NavBar = () => {
       name: "Test Tools",
       path: "/test",
       icon: <BeakerIcon className="h-5 w-5" />,
-      adminOnly: false,
+      adminOnly: true, // Only visible to admins
     },
   ];
+
+  // Filter items based on admin status
+  const filteredNavItems = navigationItems.filter(
+    item => !item.adminOnly || isAdmin
+  );
 
   return (
     <nav className="backdrop-blur-lg bg-black/50 text-white py-4 px-6 flex items-center justify-between sticky top-0 z-50 border-b border-purple-500/20">
@@ -74,7 +79,7 @@ const NavBar = () => {
           GenBI
         </span>
         <ul className="hidden md:flex space-x-2">
-          {navigationItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <li key={item.name}>
               <NavLink
                 to={item.path}
