@@ -6,48 +6,25 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, LogIn, Mail, Lock, AlertTriangle, User } from 'lucide-react';
+import { ArrowLeft, Loader2, Mail, Lock, Shield, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Link } from 'react-router-dom';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [resendingEmail, setResendingEmail] = useState(false);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { login, isAuthenticated, resendConfirmationEmail } = useAuth();
+  const { login, adminLogin, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   // Redirect authenticated users
   useEffect(() => {
     if (isAuthenticated) {
-      console.log("User is authenticated, redirecting to dashboard");
       navigate('/dashboard');
     }
   }, [isAuthenticated, navigate]);
-
-  const handleResendConfirmation = async () => {
-    if (!email) {
-      toast.error('Please enter your email address');
-      return;
-    }
-
-    setResendingEmail(true);
-    try {
-      const result = await resendConfirmationEmail(email);
-      if (result.success) {
-        toast.success('Confirmation email has been sent');
-        setError('Please check your email for the confirmation link');
-      } else {
-        throw new Error(result.error || 'Failed to resend confirmation email');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to resend confirmation email');
-      console.error('Resend error:', err);
-    } finally {
-      setResendingEmail(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,21 +32,14 @@ const LoginPage = () => {
     setError(null);
 
     try {
-      console.log("Login form submitted for:", email);
       const result = await login(email, password);
-      
-      if (result.success) {
-        console.log("Login success, redirecting to dashboard");
-        toast.success('Welcome back!');
-        navigate('/dashboard');
-      } else if (result.error) {
-        console.error("Login error:", result.error);
+      if (!result.success && result.error) {
         setError(result.error);
         toast.error('Login failed');
       }
     } catch (error: any) {
       console.error('Login error:', error);
-      setError(error.message || 'Failed to log in');
+      setError(error.message || 'Failed to login');
       toast.error('Login failed');
     } finally {
       setIsLoading(false);
@@ -77,31 +47,21 @@ const LoginPage = () => {
   };
 
   const handleAdminLogin = async () => {
-    setEmail('admin@example.com');
-    setPassword('password123');
-    
-    setIsLoading(true);
+    setIsAdminLoading(true);
     setError(null);
-    
+
     try {
-      console.log("Admin login clicked, submitting with admin credentials");
-      const result = await login('admin@example.com', 'password123');
-      
-      if (result.success) {
-        console.log("Admin login success, redirecting to dashboard");
-        toast.success('Welcome, Admin!');
-        navigate('/dashboard');
-      } else if (result.error) {
-        console.error("Admin login error:", result.error);
-        setError(`Admin login failed: ${result.error}`);
+      const result = await adminLogin();
+      if (!result.success && result.error) {
+        setError(result.error);
         toast.error('Admin login failed');
       }
     } catch (error: any) {
       console.error('Admin login error:', error);
-      setError(error.message || 'Failed to log in as admin');
+      setError(error.message || 'Failed to login as admin');
       toast.error('Admin login failed');
     } finally {
-      setIsLoading(false);
+      setIsAdminLoading(false);
     }
   };
 
@@ -119,8 +79,8 @@ const LoginPage = () => {
         <Card className="w-full glass-card text-white border-purple-500/30">
           <CardHeader>
             <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-purple-700/30 rounded-full flex items-center justify-center backdrop-blur-md animate-pulse-custom">
-                <LogIn className="h-8 w-8 text-purple-300" />
+              <div className="w-16 h-16 bg-purple-700/30 rounded-full flex items-center justify-center backdrop-blur-md">
+                <Lock className="h-8 w-8 text-purple-300" />
               </div>
             </div>
             <CardTitle className="text-2xl text-center">Welcome back</CardTitle>
@@ -129,33 +89,17 @@ const LoginPage = () => {
             </CardDescription>
           </CardHeader>
           
+          {error && (
+            <CardContent className="pt-0">
+              <Alert variant="destructive" className="bg-red-900/40 border border-red-800 text-white">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            </CardContent>
+          )}
+          
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
-              {error && (
-                <Alert variant="destructive" className="bg-red-900/40 border border-red-800 text-white">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                  {error.includes('Email not confirmed') && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-2 text-white hover:text-white hover:bg-purple-500/30"
-                      onClick={handleResendConfirmation}
-                      disabled={resendingEmail}
-                    >
-                      {resendingEmail ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        'Resend confirmation email'
-                      )}
-                    </Button>
-                  )}
-                </Alert>
-              )}
-
               <div className="space-y-2">
                 <label htmlFor="email" className="text-sm font-medium flex items-center gap-2">
                   <Mail className="h-4 w-4 text-purple-400" />
@@ -174,14 +118,14 @@ const LoginPage = () => {
               </div>
               
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between">
                   <label htmlFor="password" className="text-sm font-medium flex items-center gap-2">
                     <Lock className="h-4 w-4 text-purple-400" />
                     Password
                   </label>
-                  <a href="/reset-password" className="text-xs text-purple-300 hover:text-white hover:underline">
+                  <Link to="/reset-password" className="text-xs text-purple-300 hover:text-purple-200">
                     Forgot password?
-                  </a>
+                  </Link>
                 </div>
                 <Input
                   id="password"
@@ -205,30 +149,40 @@ const LoginPage = () => {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing In...
+                    Signing in...
                   </>
                 ) : (
                   "Sign In"
                 )}
               </Button>
               
-              <div className="text-center text-sm mb-3">
-                Don't have an account?{" "}
-                <a href="/signup" className="text-purple-300 hover:text-white hover:underline">
-                  Sign Up
-                </a>
-              </div>
-              
               <Button
                 type="button"
-                variant="outline" 
+                variant="outline"
+                className="w-full border-purple-500/30 text-purple-300 hover:bg-purple-500/20"
                 onClick={handleAdminLogin}
-                className="w-full bg-purple-900/20 border-purple-400/30 hover:bg-purple-800/30"
-                disabled={isLoading}
+                disabled={isAdminLoading}
               >
-                <User className="mr-2 h-4 w-4" />
-                Sign in as Admin
+                {isAdminLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Shield className="mr-2 h-4 w-4" />
+                )}
+                Sign In as Admin
               </Button>
+              
+              <div className="text-center text-sm">
+                Don't have an account yet?{" "}
+                <div className="flex flex-col sm:flex-row gap-2 justify-center mt-2">
+                  <Link to="/signup" className="text-purple-300 hover:text-white hover:underline">
+                    Start Free Trial
+                  </Link>
+                  <span className="hidden sm:inline">or</span>
+                  <Link to="/pay-now" className="text-purple-300 hover:text-white hover:underline">
+                    Subscribe Now
+                  </Link>
+                </div>
+              </div>
             </CardFooter>
           </form>
         </Card>

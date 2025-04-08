@@ -129,6 +129,27 @@ export const signupWithEmailPassword = async (email: string, password: string) =
       // Wait a moment for signup to complete
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // Create trial subscription for new user
+      try {
+        // Calculate trial end date (14 days from now)
+        const trialEndDate = new Date();
+        trialEndDate.setDate(trialEndDate.getDate() + 14);
+        
+        await supabase.from('user_subscriptions').insert({
+          userId: data.user.id,
+          isPremium: false,
+          datasetQuota: 2,
+          queryQuota: 10,
+          datasetsUsed: 0,
+          queriesUsed: 0,
+          trialEndDate: trialEndDate.toISOString()
+        });
+        
+        console.log("Created trial subscription for new user");
+      } catch (dbError) {
+        console.error("Error setting up user subscription:", dbError);
+      }
+      
       // Auto login after signup
       console.log("Attempting auto-login after signup");
       const { data: sessionData, error: loginError } = await supabase.auth.signInWithPassword({

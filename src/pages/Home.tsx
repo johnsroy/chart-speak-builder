@@ -1,515 +1,208 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { 
-  BarChart3, 
-  BrainCircuit, 
-  Database, 
-  LineChart, 
-  MessageSquare, 
-  Upload, 
-  ChevronRight,
-  ArrowRight,
-  Zap,
-  Users,
-  Shield,
-  CheckCircle,
-  PieChart,
-  TrendingUp,
-  BarChart,
-  Activity
-} from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
+import React from 'react';
 import { Helmet } from 'react-helmet';
-import KeyOfferings from '@/components/KeyOfferings';
+import { CreditCard, Zap } from 'lucide-react';
 
-const Home = () => {
-  const navigate = useNavigate();
-  const { isAuthenticated, user, adminLogin, subscription } = useAuth();
-  const [isVisible, setIsVisible] = useState(false);
-  const [activeChart, setActiveChart] = useState(0);
-
-  useEffect(() => {
-    setIsVisible(true);
-
-    const observerOptions = {
-      threshold: 0.1,
-      rootMargin: '0px 0px -50px 0px'
-    };
-
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('animate-fadeIn');
-          entry.target.classList.add('opacity-100');
-          observer.unobserve(entry.target);
-        }
-      });
-    }, observerOptions);
-
-    document.querySelectorAll('.animate-on-scroll').forEach(el => {
-      el.classList.add('opacity-0');
-      observer.observe(el);
-    });
-
-    const chartInterval = setInterval(() => {
-      setActiveChart((prev) => (prev + 1) % 4);
-    }, 3000);
-
-    return () => {
-      observer.disconnect();
-      clearInterval(chartInterval);
-    };
-  }, []);
-
-  const handleDashboardClick = () => {
-    if (!isAuthenticated && !user) {
-      adminLogin();
-    } else {
-      navigate('/dashboard');
-    }
-  };
-
-  const renderMainCTA = () => {
-    if (isAuthenticated) {
-      if (subscription?.isPremium) {
-        return (
-          <Button 
-            onClick={() => navigate('/upload')}
-            size="lg" 
-            className="purple-gradient shadow-lg shadow-purple-900/30 text-lg px-8 py-6 hover:scale-105 transition-transform duration-300"
-          >
-            <Upload className="mr-2 h-5 w-5 animate-bounce" />
-            Upload Your Data
-          </Button>
-        );
-      } else {
-        return (
-          <Button 
-            onClick={() => navigate('/account')}
-            size="lg" 
-            className="purple-gradient shadow-lg shadow-purple-900/30 text-lg px-8 py-6 hover:scale-105 transition-transform duration-300"
-          >
-            <Zap className="mr-2 h-5 w-5 animate-bounce" />
-            Upgrade to Premium
-          </Button>
-        );
-      }
-    } else {
-      return (
-        <Button 
-          onClick={() => navigate('/upload')}
-          size="lg" 
-          className="purple-gradient shadow-lg shadow-purple-900/30 text-lg px-8 py-6 hover:scale-105 transition-transform duration-300"
-        >
-          <Upload className="mr-2 h-5 w-5 animate-bounce" />
-          Start Analyzing Now
-        </Button>
-      );
-    }
-  };
-
-  const renderActiveChart = () => {
-    switch (activeChart) {
-      case 0:
-        return (
-          <div className="flex flex-col items-center">
-            <BarChart3 className="h-24 w-24 text-purple-400 animate-pulse mb-4" />
-            <div className="w-full flex justify-between space-x-1">
-              {[40, 70, 30, 85, 50, 65, 75].map((height, i) => (
-                <div 
-                  key={i} 
-                  className="bg-gradient-to-t from-purple-600 to-blue-400 rounded-t-md w-full"
-                  style={{
-                    height: `${height}px`,
-                    animation: `animate-bounce ${1 + i * 0.1}s infinite alternate`
-                  }}
-                ></div>
-              ))}
-            </div>
-            <p className="mt-4 text-lg font-semibold">Sales Performance</p>
-          </div>
-        );
-      case 1:
-        return (
-          <div className="flex flex-col items-center">
-            <PieChart className="h-24 w-24 text-blue-400 animate-spin-slow mb-4" />
-            <div className="w-full h-[120px] rounded-full overflow-hidden relative">
-              <div className="absolute inset-0 flex">
-                <div className="bg-purple-500 w-[30%] h-full animate-pulse"></div>
-                <div className="bg-blue-500 w-[45%] h-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                <div className="bg-pink-400 w-[25%] h-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
-              </div>
-            </div>
-            <p className="mt-4 text-lg font-semibold">Market Distribution</p>
-          </div>
-        );
-      case 2:
-        return (
-          <div className="flex flex-col items-center">
-            <TrendingUp className="h-24 w-24 text-green-400 animate-float mb-4" />
-            <div className="relative w-full h-[120px]">
-              <svg viewBox="0 0 300 100" className="w-full h-full">
-                <path 
-                  d="M0,100 C50,30 100,70 150,40 C200,10 250,50 300,20" 
-                  fill="none" 
-                  stroke="url(#gradient)" 
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  strokeDasharray="1000"
-                  strokeDashoffset="1000"
-                  style={{animation: 'dash 5s linear forwards infinite'}}
-                />
-                <defs>
-                  <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#8B5CF6" />
-                    <stop offset="100%" stopColor="#3B82F6" />
-                  </linearGradient>
-                </defs>
-              </svg>
-              <style dangerouslySetInnerHTML={{__html: `
-                @keyframes dash {
-                  to {
-                    stroke-dashoffset: 0;
-                  }
-                }
-              `}} />
-            </div>
-            <p className="mt-4 text-lg font-semibold">Revenue Growth</p>
-          </div>
-        );
-      case 3:
-        return (
-          <div className="flex flex-col items-center">
-            <Activity className="h-24 w-24 text-pink-400 animate-pulse mb-4" />
-            <div className="w-full grid grid-cols-7 gap-1">
-              {[...Array(7)].map((_, i) => (
-                <div key={i} className="flex flex-col items-center">
-                  <div 
-                    className="w-4 h-4 rounded-full mb-1"
-                    style={{
-                      backgroundColor: `rgba(${139 + i * 20}, ${92 - i * 10}, ${246 - i * 20}, 0.8)`,
-                      animation: `pulse ${1 + i * 0.2}s infinite alternate`
-                    }}
-                  ></div>
-                  <div 
-                    className="w-1 rounded-full bg-gradient-to-b from-purple-500 to-blue-500"
-                    style={{
-                      height: `${20 + Math.sin(i) * 20}px`,
-                      animation: `height-change ${2 + i * 0.3}s infinite alternate ease-in-out`
-                    }}
-                  ></div>
-                </div>
-              ))}
-            </div>
-            <p className="mt-4 text-lg font-semibold">Weekly Activity</p>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
+const Home: React.FC = () => {
   return (
-    <div className="min-h-screen">
+    <div className="relative overflow-hidden">
       <Helmet>
-        <title>GenBI - Generative Business Intelligence | AI-Powered Data Analytics</title>
-        <meta name="description" content="Transform your data into actionable insights with GenBI's AI-powered business intelligence platform. Ask questions in plain English and get beautiful visualizations instantly." />
-        <meta name="keywords" content="Business Intelligence, AI, Generative BI, Data Visualization, Data Analytics, ChatGPT for Data, AI Data Analysis, Machine Learning Analytics, Visual Data Reporting" />
-        <meta property="og:title" content="GenBI - Generative Business Intelligence | AI-Powered Data Analytics" />
-        <meta property="og:description" content="Ask questions about your data in plain English and get instant visualizations and insights with our AI-powered business intelligence platform." />
-        <meta property="og:type" content="website" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="GenBI - Generative Business Intelligence" />
-        <meta name="twitter:description" content="Transform your business data into powerful insights with AI-powered analytics." />
-        
-        <link rel="canonical" href="https://genbi.app" />
-        <meta name="robots" content="index, follow" />
-        
-        <script type="application/ld+json">
-          {`
-            {
-              "@context": "https://schema.org",
-              "@type": "SoftwareApplication",
-              "name": "GenBI - Generative Business Intelligence",
-              "applicationCategory": "BusinessApplication",
-              "offers": {
-                "@type": "Offer",
-                "price": "0",
-                "priceCurrency": "USD"
-              },
-              "operatingSystem": "Web",
-              "description": "AI-powered business intelligence platform that transforms your data into actionable insights."
-            }
-          `}
-        </script>
+        <title>GenBI - Generative Business Intelligence</title>
+        <meta name="description" content="Transform your data into actionable insights with our AI-powered business intelligence platform. Ask questions in plain English and get visualization instantly." />
       </Helmet>
-
-      <section className="py-20 md:py-28 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-0 right-1/4 w-[500px] h-[500px] rounded-full bg-purple-600/20 blur-[100px] animate-pulse"></div>
-          <div className="absolute bottom-0 left-1/3 w-[400px] h-[400px] rounded-full bg-blue-500/20 blur-[100px] animate-pulse"></div>
-        </div>
-
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className={`text-center lg:text-left transition-all duration-1000 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-              <span className="inline-block px-4 py-2 rounded-full neo-blur mb-4 text-sm font-medium">
-                <span className="text-purple-400 inline-block animate-bounce">✨</span> AI-Powered Business Intelligence
-              </span>
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-                <span className="text-gradient">Generative BI</span> for Your Business Data
+      
+      {/* Hero Section */}
+      <div className="relative pt-16 pb-32 bg-gray-900 sm:pt-24 lg:pt-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="relative overflow-hidden rounded-xl">
+            <div className="absolute inset-0">
+              <img
+                className="h-full w-full object-cover"
+                src="https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=2850&q=80&blend=777853&blend-mode=multiply"
+                alt=""
+              />
+            </div>
+            <div className="absolute inset-0 bg-purple-900 mix-blend-multiply" aria-hidden="true" />
+            <div className="relative py-16 px-6 sm:py-24 lg:py-32">
+              <h1 className="text-center text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
+                Unlock Your Data's Potential with AI
               </h1>
-              <p className="text-xl md:text-2xl mb-8 text-gray-300 max-w-2xl mx-auto lg:mx-0">
-                Ask questions in plain English and instantly get beautiful visualizations and actionable insights from your data.
+              <p className="mt-6 max-w-xl mx-auto text-center text-xl text-purple-200">
+                Transform raw data into actionable insights. Ask questions in plain English and get instant visualizations.
               </p>
               
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                {renderMainCTA()}
-                
-                <Button 
-                  onClick={handleDashboardClick}
-                  variant="outline" 
-                  size="lg"
-                  className="border-purple-500 text-lg px-8 py-6 hover:bg-purple-500/20 backdrop-blur-sm hover:scale-105 transition-transform duration-300"
-                >
-                  <BarChart3 className="mr-2 h-5 w-5 animate-pulse" />
-                  Dashboard
-                </Button>
-              </div>
-              
-              <div className="mt-8 flex items-center justify-center lg:justify-start space-x-6 text-sm">
-                <div className="flex items-center">
-                  <Shield className="h-4 w-4 text-green-400 mr-1 animate-pulse" />
-                  <span className="text-gray-300">Enterprise-grade security</span>
-                </div>
-                <div className="flex items-center">
-                  <Zap className="h-4 w-4 text-yellow-400 mr-1 animate-pulse" />
-                  <span className="text-gray-300">Instant analysis</span>
-                </div>
-                <div className="flex items-center">
-                  <Users className="h-4 w-4 text-blue-400 mr-1 animate-pulse" />
-                  <span className="text-gray-300">5,000+ users</span>
-                </div>
-              </div>
-            </div>
-
-            <div className={`glass-morphism p-6 rounded-2xl border border-white/10 shadow-2xl transition-all duration-1000 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-              <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-lg p-6">
-                <div className="absolute inset-0 bg-grid-white/5 mask-image-gradient"></div>
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent animate-slide"></div>
-                <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-slide-reverse"></div>
-                <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-transparent via-purple-500 to-transparent animate-slide-down"></div>
-                <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-transparent via-blue-500 to-transparent animate-slide-up"></div>
-                
-                <div className="mb-6 flex justify-between items-center">
-                  <div className="flex items-center space-x-2">
-                    <div className="h-3 w-3 bg-red-500 rounded-full"></div>
-                    <div className="h-3 w-3 bg-yellow-500 rounded-full"></div>
-                    <div className="h-3 w-3 bg-green-500 rounded-full"></div>
-                  </div>
-                  <div className="text-xs text-gray-300">GenBI Analytics Dashboard</div>
-                </div>
-                
-                <div className="h-[300px] flex items-center justify-center">
-                  {renderActiveChart()}
-                </div>
-                
-                <div className="mt-6 flex justify-between items-center">
-                  <div className="flex space-x-1">
-                    {[0, 1, 2, 3].map((index) => (
-                      <button 
-                        key={index} 
-                        className={`h-2 w-8 rounded-full transition-all duration-300 ${activeChart === index ? 'bg-purple-500' : 'bg-gray-600'}`}
-                        onClick={() => setActiveChart(index)}
-                      ></button>
-                    ))}
-                  </div>
-                  
-                  <div 
-                    className="bg-purple-600/80 h-10 w-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-purple-500 transition-all"
-                    onClick={() => navigate('/dashboard')}
-                  >
-                    <ArrowRight className="h-5 w-5 text-white animate-pulse" />
-                  </div>
-                </div>
+              <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="/pay-now" className="btn-cta bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center">
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Subscribe Now
+                </a>
+                <a href="/signup" className="btn-cta purple-gradient text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center">
+                  <Zap className="mr-2 h-4 w-4" />
+                  Start Free Trial
+                </a>
               </div>
             </div>
           </div>
         </div>
-      </section>
-      
-      <KeyOfferings />
-      
-      <section className="py-16 px-4 relative animate-on-scroll" id="how-it-works">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <span className="inline-block px-3 py-1 glass-card rounded-full mb-4 text-sm font-medium">
-              <span className="text-purple-400 animate-bounce inline-block">🚀</span> Easy to Use
-            </span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-6 text-gradient">How GenBI Works</h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Transform your data into insights in just three simple steps
+      </div>
+
+      {/* Features Section */}
+      <div className="bg-gray-800 py-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="lg:text-center">
+            <h2 className="text-base font-semibold tracking-wide text-purple-400 uppercase">Features</h2>
+            <p className="mt-2 text-3xl font-bold leading-8 tracking-tight text-white sm:text-4xl">
+              Why Choose GenBI?
+            </p>
+            <p className="mt-4 max-w-2xl text-xl text-gray-300 lg:mx-auto">
+              From data upload to insightful visualizations, GenBI simplifies the entire business intelligence process.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="glass-card backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 hover:-translate-y-2 animate-on-scroll">
-              <div className="h-12 w-12 flex items-center justify-center rounded-full bg-purple-900/50 border border-purple-600/30 mb-6 animate-bounce">
-                <span className="text-2xl font-bold text-purple-400">1</span>
+          <div className="mt-10">
+            <dl className="space-y-10 md:grid md:grid-cols-2 md:gap-x-8 md:gap-y-10 md:space-y-0">
+              <div className="relative">
+                <dt>
+                  <div className="absolute flex h-12 w-12 items-center justify-center rounded-md bg-purple-500 text-white">
+                    {/* Heroicon name: outline/globe-americas */}
+                    <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5.5a2.5 2.5 0 012.5 2.5V19a2.5 2.5 0 01-2.5 2.5H3.055a2.5 2.5 0 01-2.5-2.5V13.5a2.5 2.5 0 012.5-2.5zM8.555 11H11a2.5 2.5 0 012.5 2.5V19a2.5 2.5 0 01-2.5 2.5H8.555a2.5 2.5 0 01-2.5-2.5V13.5a2.5 2.5 0 012.5-2.5zM14.055 11H16.5a2.5 2.5 0 012.5 2.5V19a2.5 2.5 0 01-2.5 2.5H14.055a2.5 2.5 0 01-2.5-2.5V13.5a2.5 2.5 0 012.5-2.5z" />
+                    </svg>
+                  </div>
+                  <p className="ml-16 text-lg font-medium leading-6 text-white">AI-Powered Analysis</p>
+                </dt>
+                <dd className="mt-2 ml-16 text-base text-gray-300">
+                  Get instant insights with AI that understands your data and answers your questions in plain English.
+                </dd>
               </div>
-              <h3 className="text-2xl font-semibold mb-4">Upload Your Data</h3>
-              <p className="text-gray-300">
-                Simply upload your CSV, Excel files, or connect to your database. Our platform handles the rest, no coding or data preparation needed.
-              </p>
-            </div>
 
-            <div className="glass-card backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 hover:-translate-y-2 animate-on-scroll" style={{animationDelay: "0.2s"}}>
-              <div className="h-12 w-12 flex items-center justify-center rounded-full bg-purple-900/50 border border-purple-600/30 mb-6 animate-bounce" style={{animationDelay: "0.1s"}}>
-                <span className="text-2xl font-bold text-purple-400">2</span>
+              <div className="relative">
+                <dt>
+                  <div className="absolute flex h-12 w-12 items-center justify-center rounded-md bg-purple-500 text-white">
+                    {/* Heroicon name: outline/scale */}
+                    <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.002 0M6 7l3 9M12 6l3 1m0 0l-3 9a5.002 5.002 0 006.002 0M15 7l3 9M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="ml-16 text-lg font-medium leading-6 text-white">Data Visualization</p>
+                </dt>
+                <dd className="mt-2 ml-16 text-base text-gray-300">
+                  Visualize your data with a variety of charts and graphs, making it easy to identify trends and patterns.
+                </dd>
               </div>
-              <h3 className="text-2xl font-semibold mb-4">Ask Questions</h3>
-              <p className="text-gray-300">
-                Ask questions in plain English like "Show me sales trends" or "What are my top customers?". No SQL or complex queries needed.
-              </p>
-            </div>
 
-            <div className="glass-card backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 hover:-translate-y-2 animate-on-scroll" style={{animationDelay: "0.4s"}}>
-              <div className="h-12 w-12 flex items-center justify-center rounded-full bg-purple-900/50 border border-purple-600/30 mb-6 animate-bounce" style={{animationDelay: "0.2s"}}>
-                <span className="text-2xl font-bold text-purple-400">3</span>
+              <div className="relative">
+                <dt>
+                  <div className="absolute flex h-12 w-12 items-center justify-center rounded-md bg-purple-500 text-white">
+                    {/* Heroicon name: outline/lightning-bolt */}
+                    <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <p className="ml-16 text-lg font-medium leading-6 text-white">Easy Data Upload</p>
+                </dt>
+                <dd className="mt-2 ml-16 text-base text-gray-300">
+                  Upload your data in various formats and let GenBI handle the rest. No coding required.
+                </dd>
               </div>
-              <h3 className="text-2xl font-semibold mb-4">Get Instant Insights</h3>
-              <p className="text-gray-300">
-                Our AI generates beautiful visualizations and provides detailed analysis with trends, anomalies, and actionable recommendations.
-              </p>
-            </div>
-          </div>
 
-          <div className="flex justify-center mt-12">
-            <Button 
-              onClick={() => navigate('/dashboard')}
-              variant="outline" 
-              size="lg"
-              className="border-purple-400 text-lg hover:bg-purple-500/20 hover:scale-110 transition-all duration-300"
-            >
-              See it in action
-              <ArrowRight className="ml-2 h-5 w-5 animate-pulse" />
-            </Button>
+              <div className="relative">
+                <dt>
+                  <div className="absolute flex h-12 w-12 items-center justify-center rounded-md bg-purple-500 text-white">
+                    {/* Heroicon name: outline/annotation */}
+                    <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m14-1a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="ml-16 text-lg font-medium leading-6 text-white">Customizable Dashboards</p>
+                </dt>
+                <dd className="mt-2 ml-16 text-base text-gray-300">
+                  Create personalized dashboards to monitor key metrics and track performance.
+                </dd>
+              </div>
+            </dl>
           </div>
         </div>
-      </section>
-      
-      <section className="py-20 px-4 relative animate-on-scroll" id="features">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-40 right-1/4 w-96 h-96 rounded-full bg-blue-400/10 blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-20 left-1/4 w-80 h-80 rounded-full bg-purple-400/10 blur-3xl animate-pulse"></div>
-        </div>
+      </div>
 
-        <div className="container mx-auto">
-          <div className="text-center mb-16">
-            <span className="inline-block px-3 py-1 glass-card rounded-full mb-4 text-sm font-medium">
-              <span className="text-purple-400 animate-bounce inline-block">✨</span> Features
-            </span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-6 text-gradient">Powerful Features, Simple Interface</h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              GenBI combines the power of AI with intuitive design to make data visualization 
-              accessible to everyone in your organization.
+      {/* Testimonials Section */}
+      <div className="bg-gray-900 py-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="lg:text-center">
+            <h2 className="text-base font-semibold tracking-wide text-purple-400 uppercase">Testimonials</h2>
+            <p className="mt-2 text-3xl font-bold leading-8 tracking-tight text-white sm:text-4xl">
+              What Our Users Say
+            </p>
+            <p className="mt-4 max-w-2xl text-xl text-gray-300 lg:mx-auto">
+              See how GenBI has helped businesses like yours unlock the power of their data.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
-            <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 shadow-xl hover:-translate-y-2 animate-on-scroll">
-              <div className="bg-purple-500/20 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-4 animate-bounce">
-                <MessageSquare className="h-6 w-6 text-purple-400" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Natural Language Queries</h3>
-              <p className="text-gray-300">
-                Ask questions about your data in plain English. No SQL or complex query languages required.
-              </p>
-              <Button 
-                variant="link" 
-                onClick={() => navigate('/analyze')}
-                className="mt-4 text-purple-400 hover:text-purple-300 p-0 flex items-center group"
+          <div className="mt-10">
+            <ul className="space-y-10 sm:grid sm:grid-cols-2 sm:gap-x-8 sm:gap-y-10 sm:space-y-0">
+              <li className="py-4 px-6 bg-gray-800 rounded-lg shadow-md">
+                <div className="flex items-center space-x-3">
+                  <div className="flex-shrink-0">
+                    <img className="h-10 w-10 rounded-full" src="https://images.unsplash.com/photo-1494790108377-be9c29b2933e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60" alt="" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-lg font-medium leading-6 text-white">Sarah Johnson</p>
+                    <p className="text-sm text-gray-400">Marketing Manager</p>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <p className="text-base text-gray-300">
+                    "GenBI has revolutionized the way we analyze our marketing data. The AI-powered insights are incredibly valuable."
+                  </p>
+                </div>
+              </li>
+
+              <li className="py-4 px-6 bg-gray-800 rounded-lg shadow-md">
+                <div className="flex items-center space-x-3">
+                  <div className="flex-shrink-0">
+                    <img className="h-10 w-10 rounded-full" src="https://images.unsplash.com/photo-1500648767791-00d5a4ee9baa?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60" alt="" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-lg font-medium leading-6 text-white">Michael Brown</p>
+                    <p className="text-sm text-gray-400">CEO</p>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <p className="text-base text-gray-300">
+                    "As a CEO, I need quick access to key performance indicators. GenBI's customizable dashboards provide exactly that."
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Call to Action Section */}
+      <div className="bg-gray-800 py-16">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 lg:flex lg:items-center lg:justify-between">
+          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            Ready to Get Started?
+          </h2>
+          <div className="mt-8 flex lg:mt-0 lg:flex-shrink-0">
+            <div className="inline-flex rounded-md shadow">
+              <a
+                href="/pay-now"
+                className="inline-flex items-center justify-center rounded-md border border-transparent bg-purple-500 px-5 py-3 text-base font-medium text-white hover:bg-purple-600"
               >
-                Try Chat Analysis 
-                <ChevronRight className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
-              </Button>
+                Subscribe Now
+              </a>
             </div>
-            
-            <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 shadow-xl hover:-translate-y-2 animate-on-scroll" style={{animationDelay: "0.2s"}}>
-              <div className="bg-purple-500/20 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-4 animate-bounce" style={{animationDelay: "0.1s"}}>
-                <BarChart3 className="h-6 w-6 text-purple-400" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Interactive Visualizations</h3>
-              <p className="text-gray-300">
-                Create beautiful interactive charts and dashboards to visualize your data without coding.
-              </p>
-              <Button 
-                variant="link" 
-                onClick={() => navigate('/visualize')}
-                className="mt-4 text-purple-400 hover:text-purple-300 p-0 flex items-center group"
+            <div className="ml-3 inline-flex rounded-md shadow">
+              <a
+                href="/signup"
+                className="inline-flex items-center justify-center rounded-md border border-transparent bg-white px-5 py-3 text-base font-medium text-gray-900 hover:bg-gray-50"
               >
-                Explore Visualizations 
-                <ChevronRight className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </div>
-            
-            <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 shadow-xl hover:-translate-y-2 animate-on-scroll" style={{animationDelay: "0.4s"}}>
-              <div className="bg-purple-500/20 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-4 animate-bounce" style={{animationDelay: "0.2s"}}>
-                <Database className="h-6 w-6 text-purple-400" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Data Import & Processing</h3>
-              <p className="text-gray-300">
-                Easily upload and transform your data from various sources including CSV, Excel, and databases.
-              </p>
-              <Button 
-                variant="link" 
-                onClick={() => navigate('/upload')}
-                className="mt-4 text-purple-400 hover:text-purple-300 p-0 flex items-center group"
-              >
-                Upload Data 
-                <ChevronRight className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
-              </Button>
+                Start Free Trial
+              </a>
             </div>
           </div>
         </div>
-      </section>
-      
-      <section className="py-16 px-4 animate-on-scroll">
-        <div className="max-w-4xl mx-auto glass-card backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-12 shadow-xl relative overflow-hidden">
-          <div className="absolute -top-10 -right-10 w-20 h-20 rounded-full bg-purple-500/20 animate-bounce" style={{animationDuration: "2.5s"}}></div>
-          <div className="absolute -bottom-8 -left-8 w-16 h-16 rounded-full bg-blue-500/20 animate-bounce" style={{animationDuration: "3.5s"}}></div>
-          <div className="absolute top-1/2 right-10 w-8 h-8 rounded-full bg-pink-500/30 animate-bounce" style={{animationDuration: "4s"}}></div>
-          
-          <div className="text-center relative z-10">
-            <h2 className="text-3xl font-bold mb-6 text-gradient">Ready to transform your data analytics?</h2>
-            <p className="text-xl text-gray-300 mb-8">
-              Start generating valuable insights from your data today with GenBI - no technical skills required.
-            </p>
-            <div className="flex flex-wrap justify-center gap-4 mb-8">
-              <div className="bg-white/10 backdrop-blur-md rounded-lg px-4 py-3 flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-400 mr-2 animate-pulse" />
-                <span>No credit card required</span>
-              </div>
-              <div className="bg-white/10 backdrop-blur-md rounded-lg px-4 py-3 flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-400 mr-2 animate-pulse" />
-                <span>Free plan includes up to 2 datasets and 10 queries</span>
-              </div>
-              <div className="bg-white/10 backdrop-blur-md rounded-lg px-4 py-3 flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-400 mr-2 animate-pulse" />
-                <span>Premium plan: $50/month</span>
-              </div>
-            </div>
-            <Button 
-              onClick={() => isAuthenticated ? navigate('/account') : navigate('/signup')}
-              size="lg"
-              className="purple-gradient px-8 py-6 text-lg shadow-lg shadow-purple-500/20 hover:scale-110 transition-transform duration-300"
-            >
-              {isAuthenticated ? 'Upgrade Now' : 'Start Now - It\'s Free'}
-            </Button>
-          </div>
-        </div>
-      </section>
+      </div>
     </div>
   );
 };

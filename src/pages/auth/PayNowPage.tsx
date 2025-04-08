@@ -1,0 +1,171 @@
+
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { ArrowLeft, CheckCircle, CreditCard, Loader2, Mail, Shield, Zap } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+const PayNowPage = () => {
+  const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const handlePaymentStart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    if (!email.trim() || !email.includes('@')) {
+      setError('Please enter a valid email address');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      // First generate a random secure password
+      const tempPassword = Array(16)
+        .fill('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*')
+        .map(x => x[Math.floor(Math.random() * x.length)])
+        .join('');
+      
+      console.log("Creating checkout session for:", email);
+      const { data, error: checkoutError } = await supabase.functions.invoke('create-checkout', {
+        body: { email, tempPassword }
+      });
+
+      if (checkoutError || !data?.url) {
+        console.error("Checkout error:", checkoutError || "No URL returned");
+        setError(checkoutError?.message || 'Failed to create payment session');
+        toast.error('Payment setup failed');
+      } else {
+        console.log("Redirecting to payment page");
+        // Redirect to Stripe checkout
+        window.location.href = data.url;
+      }
+    } catch (error: any) {
+      console.error("Payment error:", error);
+      setError(error.message || 'An unexpected error occurred');
+      toast.error('Payment setup failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <Button 
+          variant="ghost" 
+          className="text-white mb-4 hover:bg-white/10" 
+          onClick={() => navigate('/')}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to home
+        </Button>
+        
+        <Card className="w-full glass-card text-white border-purple-500/30">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-purple-700/30 rounded-full flex items-center justify-center backdrop-blur-md">
+                <CreditCard className="h-8 w-8 text-purple-300" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl text-center">
+              Subscribe Now
+            </CardTitle>
+            <CardDescription className="text-gray-300 text-center">
+              Get full access to GenBI Premium
+            </CardDescription>
+          </CardHeader>
+          
+          <form onSubmit={handlePaymentStart}>
+            <CardContent className="space-y-4">
+              {error && (
+                <Alert className="bg-red-900/40 border border-red-800 text-white">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              
+              <div className="bg-purple-900/30 border border-purple-500/20 rounded-lg p-4">
+                <h3 className="font-bold text-lg mb-2">GenBI Premium - $50/month</h3>
+                <ul className="space-y-2">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
+                    <span>Unlimited datasets</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
+                    <span>Unlimited AI-powered queries</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
+                    <span>Advanced visualization tools</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
+                    <span>Priority support</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-purple-400" />
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  className="bg-white/10 border-white/20 text-white placeholder-gray-400"
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+              
+              <div className="flex items-center gap-3 pt-2 text-sm text-gray-300">
+                <Shield className="h-4 w-4 text-purple-400" />
+                <span>Your account will be created automatically</span>
+              </div>
+            </CardContent>
+            
+            <CardFooter className="flex flex-col gap-4">
+              <Button
+                type="submit"
+                className="w-full purple-gradient"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="mr-2 h-4 w-4" />
+                    Subscribe Now - $50/month
+                  </>
+                )}
+              </Button>
+              
+              <div className="text-center text-sm">
+                Already have an account?{" "}
+                <a href="/login" className="text-purple-300 hover:text-white hover:underline">
+                  Sign In
+                </a>
+              </div>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default PayNowPage;

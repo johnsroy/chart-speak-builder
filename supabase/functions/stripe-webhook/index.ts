@@ -65,31 +65,112 @@ serve(async (req) => {
         const currentPeriodStart = new Date(subscription.current_period_start * 1000).toISOString();
         const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
 
-        // Get user from subscription
-        const { data: subscriptionData, error: subError } = await supabaseClient
-          .from('user_subscriptions')
-          .select('userId')
-          .eq('stripeCustomerId', customerId)
-          .single();
-
-        if (subError) {
-          console.error("Error finding user for customer:", subError);
-          break;
+        // Check if this is a pending registration (direct payment flow)
+        const customer = await stripe.customers.retrieve(customerId);
+        const userId = customer.metadata?.supabaseUid;
+        
+        if (userId === "pending_registration") {
+          // This was a direct payment without a user account
+          // The user account should already be created in the create-checkout function
+          // Find the user by email
+          const userEmail = customer.email;
+          if (userEmail) {
+            const { data: userData, error: userError } = await supabaseClient.auth
+              .admin
+              .listUsers({
+                filter: {
+                  email: userEmail
+                }
+              });
+            
+            if (userError) {
+              console.error("Error finding user by email:", userError);
+              break;
+            }
+            
+            if (userData && userData.users && userData.users.length > 0) {
+              // Found the user, update their subscription
+              const foundUser = userData.users[0];
+              
+              // Update the customer with the correct user ID
+              await stripe.customers.update(customerId, {
+                metadata: {
+                  supabaseUid: foundUser.id
+                }
+              });
+              
+              // Check if user has subscription record
+              const { data: existingSubscription } = await supabaseClient
+                .from('user_subscriptions')
+                .select('id')
+                .eq('userId', foundUser.id)
+                .single();
+                
+              if (existingSubscription) {
+                // Update existing subscription
+                await supabaseClient
+                  .from('user_subscriptions')
+                  .update({
+                    isPremium: true,
+                    datasetQuota: 100,
+                    queryQuota: 1000,
+                    stripeCustomerId: customerId,
+                    stripeSubscriptionId: subscriptionId,
+                    currentPeriodStart,
+                    currentPeriodEnd,
+                    cancelAtPeriodEnd: false
+                  })
+                  .eq('userId', foundUser.id);
+              } else {
+                // Create subscription record
+                await supabaseClient
+                  .from('user_subscriptions')
+                  .insert({
+                    userId: foundUser.id,
+                    isPremium: true,
+                    datasetQuota: 100,
+                    queryQuota: 1000,
+                    datasetsUsed: 0,
+                    queriesUsed: 0,
+                    stripeCustomerId: customerId,
+                    stripeSubscriptionId: subscriptionId,
+                    currentPeriodStart,
+                    currentPeriodEnd,
+                    cancelAtPeriodEnd: false
+                  });
+              }
+              
+              console.log("Updated subscription for user from direct payment:", foundUser.id);
+            }
+          }
+        } else {
+          // Regular flow with existing user
+          // Get user from subscription
+          const { data: subscriptionData, error: subError } = await supabaseClient
+            .from('user_subscriptions')
+            .select('userId')
+            .eq('stripeCustomerId', customerId)
+            .single();
+  
+          if (subError) {
+            console.error("Error finding user for customer:", subError);
+            break;
+          }
+  
+          // Update user's subscription
+          await supabaseClient
+            .from('user_subscriptions')
+            .update({
+              isPremium: true,
+              datasetQuota: 100,
+              queryQuota: 1000,
+              stripeSubscriptionId: subscriptionId,
+              currentPeriodStart,
+              currentPeriodEnd,
+              cancelAtPeriodEnd: false
+            })
+            .eq('userId', subscriptionData.userId);
         }
-
-        // Update user's subscription
-        await supabaseClient
-          .from('user_subscriptions')
-          .update({
-            isPremium: true,
-            datasetQuota: 100,
-            queryQuota: 1000,
-            stripeSubscriptionId: subscriptionId,
-            currentPeriodStart,
-            currentPeriodEnd,
-            cancelAtPeriodEnd: false
-          })
-          .eq('userId', subscriptionData.userId);
         
         break;
       }

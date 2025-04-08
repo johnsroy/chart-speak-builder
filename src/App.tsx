@@ -14,6 +14,7 @@ import AccountPage from './pages/AccountPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
+import PayNowPage from './pages/auth/PayNowPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import PaymentSuccessPage from './pages/payment/PaymentSuccessPage';
 import PaymentCanceledPage from './pages/payment/PaymentCanceledPage';
@@ -48,6 +49,7 @@ function AppContent() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/pay-now" element={<PayNowPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           
           {/* Protected routes - require authentication */}

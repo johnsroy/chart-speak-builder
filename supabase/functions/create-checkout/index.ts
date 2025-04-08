@@ -23,23 +23,36 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
-    // Get the authorization header from the request
+    // Check if request has authentication
+    let userId = null;
+    let userEmail = null;
+    let tempPassword = null;
+    
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Authorization header is required" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (authHeader) {
+      // Authenticated user flow
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+
+      if (userError) {
+        console.error("Auth error:", userError);
+      } else if (user) {
+        userId = user.id;
+        userEmail = user.email;
+      }
+    } 
+    
+    // Get request body for direct payment
+    const { email, tempPassword: password } = await req.json();
+    if (email && !userEmail) {
+      userEmail = email;
+      tempPassword = password || null;
     }
-
-    // Get the user from the authorization header
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-
-    if (userError || !user) {
+    
+    if (!userEmail) {
       return new Response(
-        JSON.stringify({ error: "User not authenticated" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Email is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -57,38 +70,93 @@ serve(async (req) => {
       apiVersion: "2023-10-16",
     });
 
-    // Get the user's subscription data
-    const { data: subscriptionData, error: subError } = await supabaseClient
-      .from('user_subscriptions')
-      .select('stripeCustomerId')
-      .eq('userId', user.id)
-      .single();
+    // Check if user exists
+    if (!userId && tempPassword) {
+      // Create user account if coming from direct payment
+      const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({
+        email: userEmail,
+        password: tempPassword,
+        options: {
+          emailRedirectTo: `${req.headers.get("origin") || "https://genbi.app"}/login`,
+          data: {
+            email_confirmed: true
+          }
+        }
+      });
 
-    if (subError) {
-      console.error('Error getting user subscription:', subError);
-      return new Response(
-        JSON.stringify({ error: "Could not retrieve user subscription data" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if (signUpError) {
+        console.log("Error creating user:", signUpError);
+        // Check if user already exists
+        if (signUpError.message.includes('already registered')) {
+          console.log("User already exists, proceeding with checkout");
+        } else {
+          return new Response(
+            JSON.stringify({ error: signUpError.message }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } else if (signUpData?.user) {
+        userId = signUpData.user.id;
+        console.log("Created new user:", userId);
+        
+        // Set up user subscription entry with trial
+        try {
+          // Calculate trial end date (14 days from now)
+          const trialEndDate = new Date();
+          trialEndDate.setDate(trialEndDate.getDate() + 14);
+          
+          await supabaseClient.from('user_subscriptions').insert({
+            userId: userId,
+            isPremium: false,
+            datasetQuota: 2,
+            queryQuota: 10,
+            datasetsUsed: 0,
+            queriesUsed: 0,
+            trialEndDate: trialEndDate.toISOString()
+          });
+        } catch (dbError) {
+          console.error("Error setting up user subscription:", dbError);
+        }
+      }
     }
 
-    let customerId = subscriptionData?.stripeCustomerId;
+    // Get customer id if user exists
+    let customerId = null;
+    if (userId) {
+      const { data: subscriptionData } = await supabaseClient
+        .from('user_subscriptions')
+        .select('stripeCustomerId')
+        .eq('userId', userId)
+        .single();
+      
+      customerId = subscriptionData?.stripeCustomerId;
+    }
 
-    // If no customer ID exists, create one
+    // If no customer ID from subscription table, try to find by email
+    if (!customerId && userEmail) {
+      const customers = await stripe.customers.list({ email: userEmail, limit: 1 });
+      if (customers.data.length > 0) {
+        customerId = customers.data[0].id;
+      }
+    }
+
+    // If still no customer ID, create one
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: user.email,
+        email: userEmail,
         metadata: {
-          supabaseUid: user.id
-        },
+          supabaseUid: userId || "pending_registration"
+        }
       });
       customerId = customer.id;
 
-      // Update user subscription with Stripe customer ID
-      await supabaseClient
-        .from('user_subscriptions')
-        .update({ stripeCustomerId: customerId })
-        .eq('userId', user.id);
+      // Update user subscription with Stripe customer ID if user exists
+      if (userId) {
+        await supabaseClient
+          .from('user_subscriptions')
+          .update({ stripeCustomerId: customerId })
+          .eq('userId', userId);
+      }
     }
 
     // Create the checkout session
@@ -101,8 +169,14 @@ serve(async (req) => {
         },
       ],
       mode: "subscription",
-      success_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-success`,
+      success_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-success?email=${encodeURIComponent(userEmail)}`,
       cancel_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-cancelled`,
+      subscription_data: {
+        metadata: {
+          userEmail: userEmail,
+          userId: userId || "pending_registration"
+        }
+      }
     });
 
     return new Response(JSON.stringify({ url: session.url }), {

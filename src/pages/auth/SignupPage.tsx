@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, User, Mail, Lock, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Loader2, User, Mail, Lock, CheckCircle, AlertTriangle, CreditCard, Clock } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Link } from 'react-router-dom';
 
 const SignupPage = () => {
   const [email, setEmail] = useState('');
@@ -38,10 +39,10 @@ const SignupPage = () => {
       
       if (result.success) {
         console.log("Signup successful, redirecting to dashboard");
-        toast.success('Account created successfully!');
+        toast.success('Account created successfully! You now have a 14-day trial.');
+        setRegistrationComplete(true);
         // The user should be automatically logged in due to the auto-login in the signup function
         // The useEffect above will redirect to dashboard once isAuthenticated is true
-        // No need to manually navigate here
       } else if (result.error) {
         console.error("Signup error:", result.error);
         setError(result.error);
@@ -84,9 +85,23 @@ const SignupPage = () => {
             <CardDescription className="text-gray-300 text-center">
               {registrationComplete 
                 ? 'You will be redirected to the dashboard' 
-                : 'Join GenBI to start analyzing your data with AI'}
+                : 'Join GenBI with a 14-day free trial'}
             </CardDescription>
           </CardHeader>
+          
+          <div className="px-6 pt-0 pb-2">
+            <div className="flex justify-center space-x-6 border-b border-purple-500/20 pb-4">
+              <Link to="/signup" className="text-white font-medium pb-2 border-b-2 border-purple-500">
+                14-Day Free Trial
+              </Link>
+              <Link to="/pay-now" className="text-gray-300 hover:text-white pb-2 border-b-2 border-transparent hover:border-purple-300">
+                <div className="flex items-center">
+                  <CreditCard className="h-4 w-4 mr-1" />
+                  Pay Now
+                </div>
+              </Link>
+            </div>
+          </div>
           
           {error && (
             <CardContent className="pt-0">
@@ -166,20 +181,26 @@ const SignupPage = () => {
                 </div>
                 
                 <div className="pt-2">
-                  <ul className="space-y-2 text-sm">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-400" />
-                      <span>Free plan includes 2 datasets</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-400" />
-                      <span>10 free AI-powered queries</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-400" />
-                      <span>No credit card required</span>
-                    </li>
-                  </ul>
+                  <div className="bg-purple-900/30 border border-purple-500/20 rounded-lg p-4">
+                    <h3 className="font-medium text-sm mb-2 flex items-center">
+                      <Clock className="h-4 w-4 text-purple-400 mr-1" />
+                      Your 14-day trial includes:
+                    </h3>
+                    <ul className="space-y-2 text-sm">
+                      <li className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-400" />
+                        <span>2 free datasets</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-400" />
+                        <span>10 free AI-powered queries</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-400" />
+                        <span>No credit card required</span>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </CardContent>
               
@@ -195,7 +216,7 @@ const SignupPage = () => {
                       Creating Account...
                     </>
                   ) : (
-                    "Create Account"
+                    "Start My Free Trial"
                   )}
                 </Button>
                 
