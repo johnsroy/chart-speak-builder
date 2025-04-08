@@ -9,20 +9,23 @@ import { Button } from '@/components/ui/button';
 import { ChartType } from '@/utils/chartSuggestionUtils';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import highchartsMore from 'highcharts/highcharts-more';
-import highchartsSankey from 'highcharts/modules/sankey';
-import highchartsHeatmap from 'highcharts/modules/heatmap';
-import highchartsTreemap from 'highcharts/modules/treemap';
-import highchartsFunnel from 'highcharts/modules/funnel';
-import highchartsExporting from 'highcharts/modules/exporting';
+// Fix: Import modules as modules rather than as functions
+import HighchartsMore from 'highcharts/highcharts-more';
+import HighchartsSankey from 'highcharts/modules/sankey';
+import HighchartsHeatmap from 'highcharts/modules/heatmap';
+import HighchartsTreemap from 'highcharts/modules/treemap';
+import HighchartsFunnel from 'highcharts/modules/funnel';
+import HighchartsExporting from 'highcharts/modules/exporting';
 
-// Initialize Highcharts modules
-highchartsMore(Highcharts);
-highchartsSankey(Highcharts);
-highchartsHeatmap(Highcharts);
-highchartsTreemap(Highcharts);
-highchartsFunnel(Highcharts);
-highchartsExporting(Highcharts);
+// Initialize Highcharts modules correctly
+if (typeof Highcharts === 'object') {
+  HighchartsMore(Highcharts);
+  HighchartsSankey(Highcharts);
+  HighchartsHeatmap(Highcharts);
+  HighchartsTreemap(Highcharts);
+  HighchartsFunnel(Highcharts);
+  HighchartsExporting(Highcharts);
+}
 
 // Define the dark theme for Highcharts
 const darkTheme = {
