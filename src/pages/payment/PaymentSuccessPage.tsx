@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 const PaymentSuccessPage = () => {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ const PaymentSuccessPage = () => {
   const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isAdminTest, setIsAdminTest] = useState(false);
+  const [processingComplete, setProcessingComplete] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -37,12 +39,20 @@ const PaymentSuccessPage = () => {
           
           if (error) {
             console.error("Error updating admin subscription:", error);
+            toast.error("Could not activate admin subscription. Please try again.");
+          } else {
+            toast.success("Admin test subscription activated");
+            setProcessingComplete(true);
           }
         } catch (err) {
           console.error("Failed to process admin test payment:", err);
+          toast.error("Failed to process test payment");
         } finally {
           setLoading(false);
         }
+      } else {
+        // For non-admin users, assume the subscription has been processed by Stripe webhook
+        setProcessingComplete(true);
       }
     };
     
@@ -53,17 +63,30 @@ const PaymentSuccessPage = () => {
       if (emailParam === 'admin@example.com' && !user) {
         setLoading(true);
         try {
-          await login('admin@example.com', 'password123');
+          const result = await login('admin@example.com', 'password123');
+          if (result.success) {
+            toast.success("Logged in as admin");
+            setProcessingComplete(true);
+          } else {
+            toast.error("Auto-login failed");
+          }
         } catch (error) {
           console.error("Auto-login failed:", error);
+          toast.error("Auto-login failed");
         } finally {
           setLoading(false);
         }
+      } else {
+        setProcessingComplete(true);
       }
     };
     
     autoLogin();
   }, [location.search, user, login, isAdminTest]);
+
+  const handleDashboardRedirect = () => {
+    navigate('/upload'); // Redirect to the upload page which is available
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 flex flex-col items-center justify-center p-4">
@@ -121,11 +144,19 @@ const PaymentSuccessPage = () => {
             )}
             
             <Button 
-              onClick={() => navigate('/dashboard')}
+              onClick={handleDashboardRedirect}
               className="purple-gradient"
               size="lg"
+              disabled={!processingComplete}
             >
-              Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
+              {processingComplete ? (
+                <>Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" /></>
+              ) : (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Preparing Dashboard
+                </>
+              )}
             </Button>
           </>
         )}
