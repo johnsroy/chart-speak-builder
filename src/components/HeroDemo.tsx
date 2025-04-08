@@ -99,7 +99,7 @@ const HeroDemo = () => {
                 {[35, 20, 30, 40, 35, 45, 50, 45, 40, 55, 60, 50].map((value, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center">
                     <div
-                      className="w-full bg-gradient-to-t from-purple-500/80 to-purple-400/80 rounded-t backdrop-blur-sm"
+                      className="w-full bg-gradient-to-t from-purple-500/80 to-purple-400/80 rounded-t backdrop-blur-sm animate-height-change"
                       style={{ 
                         height: `${value * 2}px`,
                         animationDelay: `${i * 0.1}s`,

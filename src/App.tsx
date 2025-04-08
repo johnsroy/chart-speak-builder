@@ -49,21 +49,21 @@ function AppContent() {
           element={<Index />}
         />
         
+        {/* Auth routes that don't need the main NavBar */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/pay-now" element={<PayNowPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+              
+        {/* Payment response routes - don't need authentication */}
+        <Route path="/payment-success" element={<PaymentSuccessPage />} />
+        <Route path="/payment-cancelled" element={<PaymentCanceledPage />} />
+        
         {/* Routes with NavBar */}
         <Route element={<>
           <NavBar />
           <main className="container mx-auto px-4 py-8">
             <Routes>
-              {/* Public routes */}
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/pay-now" element={<PayNowPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-              
-              {/* Payment response routes - don't need authentication */}
-              <Route path="/payment-success" element={<PaymentSuccessPage />} />
-              <Route path="/payment-cancelled" element={<PaymentCanceledPage />} />
-              
               {/* Protected routes - require authentication */}
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
