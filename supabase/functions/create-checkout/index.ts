@@ -68,6 +68,18 @@ serve(async (req) => {
       );
     }
 
+    // Validate email format (basic validation)
+    const isValidEmail = typeof userEmail === 'string' && 
+                        userEmail.includes('@') && 
+                        userEmail.includes('.');
+    
+    if (!isValidEmail && !isAdminUser) {
+      return new Response(
+        JSON.stringify({ error: "Please provide a valid email address" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // For admin user, return a mock checkout session to sandbox environment
     if (isAdminUser) {
       console.log("Creating test checkout session for admin user");
@@ -98,50 +110,58 @@ serve(async (req) => {
     // Check if user exists
     if (!userId && tempPassword) {
       // Create user account if coming from direct payment
-      const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({
-        email: userEmail,
-        password: tempPassword,
-        options: {
-          emailRedirectTo: `${req.headers.get("origin") || "https://genbi.app"}/login`,
-          data: {
-            email_confirmed: true
+      try {
+        const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({
+          email: userEmail,
+          password: tempPassword,
+          options: {
+            emailRedirectTo: `${req.headers.get("origin") || "https://genbi.app"}/login`,
+            data: {
+              email_confirmed: true
+            }
+          }
+        });
+
+        if (signUpError) {
+          console.log("Error creating user:", signUpError);
+          // Check if user already exists
+          if (signUpError.message && signUpError.message.includes('already registered')) {
+            console.log("User already exists, proceeding with checkout");
+          } else {
+            return new Response(
+              JSON.stringify({ error: signUpError.message || "Error creating user account" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        } else if (signUpData?.user) {
+          userId = signUpData.user.id;
+          console.log("Created new user:", userId);
+          
+          // Set up user subscription entry with trial - 1 DAY TRIAL
+          try {
+            // Calculate trial end date (1 day from now)
+            const trialEndDate = new Date();
+            trialEndDate.setDate(trialEndDate.getDate() + 1);
+            
+            await supabaseClient.from('user_subscriptions').insert({
+              userId: userId,
+              isPremium: false,
+              datasetQuota: 2,
+              queryQuota: 10,
+              datasetsUsed: 0,
+              queriesUsed: 0,
+              trialEndDate: trialEndDate.toISOString()
+            });
+          } catch (dbError) {
+            console.error("Error setting up user subscription:", dbError);
           }
         }
-      });
-
-      if (signUpError) {
-        console.log("Error creating user:", signUpError);
-        // Check if user already exists
-        if (signUpError.message.includes('already registered')) {
-          console.log("User already exists, proceeding with checkout");
-        } else {
-          return new Response(
-            JSON.stringify({ error: signUpError.message }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      } else if (signUpData?.user) {
-        userId = signUpData.user.id;
-        console.log("Created new user:", userId);
-        
-        // Set up user subscription entry with trial - 1 DAY TRIAL
-        try {
-          // Calculate trial end date (1 day from now)
-          const trialEndDate = new Date();
-          trialEndDate.setDate(trialEndDate.getDate() + 1);
-          
-          await supabaseClient.from('user_subscriptions').insert({
-            userId: userId,
-            isPremium: false,
-            datasetQuota: 2,
-            queryQuota: 10,
-            datasetsUsed: 0,
-            queriesUsed: 0,
-            trialEndDate: trialEndDate.toISOString()
-          });
-        } catch (dbError) {
-          console.error("Error setting up user subscription:", dbError);
-        }
+      } catch (authError) {
+        console.error("Auth error during signup:", authError);
+        return new Response(
+          JSON.stringify({ error: "Failed to process user authentication" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
     }
 

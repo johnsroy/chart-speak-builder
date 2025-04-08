@@ -17,6 +17,10 @@ const PayNowPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const validateEmail = (email: string): boolean => {
+    return email.trim() !== '' && email.includes('@') && email.includes('.');
+  };
+
   const handlePaymentStart = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -25,7 +29,7 @@ const PayNowPage = () => {
     // If user is already logged in, use their email
     const paymentEmail = user?.email || email;
 
-    if (!paymentEmail.trim() || !paymentEmail.includes('@')) {
+    if (!validateEmail(paymentEmail)) {
       setError('Please enter a valid email address');
       setIsLoading(false);
       return;
