@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +8,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, Mail, Lock, Shield, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Link } from 'react-router-dom';
 
 const LoginPage = () => {
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -18,6 +18,19 @@ const LoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const { login, adminLogin, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  // Check for email in query params
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const emailParam = params.get('email');
+    if (emailParam) {
+      setEmail(emailParam);
+      // If coming from payment success page, show toast
+      if (location.state?.fromPayment) {
+        toast.success("Your payment was successful! Please log in to access your premium features.");
+      }
+    }
+  }, [location]);
 
   // Redirect authenticated users
   useEffect(() => {
@@ -36,6 +49,13 @@ const LoginPage = () => {
       if (!result.success && result.error) {
         setError(result.error);
         toast.error('Login failed');
+      } else {
+        toast.success('Login successful!');
+        
+        // Check if this login is after a payment
+        if (location.state?.fromPayment) {
+          toast.success('Your premium features are now active!');
+        }
       }
     } catch (error: any) {
       console.error('Login error:', error);
@@ -55,6 +75,8 @@ const LoginPage = () => {
       if (!result.success && result.error) {
         setError(result.error);
         toast.error('Admin login failed');
+      } else {
+        toast.success('Logged in as admin');
       }
     } catch (error: any) {
       console.error('Admin login error:', error);
@@ -161,7 +183,7 @@ const LoginPage = () => {
                 variant="outline"
                 className="w-full border-purple-500/30 text-purple-300 hover:bg-purple-500/20"
                 onClick={handleAdminLogin}
-                disabled={isAdminLoading}
+                disabled={isAdminLoading || isLoading}
               >
                 {isAdminLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

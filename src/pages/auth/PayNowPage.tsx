@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,11 +12,13 @@ import { useAuth } from '@/hooks/useAuth';
 
 const PayNowPage = () => {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, login, signup, isAuthenticated } = useAuth();
+  const [isNewUser, setIsNewUser] = useState(true);
 
   const validateEmail = (email: string): boolean => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -28,24 +31,105 @@ const PayNowPage = () => {
     if (emailError) setEmailError(null);
   };
 
+  const handleCheckExistingUser = async () => {
+    if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+      return false;
+    }
+
+    try {
+      // Check if user exists by trying to sign in with a dummy password
+      const { data: userData, error: userError } = await supabase.auth.signInWithPassword({
+        email,
+        password: 'dummy-password-for-check'
+      });
+
+      // If this doesn't throw an error specifically about invalid login credentials,
+      // it means the email doesn't exist
+      if (userError && userError.message.includes('Invalid login credentials')) {
+        setIsNewUser(true);
+        return false;
+      } else {
+        setIsNewUser(false);
+        return true;
+      }
+    } catch (error) {
+      console.error("Error checking user:", error);
+      return false;
+    }
+  };
+
+  const handleUserRegistration = async () => {
+    if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+      return false;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return false;
+    }
+
+    try {
+      setIsLoading(true);
+
+      if (isNewUser) {
+        // Register the new user
+        const result = await signup(email, password);
+        if (!result.success) {
+          setError(result.error || 'Failed to create account');
+          return false;
+        }
+        toast.success('Account created successfully');
+      } else {
+        // Login existing user
+        const result = await login(email, password);
+        if (!result.success) {
+          setError(result.error || 'Failed to log in');
+          return false;
+        }
+        toast.success('Logged in successfully');
+      }
+
+      return true;
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      setError(error.message || 'An unexpected error occurred');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handlePaymentStart = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
     setEmailError(null);
 
-    const paymentEmail = user?.email || email;
-
-    if (!validateEmail(paymentEmail)) {
-      setEmailError('Please enter a valid email address');
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      console.log("Creating checkout session for:", paymentEmail);
+      // First check if user exists
+      const userExists = await handleCheckExistingUser();
+
+      // If new user or existing user that needs to log in
+      if (!isAuthenticated) {
+        if (!userExists && !password) {
+          setError('Please create an account or sign in before proceeding with payment');
+          setIsLoading(false);
+          return;
+        }
+
+        // Register/login the user first
+        const authSuccess = await handleUserRegistration();
+        if (!authSuccess) {
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      console.log("Creating checkout session for:", user?.email || email);
       
-      const isAdminTest = paymentEmail === 'admin@example.com';
+      const isAdminTest = (user?.email || email) === 'admin@example.com';
       
       if (isAdminTest) {
         toast.info('Processing admin test payment...');
@@ -55,7 +139,7 @@ const PayNowPage = () => {
       
       const { data, error: checkoutError } = await supabase.functions.invoke('create-checkout', {
         body: { 
-          email: paymentEmail
+          email: user?.email || email
         }
       });
 
@@ -98,9 +182,10 @@ const PayNowPage = () => {
     }
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (user?.email) {
       setEmail(user.email);
+      setIsNewUser(false);
     }
   }, [user]);
 
@@ -182,6 +267,27 @@ const PayNowPage = () => {
                 )}
               </div>
               
+              {!isAuthenticated && (
+                <div className="space-y-2">
+                  <label htmlFor="password" className="text-sm font-medium flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-purple-400" />
+                    Password {isNewUser ? '(Create a password)' : '(Your password)'}
+                  </label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={isNewUser ? "Create a password" : "Enter your password"}
+                    className="bg-white/10 border-white/20 text-white placeholder-gray-400"
+                    required={!isAuthenticated}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    {isNewUser ? 'Required for new accounts' : 'Required to verify your identity'}
+                  </p>
+                </div>
+              )}
+              
               {email === 'admin@example.com' && (
                 <Alert className="bg-yellow-900/30 border border-yellow-700/30">
                   <AlertDescription className="text-yellow-200">
@@ -192,7 +298,7 @@ const PayNowPage = () => {
               
               <div className="flex items-center gap-3 pt-2 text-sm text-gray-300">
                 <Shield className="h-4 w-4 text-purple-400" />
-                <span>{user ? 'You will use your existing account' : 'Your account will be created after payment'}</span>
+                <span>{isAuthenticated ? 'You will use your existing account' : (isNewUser ? 'A new account will be created' : 'You\'ll be signed in to your existing account')}</span>
               </div>
               
               {email === 'admin@example.com' && (
@@ -227,10 +333,22 @@ const PayNowPage = () => {
               </Button>
               
               <div className="text-center text-sm">
-                Already have an account?{" "}
-                <a href="/login" className="text-purple-300 hover:text-white hover:underline">
-                  Sign In
-                </a>
+                {isAuthenticated ? (
+                  <div>
+                    Using account <span className="font-medium">{user?.email}</span>
+                  </div>
+                ) : (
+                  <>
+                    {isNewUser ? 'Already have an account? ' : 'Don\'t have an account? '}
+                    <button
+                      type="button"
+                      onClick={() => setIsNewUser(!isNewUser)}
+                      className="text-purple-300 hover:text-white hover:underline"
+                    >
+                      {isNewUser ? 'Sign In' : 'Create Account'}
+                    </button>
+                  </>
+                )}
               </div>
             </CardFooter>
           </form>

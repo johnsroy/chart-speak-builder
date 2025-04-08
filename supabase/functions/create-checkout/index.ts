@@ -104,17 +104,28 @@ serve(async (req) => {
       apiVersion: "2023-10-16",
     });
 
-    // Check if user exists
-    if (!userId) {
-      // If email is from a common test domain, let's allow it
-      const isTestEmail = userEmail.endsWith('@example.com') || 
-                          userEmail.endsWith('@test.com') ||
-                          userEmail.includes('test') || 
-                          userEmail.includes('demo');
+    // If userId not provided, check if the email exists in auth system
+    if (!userId && userEmail) {
+      // Check if user exists by email
+      const { data: userData, error: userError } = await supabaseClient.auth
+        .admin
+        .listUsers({
+          filter: {
+            email: userEmail
+          }
+        });
       
-      // For non-test emails, we proceed without creating an account upfront
-      // The account will be created by the webhook after successful payment
-      console.log(`Proceeding without account creation for: ${userEmail}`);
+      if (!userError && userData.users && userData.users.length > 0) {
+        userId = userData.users[0].id;
+        console.log(`Found existing user with email ${userEmail}, id: ${userId}`);
+      } else {
+        console.log(`No existing user found with email ${userEmail}`);
+        // User should be registered before payment
+        return new Response(
+          JSON.stringify({ error: "Please register or log in before subscribing" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Get customer id if user exists
@@ -151,7 +162,7 @@ serve(async (req) => {
         const customer = await stripe.customers.create({
           email: userEmail,
           metadata: {
-            supabaseUid: userId || "pending_registration"
+            supabaseUid: userId
           }
         });
         customerId = customer.id;
@@ -193,7 +204,7 @@ serve(async (req) => {
 
       // Build success URL with parameters to enable auto-login
       const successParams = new URLSearchParams({
-        email: userEmail,
+        email: userEmail
       });
 
       // Create the checkout session using the newly created price
@@ -211,7 +222,7 @@ serve(async (req) => {
         subscription_data: {
           metadata: {
             userEmail: userEmail,
-            userId: userId || "pending_registration"
+            userId: userId
           }
         }
       });

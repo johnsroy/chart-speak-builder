@@ -42,13 +42,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(session.user);
         setSession(session);
         fetchUserSubscription(session.user.id).then(sub => {
-          if (sub) setSubscription(sub);
+          if (sub) {
+            console.log("User subscription loaded:", sub.isPremium ? "Premium" : "Free");
+            setSubscription(sub);
+          }
         });
       } else if (event === 'SIGNED_OUT') {
         console.log("User signed out");
         setUser(null);
         setSession(null);
         setSubscription(null);
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        console.log("Token refreshed for user:", session.user.email);
+        setUser(session.user);
+        setSession(session);
       }
       setIsLoading(false);
     });
@@ -62,7 +69,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(session.user);
         setSession(session);
         fetchUserSubscription(session.user.id).then(sub => {
-          if (sub) setSubscription(sub);
+          if (sub) {
+            console.log("User subscription loaded:", sub.isPremium ? "Premium" : "Free");
+            setSubscription(sub);
+          }
         });
       }
       setIsLoading(false);

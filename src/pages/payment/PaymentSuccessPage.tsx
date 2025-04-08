@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { CheckCircle, ArrowRight, Loader2, LogIn } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -82,10 +82,9 @@ const PaymentSuccessPage = () => {
               console.error("Admin login failed:", result.error);
             }
           } else {
-            // For payment-created accounts, we don't have access to the password
-            // So we cannot perform auto-login - just inform the user
+            // For payment users, inform them they need to log in
             console.log("No credentials available for auto-login");
-            toast.info("Please use the login link below to access your account");
+            toast.success("Payment successful! Please log in to access your premium account.");
             setProcessingComplete(true);
           }
         } catch (error) {
@@ -97,6 +96,7 @@ const PaymentSuccessPage = () => {
       } else if (user) {
         // User is already logged in
         setProcessingComplete(true);
+        toast.success("Payment successful! Your premium features are now active.");
       }
     };
     
@@ -159,10 +159,10 @@ const PaymentSuccessPage = () => {
             {email && !user && (
               <div className="bg-purple-900/30 border border-purple-500/20 rounded-lg p-4 mb-6">
                 <p className="text-sm mb-3">
-                  We've created an account for you using: <strong>{email}</strong>
+                  Ready to use your premium account with: <strong>{email}</strong>
                 </p>
                 <p className="text-sm text-gray-300 mb-2">
-                  A confirmation email has been sent to your inbox with your login details.
+                  Please log in using your credentials to access your premium features.
                 </p>
                 {!isAdminTest && (
                   <Button 
@@ -170,6 +170,7 @@ const PaymentSuccessPage = () => {
                     className="text-sm border-purple-500/30 hover:bg-purple-500/20 mt-2"
                     onClick={() => navigate(`/login?email=${encodeURIComponent(email || '')}`)}
                   >
+                    <LogIn className="mr-2 h-4 w-4" />
                     Go to login page
                   </Button>
                 )}
@@ -183,7 +184,11 @@ const PaymentSuccessPage = () => {
               disabled={!processingComplete}
             >
               {processingComplete ? (
-                <>Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" /></>
+                user ? (
+                  <>Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" /></>
+                ) : (
+                  <>Login to Your Account <LogIn className="ml-2 h-4 w-4" /></>
+                )
               ) : (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
