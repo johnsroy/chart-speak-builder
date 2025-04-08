@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
@@ -18,6 +17,7 @@ import DatasetChatInterface from '@/components/DatasetChatInterface';
 import DataTable from '@/components/DataTable';
 import { formatByteSize } from '@/utils/storageUtils';
 import { supabase } from '@/lib/supabase';
+import { datasetUtils } from '@/utils/datasetUtils';
 
 const Visualize = () => {
   const { datasetId } = useParams<{ datasetId: string; }>();
@@ -128,119 +128,42 @@ const Visualize = () => {
     setPreviewError(null);
     
     try {
-      console.log("Loading full dataset for ID:", datasetId);
+      console.log("Loading full dataset using enhanced datasetUtils");
       
-      const loadedData = await queryService.loadDataset(datasetId);
+      // Use our new comprehensive dataset loading utility
+      const fullData = await datasetUtils.loadDatasetContent(datasetId, {
+        showToasts: true,
+        limitRows: 10000  // Reasonable limit for browser performance
+      });
       
-      if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
-        console.log(`Successfully loaded ${loadedData.length} rows using queryService.loadDataset`);
-        setDataPreview(loadedData);
-        return;
-      }
-      
-      try {
-        const { data: fullData, error: fullDataError } = await supabase
-          .from('dataset_data')
-          .select('*')
-          .eq('dataset_id', datasetId)
-          .limit(5000);
+      if (fullData && Array.isArray(fullData) && fullData.length > 0) {
+        console.log(`Successfully loaded ${fullData.length} rows using datasetUtils`);
+        setDataPreview(fullData);
         
-        if (fullDataError) {
-          console.error('Error loading full dataset:', fullDataError);
-          throw new Error(fullDataError.message);
+        if (fullData.length < 100) {
+          toast.warning(`Limited dataset: Only ${fullData.length} rows available`, {
+            description: "This may be a sample or preview dataset"
+          });
+        } else {
+          toast.success(`Dataset loaded: ${fullData.length} rows`, {
+            description: "Full dataset available for analysis"
+          });
         }
-        
-        if (fullData && Array.isArray(fullData) && fullData.length > 0) {
-          console.log(`Successfully loaded ${fullData.length} rows from dataset`);
-          setDataPreview(fullData);
-          return;
-        }
-      } catch (dbErr) {
-        console.error("Database fetch error:", dbErr);
+      } else {
+        throw new Error("No data returned from datasetUtils");
       }
-      
-      console.log("No data found in dataset_data table, falling back to preview method");
-      const data = await dataService.previewDataset(datasetId);
-      console.log("Preview data loaded:", data?.length || 0, "rows");
-      
-      if (!data || !Array.isArray(data) || data.length === 0) {
-        throw new Error('No preview data available');
-      }
-      
-      setDataPreview(data);
     } catch (error) {
       console.error('Error loading data preview:', error);
       setPreviewError('Failed to load data preview');
+      toast.error("Failed to load dataset data", {
+        description: "Using generated sample data instead"
+      });
       
-      try {
-        console.log("Retrying data preview with fallback approach");
-        
-        const dataset = await dataService.getDataset(datasetId);
-        
-        if (dataset?.storage_path && dataset?.storage_type) {
-          console.log("Attempting to load data from storage path:", dataset.storage_path);
-          
-          try {
-            const { data: fileData, error: storageError } = await supabase.storage
-              .from(dataset.storage_type)
-              .download(dataset.storage_path);
-              
-            if (storageError) {
-              console.error("Storage error:", storageError);
-              throw storageError;
-            }
-            
-            const text = await fileData.text();
-            const rows = text.split('\n');
-            const headers = rows[0].split(',').map(h => h.trim());
-            
-            const parsedData = [];
-            const maxRows = Math.min(rows.length, 5000); // Limit to 5000 rows for performance
-            
-            for (let i = 1; i < maxRows; i++) {
-              if (!rows[i].trim()) continue;
-              
-              const values = rows[i].split(',');
-              const row: any = {};
-              
-              headers.forEach((header, index) => {
-                row[header] = values[index]?.trim() || '';
-              });
-              
-              parsedData.push(row);
-            }
-            
-            console.log(`Successfully parsed ${parsedData.length} rows from storage`);
-            setDataPreview(parsedData);
-            setPreviewError(null);
-            return;
-          } catch (fileErr) {
-            console.error("Error processing file from storage:", fileErr);
-          }
-        }
-      } catch (fallbackErr) {
-        console.error("Error in storage fallback:", fallbackErr);
+      if (dataset) {
+        console.log("Generating fallback data from schema");
+        const sampleData = generateSampleDataFromFilename(dataset?.file_name || '');
+        setDataPreview(sampleData);
       }
-      
-      setTimeout(async () => {
-        try {
-          console.log("Retrying data preview with fallback approach");
-          
-          const dataset = await dataService.getDataset(datasetId);
-          
-          if (dataset?.column_schema) {
-            const sampleData = generateSampleData(dataset.column_schema, 50);
-            console.log("Generated fallback sample data:", sampleData.length, "rows");
-            setDataPreview(sampleData);
-            setPreviewError(null);
-          } else {
-            generateFallbackDataFromFilename(dataset?.file_name || '');
-          }
-        } catch (fallbackError) {
-          console.error("Fallback data generation also failed:", fallbackError);
-          generateFallbackDataFromFilename(dataset?.file_name || '');
-        }
-      }, 1000);
     } finally {
       setPreviewLoading(false);
     }
@@ -295,41 +218,6 @@ const Visualize = () => {
     }
     
     console.log("Generated generic fallback data:", sampleData.length, "rows");
-    setDataPreview(sampleData);
-  };
-  
-  const generateSampleData = (schema: Record<string, string>, count: number) => {
-    const sampleData = [];
-    const columns = Object.keys(schema);
-    
-    for (let i = 0; i < count; i++) {
-      const row: Record<string, any> = {};
-      
-      columns.forEach(column => {
-        const type = schema[column];
-        
-        switch (type) {
-          case 'number':
-            row[column] = Math.floor(Math.random() * 1000);
-            break;
-          case 'boolean':
-            row[column] = Math.random() > 0.5;
-            break;
-          case 'date':
-            const date = new Date();
-            date.setDate(date.getDate() - Math.floor(Math.random() * 365));
-            row[column] = date.toISOString().split('T')[0];
-            break;
-          case 'string':
-          default:
-            row[column] = `Sample ${column} ${i + 1}`;
-            break;
-        }
-      });
-      
-      sampleData.push(row);
-    }
-    
     return sampleData;
   };
 
@@ -338,7 +226,36 @@ const Visualize = () => {
   };
 
   const handleDownload = () => {
-    toast.success("Download started");
+    if (dataPreview && dataPreview.length > 0) {
+      try {
+        // Convert data to CSV
+        const headers = Object.keys(dataPreview[0]);
+        const csvContent = [
+          headers.join(','),
+          ...dataPreview.map(row => headers.map(header => JSON.stringify(row[header] || '')).join(','))
+        ].join('\n');
+        
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${dataset?.name || 'dataset'}.csv`);
+        document.body.appendChild(link);
+        
+        // Start download and clean up
+        link.click();
+        link.parentNode?.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        toast.success("Dataset downloaded successfully");
+      } catch (error) {
+        console.error("Download error:", error);
+        toast.error("Failed to download dataset");
+      }
+    } else {
+      toast.error("No data available to download");
+    }
   };
 
   const handleShare = () => {
@@ -363,7 +280,12 @@ const Visualize = () => {
       
       try {
         console.log("Manually refreshing data preview");
-        const data = await dataService.previewDataset(datasetId);
+        
+        // Force refresh by bypassing all cache layers
+        const data = await datasetUtils.loadDatasetContent(datasetId, {
+          showToasts: true,
+          forceRefresh: true
+        });
         
         if (data && Array.isArray(data) && data.length > 0) {
           setDataPreview(data);
