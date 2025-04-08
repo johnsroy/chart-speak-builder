@@ -20,7 +20,8 @@ const SignupPage = () => {
     setIsLoading(true);
 
     try {
-      await register(email, password, name);
+      // Fix: Only pass email and password to register function
+      await register(email, password);
       navigate('/dashboard');
     } catch (error) {
       toast.error('Failed to register');

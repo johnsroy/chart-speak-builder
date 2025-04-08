@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
@@ -36,7 +35,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initial auth check
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
@@ -48,7 +46,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(false);
     });
 
-    // Check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
@@ -88,20 +85,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      return { success: true, session: null };
+      return { success: true };
     } catch (error) {
       console.error('Logout error:', error);
       return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
     }
   };
 
-  // Alias for signup to fix TypeScript errors
   const register = signup;
 
-  // For demo purposes - allow admin login regardless of credentials
   const adminLogin = async () => {
     try {
-      // This is for demo purposes only - in a real app, you would authenticate properly
       const { data, error } = await supabase.auth.signInWithPassword({
         email: 'admin@example.com',
         password: 'password123',
@@ -112,14 +106,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { success: true };
     } catch (error) {
       console.error('Admin login error:', error);
-      // Auto-create admin account if it doesn't exist (for demo purposes)
       try {
         await supabase.auth.signUp({
           email: 'admin@example.com',
           password: 'password123',
         });
         
-        // Try login again
         await supabase.auth.signInWithPassword({
           email: 'admin@example.com',
           password: 'password123',
@@ -136,11 +128,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Check if the current user is an admin (for demo purposes)
-  // In a real app, you would check against roles in your database
   const isAdmin = user?.email === 'admin@example.com';
   
-  // Check if the user is authenticated
   const isAuthenticated = !!user;
 
   return (

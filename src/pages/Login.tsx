@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,7 +22,6 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  // Redirect authenticated users
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/upload');
@@ -38,7 +36,7 @@ const Login = () => {
     
     try {
       if (isRegistering) {
-        await register(email, password, name);
+        await register(email, password);
         setSuccessMessage("Account created! Please check your email to confirm your account.");
         toast({
           title: 'Account created!',
@@ -55,7 +53,6 @@ const Login = () => {
     } catch (error) {
       let errorMsg = error instanceof Error ? error.message : 'Failed to authenticate';
       
-      // Handle specific error cases with more user-friendly messages
       if (errorMsg.includes('Email not confirmed')) {
         errorMsg = 'Please confirm your email address before logging in. Check your inbox for a confirmation email.';
       } else if (errorMsg.includes('Invalid login credentials')) {

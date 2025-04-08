@@ -60,9 +60,10 @@ const UploadArea = () => {
       try {
         if (!isAuthenticated && !user) {
           console.log("No active session found, performing admin login");
-          const loginResult = await adminLogin();
+          await adminLogin();
           
-          if (loginResult && loginResult.session) {
+          const { data } = await supabase.auth.getSession();
+          if (data?.session) {
             console.log("Admin login successful, session established");
           } else {
             console.error("Admin login didn't create a session");
