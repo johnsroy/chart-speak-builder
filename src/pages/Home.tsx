@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -14,7 +13,11 @@ import {
   Zap,
   Users,
   Shield,
-  CheckCircle
+  CheckCircle,
+  PieChart,
+  TrendingUp,
+  BarChart,
+  Activity
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Helmet } from 'react-helmet';
@@ -23,6 +26,7 @@ const Home = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user, adminLogin, subscription } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
+  const [activeChart, setActiveChart] = useState(0);
 
   useEffect(() => {
     // Trigger animation after component mount
@@ -50,7 +54,15 @@ const Home = () => {
       observer.observe(el);
     });
 
-    return () => observer.disconnect();
+    // Rotate through charts every 3 seconds
+    const chartInterval = setInterval(() => {
+      setActiveChart((prev) => (prev + 1) % 4);
+    }, 3000);
+
+    return () => {
+      observer.disconnect();
+      clearInterval(chartInterval);
+    };
   }, []);
   
   // Function to handle the dashboard or login button click
@@ -99,6 +111,108 @@ const Home = () => {
           Start Analyzing Now
         </Button>
       );
+    }
+  };
+
+  // Demo chart data for animation
+  const renderActiveChart = () => {
+    switch (activeChart) {
+      case 0:
+        return (
+          <div className="flex flex-col items-center">
+            <BarChart3 className="h-24 w-24 text-purple-400 animate-pulse mb-4" />
+            <div className="w-full flex justify-between space-x-1">
+              {[40, 70, 30, 85, 50, 65, 75].map((height, i) => (
+                <div 
+                  key={i} 
+                  className="bg-gradient-to-t from-purple-600 to-blue-400 rounded-t-md w-full"
+                  style={{
+                    height: `${height}px`,
+                    animation: `animate-bounce ${1 + i * 0.1}s infinite alternate`
+                  }}
+                ></div>
+              ))}
+            </div>
+            <p className="mt-4 text-lg font-semibold">Sales Performance</p>
+          </div>
+        );
+      case 1:
+        return (
+          <div className="flex flex-col items-center">
+            <PieChart className="h-24 w-24 text-blue-400 animate-spin-slow mb-4" />
+            <div className="w-full h-[120px] rounded-full overflow-hidden relative">
+              <div className="absolute inset-0 flex">
+                <div className="bg-purple-500 w-[30%] h-full animate-pulse"></div>
+                <div className="bg-blue-500 w-[45%] h-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                <div className="bg-pink-400 w-[25%] h-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+              </div>
+            </div>
+            <p className="mt-4 text-lg font-semibold">Market Distribution</p>
+          </div>
+        );
+      case 2:
+        return (
+          <div className="flex flex-col items-center">
+            <TrendingUp className="h-24 w-24 text-green-400 animate-float mb-4" />
+            <div className="relative w-full h-[120px]">
+              <svg viewBox="0 0 300 100" className="w-full h-full">
+                <path 
+                  d="M0,100 C50,30 100,70 150,40 C200,10 250,50 300,20" 
+                  fill="none" 
+                  stroke="url(#gradient)" 
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeDasharray="1000"
+                  strokeDashoffset="1000"
+                  style={{animation: 'dash 5s linear forwards infinite'}}
+                />
+                <defs>
+                  <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#8B5CF6" />
+                    <stop offset="100%" stopColor="#3B82F6" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <style jsx>{`
+                @keyframes dash {
+                  to {
+                    stroke-dashoffset: 0;
+                  }
+                }
+              `}</style>
+            </div>
+            <p className="mt-4 text-lg font-semibold">Revenue Growth</p>
+          </div>
+        );
+      case 3:
+        return (
+          <div className="flex flex-col items-center">
+            <Activity className="h-24 w-24 text-pink-400 animate-pulse mb-4" />
+            <div className="w-full grid grid-cols-7 gap-1">
+              {[...Array(7)].map((_, i) => (
+                <div key={i} className="flex flex-col items-center">
+                  <div 
+                    className="w-4 h-4 rounded-full mb-1"
+                    style={{
+                      backgroundColor: `rgba(${139 + i * 20}, ${92 - i * 10}, ${246 - i * 20}, 0.8)`,
+                      animation: `pulse ${1 + i * 0.2}s infinite alternate`
+                    }}
+                  ></div>
+                  <div 
+                    className="w-1 rounded-full bg-gradient-to-b from-purple-500 to-blue-500"
+                    style={{
+                      height: `${20 + Math.sin(i) * 20}px`,
+                      animation: `height-change ${2 + i * 0.3}s infinite alternate ease-in-out`
+                    }}
+                  ></div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-lg font-semibold">Weekly Activity</p>
+          </div>
+        );
+      default:
+        return null;
     }
   };
 
@@ -186,21 +300,44 @@ const Home = () => {
               </div>
             </div>
 
-            <div className={`glass-morphism p-1 rounded-2xl border border-white/10 shadow-2xl transition-all duration-1000 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-              <div className="overflow-hidden rounded-xl relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-blue-500/20 animate-pulse"></div>
-                <img 
-                  src="/dashboard-demo.webp" 
-                  alt="GenBI Dashboard Demo" 
-                  className="w-full h-auto rounded-xl object-cover transition-all duration-500 relative z-10 animate-float" 
-                />
-                <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
-                  <div className="w-16 h-16 bg-purple-600/80 rounded-full flex items-center justify-center backdrop-blur-sm animate-bounce shadow-lg cursor-pointer">
-                    <ArrowRight className="h-8 w-8 text-white animate-pulse" />
+            <div className={`glass-morphism p-6 rounded-2xl border border-white/10 shadow-2xl transition-all duration-1000 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+              <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-900/30 to-blue-900/30 backdrop-blur-lg p-6">
+                <div className="absolute inset-0 bg-grid-white/5 mask-image-gradient"></div>
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent animate-slide"></div>
+                <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-slide-reverse"></div>
+                <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-transparent via-purple-500 to-transparent animate-slide-down"></div>
+                <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-transparent via-blue-500 to-transparent animate-slide-up"></div>
+                
+                <div className="mb-6 flex justify-between items-center">
+                  <div className="flex items-center space-x-2">
+                    <div className="h-3 w-3 bg-red-500 rounded-full"></div>
+                    <div className="h-3 w-3 bg-yellow-500 rounded-full"></div>
+                    <div className="h-3 w-3 bg-green-500 rounded-full"></div>
                   </div>
+                  <div className="text-xs text-gray-300">GenBI Analytics Dashboard</div>
                 </div>
-                <div className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
-                  Live Demo
+                
+                <div className="h-[300px] flex items-center justify-center">
+                  {renderActiveChart()}
+                </div>
+                
+                <div className="mt-6 flex justify-between items-center">
+                  <div className="flex space-x-1">
+                    {[0, 1, 2, 3].map((index) => (
+                      <button 
+                        key={index} 
+                        className={`h-2 w-8 rounded-full transition-all duration-300 ${activeChart === index ? 'bg-purple-500' : 'bg-gray-600'}`}
+                        onClick={() => setActiveChart(index)}
+                      ></button>
+                    ))}
+                  </div>
+                  
+                  <div 
+                    className="bg-purple-600/80 h-10 w-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-purple-500 transition-all"
+                    onClick={() => navigate('/dashboard')}
+                  >
+                    <ArrowRight className="h-5 w-5 text-white animate-pulse" />
+                  </div>
                 </div>
               </div>
             </div>
