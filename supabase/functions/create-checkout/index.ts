@@ -45,7 +45,13 @@ serve(async (req) => {
     } 
     
     // Get request body for direct payment
-    const { email, tempPassword: password } = await req.json();
+    const requestBody = await req.json().catch(e => {
+      console.error("Failed to parse request body:", e);
+      return {};
+    });
+    
+    const { email, tempPassword: password } = requestBody;
+    
     if (email && !userEmail) {
       userEmail = email;
       tempPassword = password || null;
@@ -142,85 +148,113 @@ serve(async (req) => {
     // Get customer id if user exists
     let customerId = null;
     if (userId) {
-      const { data: subscriptionData } = await supabaseClient
-        .from('user_subscriptions')
-        .select('stripeCustomerId')
-        .eq('userId', userId)
-        .single();
-      
-      customerId = subscriptionData?.stripeCustomerId;
+      try {
+        const { data: subscriptionData } = await supabaseClient
+          .from('user_subscriptions')
+          .select('stripeCustomerId')
+          .eq('userId', userId)
+          .single();
+        
+        customerId = subscriptionData?.stripeCustomerId || null;
+      } catch (err) {
+        console.log("Could not retrieve subscription data, but continuing:", err);
+      }
     }
 
     // If no customer ID from subscription table, try to find by email
     if (!customerId && userEmail) {
-      const customers = await stripe.customers.list({ email: userEmail, limit: 1 });
-      if (customers.data.length > 0) {
-        customerId = customers.data[0].id;
+      try {
+        const customers = await stripe.customers.list({ email: userEmail, limit: 1 });
+        if (customers.data.length > 0) {
+          customerId = customers.data[0].id;
+        }
+      } catch (err) {
+        console.log("Error finding customer by email, but continuing:", err);
       }
     }
 
     // If still no customer ID, create one
     if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: userEmail,
-        metadata: {
-          supabaseUid: userId || "pending_registration"
-        }
-      });
-      customerId = customer.id;
+      try {
+        const customer = await stripe.customers.create({
+          email: userEmail,
+          metadata: {
+            supabaseUid: userId || "pending_registration"
+          }
+        });
+        customerId = customer.id;
 
-      // Update user subscription with Stripe customer ID if user exists
-      if (userId) {
-        await supabaseClient
-          .from('user_subscriptions')
-          .update({ stripeCustomerId: customerId })
-          .eq('userId', userId);
+        // Update user subscription with Stripe customer ID if user exists
+        if (userId) {
+          try {
+            await supabaseClient
+              .from('user_subscriptions')
+              .update({ stripeCustomerId: customerId })
+              .eq('userId', userId);
+          } catch (err) {
+            console.log("Could not update subscription with customer ID, but continuing:", err);
+          }
+        }
+      } catch (err) {
+        console.error("Error creating Stripe customer:", err);
+        return new Response(
+          JSON.stringify({ error: "Failed to create customer record" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
     }
 
     // Create a price on the fly
-    const price = await stripe.prices.create({
-      currency: 'usd',
-      unit_amount: 5000, // $50.00
-      recurring: {
-        interval: 'month',
-      },
-      product_data: {
-        name: 'GenBI Premium Subscription',
-        description: 'Monthly subscription to GenBI Premium features',
-      },
-    });
-
-    console.log("Created price:", price.id);
-
-    // Create the checkout session using the newly created price
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      line_items: [
-        {
-          price: price.id,
-          quantity: 1,
+    try {
+      const price = await stripe.prices.create({
+        currency: 'usd',
+        unit_amount: 5000, // $50.00
+        recurring: {
+          interval: 'month',
         },
-      ],
-      mode: "subscription",
-      success_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-success?email=${encodeURIComponent(userEmail)}`,
-      cancel_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-cancelled`,
-      subscription_data: {
-        metadata: {
-          userEmail: userEmail,
-          userId: userId || "pending_registration"
-        }
-      }
-    });
+        product_data: {
+          name: 'GenBI Premium Subscription',
+          description: 'Monthly subscription to GenBI Premium features',
+        },
+      });
 
-    return new Response(JSON.stringify({ url: session.url }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+      console.log("Created price:", price.id);
+
+      // Create the checkout session using the newly created price
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        line_items: [
+          {
+            price: price.id,
+            quantity: 1,
+          },
+        ],
+        mode: "subscription",
+        success_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-success?email=${encodeURIComponent(userEmail)}`,
+        cancel_url: `${req.headers.get("origin") || "https://genbi.app"}/payment-cancelled`,
+        subscription_data: {
+          metadata: {
+            userEmail: userEmail,
+            userId: userId || "pending_registration"
+          }
+        }
+      });
+
+      return new Response(JSON.stringify({ url: session.url }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    } catch (stripeError) {
+      console.error("Stripe error:", stripeError);
+      return new Response(
+        JSON.stringify({ error: stripeError.message || "Error processing payment" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
   } catch (error) {
     console.error("Error creating checkout session:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error.message || "An unexpected error occurred" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
