@@ -22,7 +22,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   datasetName
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeModel, setActiveModel] = useState<'openai' | 'anthropic'>('openai');
   const [recommendations, setRecommendations] = useState<string[]>([]);
@@ -30,6 +29,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const [previousQueries, setPreviousQueries] = useState<any[]>([]);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [fullDataset, setFullDataset] = useState<any[] | null>(null);
 
   // Fetch the current user ID on component mount
   useEffect(() => {
@@ -47,6 +47,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       try {
         const datasetData = await dataService.getDataset(datasetId);
         setDataset(datasetData);
+        
+        // Fetch the full dataset for better analysis
+        fetchFullDataset(datasetId);
         
         const suggestedQueries = nlpService.getRecommendationsForDataset(datasetData);
         setRecommendations(suggestedQueries);
@@ -81,6 +84,27 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       }]);
     }
   }, [datasetName, messages.length]);
+  
+  // Function to fetch the full dataset
+  const fetchFullDataset = async (datasetId: string) => {
+    try {
+      console.log("Fetching full dataset for analysis");
+      const { data, error } = await supabase
+        .from('dataset_data')
+        .select('*')
+        .eq('dataset_id', datasetId)
+        .limit(5000); // Get a much larger sample for better analysis
+      
+      if (error) {
+        console.error('Error getting full dataset data:', error);
+      } else if (data && Array.isArray(data) && data.length > 0) {
+        console.log(`Successfully loaded ${data.length} rows for analysis`);
+        setFullDataset(data);
+      }
+    } catch (err) {
+      console.error('Error in fetching full dataset:', err);
+    }
+  };
 
   // Handle sending a new message
   const handleSendMessage = async (messageText: string) => {
@@ -101,40 +125,45 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     try {
       console.log(`Sending query to ${activeModel} model:`, messageText);
       
-      let dataPreview = await dataService.previewDataset(datasetId)
-        .catch(err => {
-          console.error('Error fetching data preview:', err);
-          return null;
-        });
+      // Use the full dataset if available, otherwise fall back to preview
+      let dataForAnalysis = fullDataset;
       
-      if (!dataPreview || !Array.isArray(dataPreview) || dataPreview.length === 0) {
-        console.warn('No data preview available, fetching dataset directly');
-        try {
-          const { data, error } = await supabase
-            .from('dataset_data')
-            .select('*')
-            .eq('dataset_id', datasetId)
-            .limit(200);
-          
-          if (error) {
-            console.error('Error getting dataset data:', error);
-            throw new Error('Failed to retrieve dataset data');
+      if (!dataForAnalysis || !Array.isArray(dataForAnalysis) || dataForAnalysis.length === 0) {
+        dataForAnalysis = await dataService.previewDataset(datasetId)
+          .catch(err => {
+            console.error('Error fetching data preview:', err);
+            return null;
+          });
+        
+        if (!dataForAnalysis || !Array.isArray(dataForAnalysis) || dataForAnalysis.length === 0) {
+          console.warn('No data available, fetching dataset directly');
+          try {
+            const { data, error } = await supabase
+              .from('dataset_data')
+              .select('*')
+              .eq('dataset_id', datasetId)
+              .limit(1000);
+            
+            if (error) {
+              console.error('Error getting dataset data:', error);
+              throw new Error('Failed to retrieve dataset data');
+            }
+            
+            if (data && Array.isArray(data) && data.length > 0) {
+              dataForAnalysis = data;
+              console.log('Successfully retrieved data directly:', data.length, 'rows');
+            } else {
+              throw new Error('No data returned from direct query');
+            }
+          } catch (dataError) {
+            toast.error('Could not load dataset data');
+            throw new Error('Failed to load dataset data for analysis');
           }
-          
-          if (data && Array.isArray(data) && data.length > 0) {
-            dataPreview = data;
-            console.log('Successfully retrieved data directly:', data.length, 'rows');
-          } else {
-            throw new Error('No data returned from direct query');
-          }
-        } catch (dataError) {
-          toast.error('Could not load dataset data');
-          throw new Error('Failed to load dataset data for analysis');
         }
       }
       
-      console.log(`Sending ${dataPreview.length} rows of data for analysis`);
-      const result = await nlpService.processQuery(messageText, datasetId, activeModel, dataPreview);
+      console.log(`Sending ${dataForAnalysis.length} rows of data for analysis`);
+      const result = await nlpService.processQuery(messageText, datasetId, activeModel, dataForAnalysis);
       
       console.log("Query response:", result);
       
@@ -254,7 +283,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         throw new Error('Query not found');
       }
       
-      const data = await dataService.previewDataset(datasetId);
+      // Use full dataset if available
+      const data = fullDataset || await dataService.previewDataset(datasetId);
       
       const config = query.query_config;
       
@@ -265,6 +295,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         y_axis: config.y_axis,
         xAxis: config.x_axis,
         yAxis: config.y_axis,
+        color_scheme: config.color_scheme || 'professional',
         chart_title: config.result?.chart_title || 'Visualization',
         explanation: config.result?.explanation || `Analysis of ${config.x_axis} vs ${config.y_axis}`,
         data: data || [],

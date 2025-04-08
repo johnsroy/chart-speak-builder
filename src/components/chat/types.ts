@@ -15,4 +15,12 @@ export interface Message {
 export interface DataAnalysisResult {
   growth?: { rate: number; start: string; end: string } | null;
   decline?: { rate: number; start: string; end: string } | null;
+  summaryStats?: {
+    min?: number;
+    max?: number;
+    avg?: number;
+    sum?: number;
+    count?: number;
+  } | null;
+  insights?: string[] | null;
 }

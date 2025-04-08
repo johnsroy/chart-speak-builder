@@ -47,25 +47,48 @@ serve(async (req) => {
       throw new Error(`Failed to find dataset: ${datasetError.message}`);
     }
     
-    // Ensure we have data to analyze
-    if (!previewData || previewData.length === 0) {
-      console.error('No preview data provided');
-      throw new Error('Dataset preview data is required for analysis');
+    // Get the full dataset data instead of just using preview data
+    let fullData = previewData;
+    if (previewData.length < dataset.row_count) {
+      console.log(`Preview data has ${previewData.length} rows but dataset has ${dataset.row_count} rows. Fetching full data...`);
+      const { data: completeData, error: dataError } = await supabase
+        .from('dataset_data')
+        .select('*')
+        .eq('dataset_id', datasetId)
+        .limit(5000); // Increasing the limit significantly to get more data
+      
+      if (dataError) {
+        console.error('Error fetching full dataset:', dataError);
+      } else if (completeData && completeData.length > previewData.length) {
+        console.log(`Successfully fetched ${completeData.length} rows of data`);
+        fullData = completeData;
+      }
+    }
+    
+    // If still no data, use the preview data
+    if (!fullData || fullData.length === 0) {
+      console.error('No data available for analysis');
+      if (previewData && previewData.length > 0) {
+        fullData = previewData;
+        console.log(`Falling back to preview data with ${previewData.length} rows`);
+      } else {
+        throw new Error('Dataset data is required for analysis');
+      }
     }
 
     // Get schema info
     let schema = dataset.column_schema || {};
     
-    // If no schema provided, infer it from the preview data
+    // If no schema provided, infer it from the full data
     if (!schema || Object.keys(schema).length === 0) {
-      schema = inferSchema(previewData[0] || {});
+      schema = inferSchema(fullData[0] || {});
     }
     
     const columnNames = Object.keys(schema).length > 0 
       ? Object.keys(schema) 
-      : Object.keys(previewData[0] || {});
+      : Object.keys(fullData[0] || {});
     
-    console.log(`Got ${previewData.length} rows and ${columnNames.length} columns for analysis`);
+    console.log(`Using ${fullData.length} rows and ${columnNames.length} columns for analysis`);
     
     // Enhanced prompt for better visualizations and explanations
     const systemPrompt = `
@@ -77,25 +100,29 @@ Dataset Information:
 - Description: ${dataset.description || 'No description provided'}
 - Available Columns: ${columnNames.join(', ')}
 - Schema: ${JSON.stringify(schema)}
-- Sample Data: ${JSON.stringify(previewData.slice(0, 5))}
-- Total Rows: ${previewData.length}
+- Sample Data: ${JSON.stringify(fullData.slice(0, 5))}
+- Total Rows: ${fullData.length}
 
 Instructions:
 1. Carefully analyze the user's query to understand what data insights they're looking for.
-2. Think step-by-step about which chart type would best represent this data (bar, line, pie, scatter, etc.).
+2. Think step-by-step about which chart type would best represent this data (bar, line, pie, scatter, area, etc.).
 3. Select appropriate columns for x-axis and y-axis based on the data types and query context.
-4. Provide a clear, descriptive title for the visualization.
-5. Write a detailed, step-by-step explanation that walks through your analysis process and insights found.
-6. Include specific data points, trends, comparisons, and actionable insights in your explanation.
-7. Use sequential reasoning: first analyze the data, then identify patterns, then explain implications.
-8. Never include your reasoning process in the response - ONLY return a JSON object.
+4. Choose color schemes that enhance data visibility and aesthetic appeal.
+5. Provide a clear, descriptive title for the visualization.
+6. Write a detailed, step-by-step explanation that walks through your analysis process and insights found.
+7. Include specific data points, trends, comparisons, and actionable insights in your explanation.
+8. For time series data, identify trends, seasonality, and outliers.
+9. For categorical data, highlight key differences and patterns across categories.
+10. Use sequential reasoning: first analyze the data, then identify patterns, then explain implications.
+11. Never include your reasoning process in the response - ONLY return a JSON object.
 
 Return ONLY a JSON object with the following structure:
 {
-  "chart_type": "bar|line|pie|scatter",
+  "chart_type": "bar|line|pie|scatter|area|bubble|column|donut|stacked",
   "x_axis": "column_name",
   "y_axis": "column_name",
   "chart_title": "Descriptive title",
+  "color_scheme": "professional|vibrant|pastel|monochrome|gradient",
   "explanation": "Detailed step-by-step explanation of what the visualization shows, including specific data insights and sequential analysis"
 }
 `;
@@ -107,7 +134,7 @@ Return ONLY a JSON object with the following structure:
       console.log('Using Claude API for analysis');
       
       try {
-        // Call Anthropic API with Claude 3 Haiku
+        // Call Anthropic API with Claude 3.7 Sonnet (upgraded from Haiku)
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -116,8 +143,8 @@ Return ONLY a JSON object with the following structure:
             'anthropic-version': '2023-06-01'
           },
           body: JSON.stringify({
-            model: 'claude-3-haiku-20240307',
-            max_tokens: 1500,
+            model: 'claude-3-sonnet-20240229',
+            max_tokens: 2000,
             system: systemPrompt,
             messages: [
               { role: 'user', content: query }
@@ -161,7 +188,7 @@ Return ONLY a JSON object with the following structure:
       console.log('Using OpenAI GPT-4o API for analysis');
       
       try {
-        // Call OpenAI API
+        // Call OpenAI API with upgraded model for better analysis
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -233,6 +260,7 @@ Return ONLY a JSON object with the following structure:
             chart_type: aiResponse.chart_type,
             x_axis: aiResponse.x_axis,
             y_axis: aiResponse.y_axis,
+            color_scheme: aiResponse.color_scheme || 'professional',
             timestamp: new Date().toISOString(),
             user_query: query,
             result: aiResponse
@@ -247,7 +275,11 @@ Return ONLY a JSON object with the following structure:
         console.log('Saved query with ID:', savedQuery.id);
         
         // Ensure data is properly formatted for visualization
-        const processedData = preprocessData(previewData, aiResponse.x_axis, aiResponse.y_axis, aiResponse.chart_type);
+        // Use the full dataset for better visualizations
+        const processedData = preprocessData(fullData, aiResponse.x_axis, aiResponse.y_axis, aiResponse.chart_type);
+        
+        // Calculate additional statistics for richer insights
+        const dataStats = calculateDataStats(processedData, aiResponse.y_axis);
         
         // Return the complete response with data
         const result = {
@@ -257,12 +289,14 @@ Return ONLY a JSON object with the following structure:
           y_axis: aiResponse.y_axis,
           xAxis: aiResponse.x_axis,
           yAxis: aiResponse.y_axis, 
+          color_scheme: aiResponse.color_scheme || 'professional',
           chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
           explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
           data: processedData,
           columns: columnNames,
           query_id: savedQuery?.id,
-          model_used: model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'
+          model_used: model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o',
+          stats: dataStats
         };
         
         console.log(`Analysis complete: Chart type=${result.chart_type}, x=${result.x_axis}, y=${result.y_axis}`);
@@ -276,7 +310,8 @@ Return ONLY a JSON object with the following structure:
     }
     
     // Ensure data is properly formatted for visualization even if saving fails
-    const processedData = preprocessData(previewData, aiResponse.x_axis, aiResponse.y_axis, aiResponse.chart_type);
+    const processedData = preprocessData(fullData, aiResponse.x_axis, aiResponse.y_axis, aiResponse.chart_type);
+    const dataStats = calculateDataStats(processedData, aiResponse.y_axis);
     
     // If query saving fails, still return the analysis result
     const result = {
@@ -286,11 +321,13 @@ Return ONLY a JSON object with the following structure:
       y_axis: aiResponse.y_axis,
       xAxis: aiResponse.x_axis,
       yAxis: aiResponse.y_axis, 
+      color_scheme: aiResponse.color_scheme || 'professional',
       chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
       explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
       data: processedData,
       columns: columnNames,
-      model_used: model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'
+      model_used: model === 'anthropic' ? 'Claude 3.7 Sonnet' : 'GPT-4o',
+      stats: dataStats
     };
     
     console.log(`Analysis complete: Chart type=${result.chart_type}, x=${result.x_axis}, y=${result.y_axis}`);
@@ -350,7 +387,7 @@ function preprocessData(data: any[], xAxis: string, yAxis: string, chartType: st
     const processedData = JSON.parse(JSON.stringify(data));
     
     // For bar and pie charts, aggregate data by category
-    if (chartType === 'bar' || chartType === 'pie') {
+    if (chartType === 'bar' || chartType === 'pie' || chartType === 'donut') {
       // Group data by x-axis values and sum y-axis values
       const aggregated: Record<string, number> = {};
       
@@ -368,31 +405,178 @@ function preprocessData(data: any[], xAxis: string, yAxis: string, chartType: st
       return Object.entries(aggregated)
         .map(([key, value]) => ({ [xAxis]: key, [yAxis]: value }))
         .sort((a, b) => (b[yAxis] as number) - (a[yAxis] as number))
-        .slice(0, 15); // Limit to top 15 for readability
+        .slice(0, 20); // Limit to top 20 for readability
     }
     
     // For line charts, sort by date if applicable
-    if (chartType === 'line') {
+    if (chartType === 'line' || chartType === 'area') {
       try {
-        const isDateColumn = processedData.every((item: any) => {
+        const isDateColumn = processedData.some((item: any) => {
           return !isNaN(Date.parse(String(item[xAxis])));
         });
         
         if (isDateColumn) {
-          return processedData
+          const sorted = processedData
             .sort((a: any, b: any) => {
               return new Date(a[xAxis]).getTime() - new Date(b[xAxis]).getTime();
             });
+          
+          // If there are too many data points, aggregate by time period
+          if (sorted.length > 50) {
+            return aggregateTimeSeriesData(sorted, xAxis, yAxis);
+          }
+          
+          return sorted;
         }
       } catch (e) {
         console.error('Error sorting date data:', e);
       }
     }
     
+    // For stacked charts, ensure we have category data
+    if (chartType === 'stacked') {
+      // Find a potential category column
+      const columns = Object.keys(processedData[0] || {});
+      const categoryColumn = columns.find(col => 
+        col !== xAxis && col !== yAxis && 
+        typeof processedData[0][col] === 'string'
+      );
+      
+      if (categoryColumn) {
+        return processMultiSeriesData(processedData, xAxis, yAxis, categoryColumn);
+      }
+    }
+    
     // For scatter plots or other chart types
-    return processedData;
+    if (chartType === 'scatter' || chartType === 'bubble') {
+      // For scatter plots, ensure we have numeric x and y
+      return processedData
+        .filter((item: any) => {
+          const x = Number(item[xAxis]);
+          const y = Number(item[yAxis]);
+          return !isNaN(x) && !isNaN(y);
+        })
+        .map((item: any) => ({
+          [xAxis]: Number(item[xAxis]),
+          [yAxis]: Number(item[yAxis])
+        }))
+        .slice(0, 200); // Limit points for performance
+    }
+    
+    // For other chart types, just return the processed data
+    // but limit to a reasonable number to prevent performance issues
+    return processedData.slice(0, 500);
+    
   } catch (error) {
     console.error('Error preprocessing data:', error);
-    return data;
+    return data.slice(0, 200); // Fallback with limited data
+  }
+}
+
+// Helper function to aggregate time series data
+function aggregateTimeSeriesData(data: any[], xAxis: string, yAxis: string): any[] {
+  // Determine time granularity based on data range
+  const dates = data.map(item => new Date(item[xAxis]));
+  const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+  const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+  const daysDiff = (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24);
+  
+  let timeFormat: 'day' | 'month' | 'year';
+  if (daysDiff <= 60) {
+    timeFormat = 'day';
+  } else if (daysDiff <= 730) {
+    timeFormat = 'month';
+  } else {
+    timeFormat = 'year';
+  }
+  
+  // Group by time period
+  const grouped: Record<string, { sum: number, count: number }> = {};
+  
+  data.forEach(item => {
+    const date = new Date(item[xAxis]);
+    let key: string;
+    
+    if (timeFormat === 'day') {
+      key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+    } else if (timeFormat === 'month') {
+      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
+    } else {
+      key = `${date.getFullYear()}`; // YYYY
+    }
+    
+    if (!grouped[key]) {
+      grouped[key] = { sum: 0, count: 0 };
+    }
+    
+    const value = Number(item[yAxis]) || 0;
+    grouped[key].sum += value;
+    grouped[key].count += 1;
+  });
+  
+  // Convert back to array and sort chronologically
+  return Object.entries(grouped)
+    .map(([key, { sum, count }]) => ({
+      [xAxis]: key,
+      [yAxis]: sum / count, // Average value for the period
+      count: count // Keep count for reference
+    }))
+    .sort((a, b) => {
+      // Sort chronologically
+      return a[xAxis].localeCompare(b[xAxis]);
+    });
+}
+
+// Helper function to process multi-series data for stacked charts
+function processMultiSeriesData(data: any[], xAxis: string, yAxis: string, categoryColumn: string): any[] {
+  // Find unique categories and x values
+  const categories = [...new Set(data.map(item => item[categoryColumn]))];
+  const xValues = [...new Set(data.map(item => item[xAxis]))];
+  
+  // Create a properly formatted dataset for stacked charts
+  return xValues.map(x => {
+    const result: any = { [xAxis]: x };
+    
+    // For each category, calculate the sum
+    categories.forEach(category => {
+      const matchingItems = data.filter(item => 
+        item[xAxis] === x && item[categoryColumn] === category
+      );
+      
+      const sum = matchingItems.reduce((acc, item) => acc + (Number(item[yAxis]) || 0), 0);
+      // Use category name as the key for this series
+      result[`${String(category)}`] = sum;
+    });
+    
+    return result;
+  });
+}
+
+// New helper function to calculate additional statistics for the data
+function calculateDataStats(data: any[], yAxis: string): any {
+  if (!data || data.length === 0) return null;
+  
+  try {
+    // Extract numeric values
+    const values = data.map(item => Number(item[yAxis])).filter(val => !isNaN(val));
+    
+    if (values.length === 0) return null;
+    
+    // Calculate basic statistics
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    const avg = sum / values.length;
+    
+    return {
+      min,
+      max,
+      avg,
+      sum,
+      count: values.length
+    };
+  } catch (error) {
+    console.error('Error calculating data statistics:', error);
+    return null;
   }
 }

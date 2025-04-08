@@ -49,6 +49,8 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   showTitle = true,
   colorPalette = 'professional'
 }) => {
+  // Use the color scheme provided by the AI if available
+  const effectiveColorPalette = (result.color_scheme as keyof typeof COLOR_PALETTES) || colorPalette;
   const [displayMode, setDisplayMode] = useState<DisplayMode>('values');
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -133,6 +135,9 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   const ChartIcon = chartType === 'bar' ? BarChartIcon : 
                     chartType === 'line' ? LineChartIcon : PieChart;
 
+  // Display additional stats if available
+  const stats = result.stats;
+
   return (
     <Card className={`glass-card overflow-hidden shadow-lg ${className}`} ref={containerRef}>
       {showTitle && result.chart_title && (
@@ -178,7 +183,7 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
             <ChartContainer
               config={{
                 ...chartData.reduce((acc, item, index) => {
-                  const color = COLOR_PALETTES[colorPalette][index % COLOR_PALETTES[colorPalette].length];
+                  const color = COLOR_PALETTES[effectiveColorPalette][index % COLOR_PALETTES[effectiveColorPalette].length];
                   return { 
                     ...acc, 
                     [item.name]: { 
@@ -195,7 +200,7 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
                 yAxis,
                 displayMode,
                 total,
-                colorPalette,
+                colorPalette: effectiveColorPalette,
                 activeIndex,
                 setActiveIndex,
                 xTicks,
@@ -209,6 +214,37 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
             </div>
           )}
         </div>
+
+        {/* Show statistics summary if available */}
+        {stats && (
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+            {stats.min !== undefined && (
+              <div className="bg-gray-900/30 p-2 rounded-md text-center">
+                <div className="text-xs text-gray-400">Minimum</div>
+                <div className="font-medium">{formatChartValue(stats.min)}</div>
+              </div>
+            )}
+            {stats.max !== undefined && (
+              <div className="bg-gray-900/30 p-2 rounded-md text-center">
+                <div className="text-xs text-gray-400">Maximum</div>
+                <div className="font-medium">{formatChartValue(stats.max)}</div>
+              </div>
+            )}
+            {stats.avg !== undefined && (
+              <div className="bg-gray-900/30 p-2 rounded-md text-center">
+                <div className="text-xs text-gray-400">Average</div>
+                <div className="font-medium">{formatChartValue(stats.avg)}</div>
+              </div>
+            )}
+            {stats.sum !== undefined && (
+              <div className="bg-gray-900/30 p-2 rounded-md text-center">
+                <div className="text-xs text-gray-400">Total</div>
+                <div className="font-medium">{formatChartValue(stats.sum)}</div>
+              </div>
+            )}
+          </div>
+        )}
+        
         {result.explanation && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800">
             <p className="text-sm text-muted-foreground">{result.explanation}</p>
