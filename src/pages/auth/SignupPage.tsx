@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +7,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { ArrowLeft, Loader2, User, Mail, Lock, CheckCircle, AlertTriangle, CreditCard, Clock } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Link } from 'react-router-dom';
 
 const SignupPage = () => {
   const [email, setEmail] = useState('');
@@ -20,7 +18,6 @@ const SignupPage = () => {
   const { signup, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect authenticated users
   useEffect(() => {
     if (isAuthenticated) {
       console.log("User is authenticated, redirecting to dashboard");
@@ -41,8 +38,6 @@ const SignupPage = () => {
         console.log("Signup successful, redirecting to dashboard");
         toast.success('Account created successfully! You now have a 1-day trial.');
         setRegistrationComplete(true);
-        // The user should be automatically logged in due to the auto-login in the signup function
-        // The useEffect above will redirect to dashboard once isAuthenticated is true
       } else if (result.error) {
         console.error("Signup error:", result.error);
         setError(result.error);

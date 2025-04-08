@@ -24,6 +24,7 @@ serve(async (req) => {
     let userId = null;
     let userEmail = null;
     let tempPassword = null;
+    let isAdminUser = false;
     
     const authHeader = req.headers.get("Authorization");
     if (authHeader) {
@@ -36,6 +37,10 @@ serve(async (req) => {
       } else if (user) {
         userId = user.id;
         userEmail = user.email;
+        
+        // Check if this is an admin user for testing
+        isAdminUser = userEmail === 'admin@example.com';
+        console.log(`User ${userEmail} identified, admin status: ${isAdminUser}`);
       }
     } 
     
@@ -44,6 +49,10 @@ serve(async (req) => {
     if (email && !userEmail) {
       userEmail = email;
       tempPassword = password || null;
+      
+      // Check if this is an admin user from the request body
+      isAdminUser = userEmail === 'admin@example.com';
+      console.log(`Email ${userEmail} from request, admin status: ${isAdminUser}`);
     }
     
     if (!userEmail) {
@@ -51,6 +60,19 @@ serve(async (req) => {
         JSON.stringify({ error: "Email is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // For admin user, return a mock checkout session to sandbox environment
+    if (isAdminUser) {
+      console.log("Creating test checkout session for admin user");
+      
+      // Return a mock checkout URL that points to the success page directly for admin testing
+      const mockCheckoutUrl = `${req.headers.get("origin") || "https://genbi.app"}/payment-success?email=${encodeURIComponent(userEmail)}&test=true`;
+      
+      return new Response(JSON.stringify({ url: mockCheckoutUrl }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     // Get the Stripe secret key from environment variables
@@ -96,11 +118,11 @@ serve(async (req) => {
         userId = signUpData.user.id;
         console.log("Created new user:", userId);
         
-        // Set up user subscription entry with trial - UPDATED FROM 14 DAYS TO 1 DAY
+        // Set up user subscription entry with trial - 1 DAY TRIAL
         try {
           // Calculate trial end date (1 day from now)
           const trialEndDate = new Date();
-          trialEndDate.setDate(trialEndDate.getDate() + 1); // Changed from 14 to 1
+          trialEndDate.setDate(trialEndDate.getDate() + 1);
           
           await supabaseClient.from('user_subscriptions').insert({
             userId: userId,

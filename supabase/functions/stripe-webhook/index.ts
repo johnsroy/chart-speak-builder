@@ -7,6 +7,100 @@ const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
 const stripeWebhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
 serve(async (req) => {
+  // For admin test requests coming from success page
+  const url = new URL(req.url);
+  if (url.searchParams.has('adminTest')) {
+    try {
+      const email = url.searchParams.get('email') || 'admin@example.com';
+      
+      // Initialize Supabase client
+      const supabaseClient = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      );
+      
+      // Find admin user by email
+      const { data: userData, error: userError } = await supabaseClient.auth
+        .admin
+        .listUsers({
+          filter: {
+            email: email
+          }
+        });
+      
+      if (userError) {
+        console.error("Error finding admin user:", userError);
+        return new Response(
+          JSON.stringify({ error: "Admin user not found" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      
+      if (userData && userData.users && userData.users.length > 0) {
+        const adminUser = userData.users[0];
+        
+        // Check if admin user has subscription record
+        const { data: existingSubscription } = await supabaseClient
+          .from('user_subscriptions')
+          .select('id')
+          .eq('userId', adminUser.id)
+          .single();
+          
+        if (existingSubscription) {
+          // Update existing subscription for admin
+          await supabaseClient
+            .from('user_subscriptions')
+            .update({
+              isPremium: true,
+              datasetQuota: 100,
+              queryQuota: 1000,
+              stripeCustomerId: 'admin-test-customer',
+              stripeSubscriptionId: 'admin-test-subscription',
+              currentPeriodStart: new Date().toISOString(),
+              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+              cancelAtPeriodEnd: false
+            })
+            .eq('userId', adminUser.id);
+        } else {
+          // Create subscription record for admin
+          await supabaseClient
+            .from('user_subscriptions')
+            .insert({
+              userId: adminUser.id,
+              isPremium: true,
+              datasetQuota: 100,
+              queryQuota: 1000,
+              datasetsUsed: 0,
+              queriesUsed: 0,
+              stripeCustomerId: 'admin-test-customer',
+              stripeSubscriptionId: 'admin-test-subscription',
+              currentPeriodStart: new Date().toISOString(),
+              currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+              cancelAtPeriodEnd: false
+            });
+        }
+        
+        console.log("Updated subscription for admin test user:", adminUser.id);
+        
+        return new Response(
+          JSON.stringify({ success: true, message: "Admin test subscription activated" }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      } else {
+        return new Response(
+          JSON.stringify({ error: "Admin user not found" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    } catch (error) {
+      console.error("Error in admin test flow:", error);
+      return new Response(
+        JSON.stringify({ error: error.message || "Unknown error" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }
+
   if (!stripeSecretKey || !stripeWebhookSecret) {
     console.error("Missing Stripe environment variables");
     return new Response(

@@ -1,4 +1,3 @@
-
 import { supabase } from '../lib/supabase';
 import { UserSubscription } from '@/models/UserSubscription';
 
@@ -131,9 +130,9 @@ export const signupWithEmailPassword = async (email: string, password: string) =
       
       // Create trial subscription for new user
       try {
-        // Calculate trial end date (14 days from now)
+        // Calculate trial end date (1 day from now)
         const trialEndDate = new Date();
-        trialEndDate.setDate(trialEndDate.getDate() + 14);
+        trialEndDate.setDate(trialEndDate.getDate() + 1); // 1-day trial
         
         await supabase.from('user_subscriptions').insert({
           userId: data.user.id,
@@ -145,7 +144,7 @@ export const signupWithEmailPassword = async (email: string, password: string) =
           trialEndDate: trialEndDate.toISOString()
         });
         
-        console.log("Created trial subscription for new user");
+        console.log("Created 1-day trial subscription for new user");
       } catch (dbError) {
         console.error("Error setting up user subscription:", dbError);
       }
