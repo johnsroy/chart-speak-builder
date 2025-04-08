@@ -39,7 +39,7 @@ const SignupPage = () => {
       
       if (result.success) {
         console.log("Signup successful, redirecting to dashboard");
-        toast.success('Account created successfully! You now have a 14-day trial.');
+        toast.success('Account created successfully! You now have a 1-day trial.');
         setRegistrationComplete(true);
         // The user should be automatically logged in due to the auto-login in the signup function
         // The useEffect above will redirect to dashboard once isAuthenticated is true
@@ -85,14 +85,14 @@ const SignupPage = () => {
             <CardDescription className="text-gray-300 text-center">
               {registrationComplete 
                 ? 'You will be redirected to the dashboard' 
-                : 'Join GenBI with a 14-day free trial'}
+                : 'Join GenBI with a 1-day free trial'}
             </CardDescription>
           </CardHeader>
           
           <div className="px-6 pt-0 pb-2">
             <div className="flex justify-center space-x-6 border-b border-purple-500/20 pb-4">
               <Link to="/signup" className="text-white font-medium pb-2 border-b-2 border-purple-500">
-                14-Day Free Trial
+                1-Day Free Trial
               </Link>
               <Link to="/pay-now" className="text-gray-300 hover:text-white pb-2 border-b-2 border-transparent hover:border-purple-300">
                 <div className="flex items-center">
@@ -184,7 +184,7 @@ const SignupPage = () => {
                   <div className="bg-purple-900/30 border border-purple-500/20 rounded-lg p-4">
                     <h3 className="font-medium text-sm mb-2 flex items-center">
                       <Clock className="h-4 w-4 text-purple-400 mr-1" />
-                      Your 14-day trial includes:
+                      Your 1-day trial includes:
                     </h3>
                     <ul className="space-y-2 text-sm">
                       <li className="flex items-center gap-2">

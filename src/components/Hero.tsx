@@ -32,13 +32,23 @@ const Hero = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Button asChild size="lg" className="purple-gradient shadow-glow">
-                <Link to="/upload" className="flex items-center">
-                  <Upload className="mr-2 h-5 w-5" />
-                  Upload Data
-                  <ChevronRight className="ml-2 h-5 w-5" />
-                </Link>
-              </Button>
+              {isAuthenticated ? (
+                <Button asChild size="lg" className="purple-gradient shadow-glow">
+                  <Link to="/upload" className="flex items-center">
+                    <Upload className="mr-2 h-5 w-5" />
+                    Upload Data
+                    <ChevronRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button asChild size="lg" className="purple-gradient shadow-glow">
+                  <Link to="/signup" className="flex items-center">
+                    <Upload className="mr-2 h-5 w-5" />
+                    Start Free Trial
+                    <ChevronRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button>
+              )}
               
               <Button 
                 asChild 
@@ -47,10 +57,17 @@ const Hero = () => {
                 className="border-purple-400 bg-transparent hover:bg-purple-900/20"
                 onClick={handleDashboardClick}
               >
-                <Link to="/dashboard" className="flex items-center">
-                  <BarChart2 className="mr-2 h-5 w-5" />
-                  Dashboard
-                </Link>
+                {isAuthenticated ? (
+                  <Link to="/dashboard" className="flex items-center">
+                    <BarChart2 className="mr-2 h-5 w-5" />
+                    Dashboard
+                  </Link>
+                ) : (
+                  <Link to="/signup" className="flex items-center">
+                    <BarChart2 className="mr-2 h-5 w-5" />
+                    Learn More
+                  </Link>
+                )}
               </Button>
             </div>
           </div>

@@ -1,6 +1,8 @@
+
 import React from 'react';
 import { Helmet } from 'react-helmet';
 import { CreditCard, Zap } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const Home: React.FC = () => {
   return (
@@ -31,14 +33,14 @@ const Home: React.FC = () => {
               </p>
               
               <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="/pay-now" className="btn-cta bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center">
+                <Link to="/pay-now" className="btn-cta bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center">
                   <CreditCard className="mr-2 h-4 w-4" />
                   Subscribe Now
-                </a>
-                <a href="/signup" className="btn-cta purple-gradient text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center">
+                </Link>
+                <Link to="/signup" className="btn-cta purple-gradient text-white font-medium py-3 px-6 rounded-lg flex items-center justify-center">
                   <Zap className="mr-2 h-4 w-4" />
                   Start Free Trial
-                </a>
+                </Link>
               </div>
             </div>
           </div>
@@ -185,20 +187,20 @@ const Home: React.FC = () => {
           </h2>
           <div className="mt-8 flex lg:mt-0 lg:flex-shrink-0">
             <div className="inline-flex rounded-md shadow">
-              <a
-                href="/pay-now"
+              <Link
+                to="/pay-now"
                 className="inline-flex items-center justify-center rounded-md border border-transparent bg-purple-500 px-5 py-3 text-base font-medium text-white hover:bg-purple-600"
               >
                 Subscribe Now
-              </a>
+              </Link>
             </div>
             <div className="ml-3 inline-flex rounded-md shadow">
-              <a
-                href="/signup"
+              <Link
+                to="/signup"
                 className="inline-flex items-center justify-center rounded-md border border-transparent bg-white px-5 py-3 text-base font-medium text-gray-900 hover:bg-gray-50"
               >
                 Start Free Trial
-              </a>
+              </Link>
             </div>
           </div>
         </div>
