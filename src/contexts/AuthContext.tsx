@@ -1,302 +1,130 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
-import { useToast } from '@/hooks/use-toast';
-import { FREE_TIER_LIMITS, UserSubscription } from '@/models/UserSubscription';
+import { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { Session, User } from '@supabase/supabase-js';
+import { UserSubscription } from '@/models/UserSubscription';
+import { AuthContextProps, AuthProviderProps } from '@/types/auth.types';
+import { 
+  fetchUserSubscription,
+  loginWithEmailPassword,
+  signupWithEmailPassword,
+  logout as authLogout,
+  resendConfirmationEmail as authResendConfirmationEmail,
+  resetPassword as authResetPassword,
+  updatePassword as authUpdatePassword,
+  adminLogin as authAdminLogin
+} from '@/services/authService';
+import { toast } from 'sonner';
 
-interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  signOut: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<void>;
-  subscription: UserSubscription | null;
-  canAddDataset: boolean;
-  canRunQuery: boolean;
-  incrementQueriesUsed: () => Promise<boolean>;
-  incrementDatasetsUsed: () => Promise<boolean>;
-}
+const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 
-interface AuthProviderProps {
-  children: ReactNode;
-  initialSession?: Session | null;
-}
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export function AuthProvider({ 
-  children, 
-  initialSession 
-}: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(initialSession?.user || null);
-  const [session, setSession] = useState<Session | null>(initialSession || null);
-  const [isLoading, setIsLoading] = useState(false);
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const { toast } = useToast();
-
-  const canAddDataset = subscription ? subscription.datasetsUsed < subscription.datasetQuota : false;
-  const canRunQuery = subscription ? subscription.queriesUsed < subscription.queryQuota : false;
-
-  // Fetch user subscription data
-  const fetchSubscriptionData = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_subscriptions')
-        .select('*')
-        .eq('userId', userId)
-        .single();
-
-      if (error) {
-        console.error('Error fetching subscription:', error);
-        return;
-      }
-
-      if (data) {
-        setSubscription({
-          ...data,
-          trialEndDate: data.trialEndDate ? new Date(data.trialEndDate) : null
-        });
-      } else {
-        // Create default subscription for new user
-        const defaultSubscription: UserSubscription = {
-          userId,
-          isPremium: false,
-          datasetQuota: FREE_TIER_LIMITS.datasets,
-          queryQuota: FREE_TIER_LIMITS.queries,
-          datasetsUsed: 0,
-          queriesUsed: 0,
-          trialEndDate: null
-        };
-
-        const { error: insertError } = await supabase
-          .from('user_subscriptions')
-          .insert(defaultSubscription);
-
-        if (insertError) {
-          console.error('Error creating subscription:', insertError);
-        } else {
-          setSubscription(defaultSubscription);
-        }
-      }
-    } catch (error) {
-      console.error('Error in subscription handling:', error);
-    }
-  };
-
-  // Increment datasets used
-  const incrementDatasetsUsed = async (): Promise<boolean> => {
-    if (!user || !subscription) return false;
-    if (subscription.datasetsUsed >= subscription.datasetQuota) {
-      toast({
-        title: "Dataset limit reached",
-        description: "Please upgrade your plan to add more datasets.",
-        variant: "destructive",
-      });
-      return false;
-    }
-
-    try {
-      const newCount = subscription.datasetsUsed + 1;
-      
-      const { error } = await supabase
-        .from('user_subscriptions')
-        .update({ datasetsUsed: newCount })
-        .eq('userId', user.id);
-
-      if (error) {
-        console.error('Error updating datasets used:', error);
-        return false;
-      }
-
-      setSubscription({
-        ...subscription,
-        datasetsUsed: newCount
-      });
-      return true;
-    } catch (error) {
-      console.error('Error incrementing datasets:', error);
-      return false;
-    }
-  };
-
-  // Increment queries used
-  const incrementQueriesUsed = async (): Promise<boolean> => {
-    if (!user || !subscription) return false;
-    if (subscription.queriesUsed >= subscription.queryQuota) {
-      toast({
-        title: "Query limit reached",
-        description: "Please upgrade your plan to run more queries.",
-        variant: "destructive",
-      });
-      return false;
-    }
-
-    try {
-      const newCount = subscription.queriesUsed + 1;
-      
-      const { error } = await supabase
-        .from('user_subscriptions')
-        .update({ queriesUsed: newCount })
-        .eq('userId', user.id);
-
-      if (error) {
-        console.error('Error updating queries used:', error);
-        return false;
-      }
-
-      setSubscription({
-        ...subscription,
-        queriesUsed: newCount
-      });
-      return true;
-    } catch (error) {
-      console.error('Error incrementing queries:', error);
-      return false;
-    }
-  };
 
   useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      setSession(newSession);
-      setUser(newSession?.user || null);
+    console.log("Setting up auth state change listener");
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth state change event:", event);
       
-      if (newSession?.user) {
-        fetchSubscriptionData(newSession.user.id);
-      } else {
+      if (event === 'SIGNED_IN' && session?.user) {
+        console.log("User signed in:", session.user.email);
+        setUser(session.user);
+        setSession(session);
+        fetchUserSubscription(session.user.id).then(sub => {
+          if (sub) setSubscription(sub);
+        });
+      } else if (event === 'SIGNED_OUT') {
+        console.log("User signed out");
+        setUser(null);
+        setSession(null);
         setSubscription(null);
       }
+      setIsLoading(false);
     });
 
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      setSession(currentSession);
-      setUser(currentSession?.user || null);
+    // Fetch initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("Initial session:", session ? "Present" : "Not present");
       
-      if (currentSession?.user) {
-        fetchSubscriptionData(currentSession.user.id);
+      if (session?.user) {
+        console.log("Initial user:", session.user.email);
+        setUser(session.user);
+        setSession(session);
+        fetchUserSubscription(session.user.id).then(sub => {
+          if (sub) setSubscription(sub);
+        });
       }
+      setIsLoading(false);
     });
 
     return () => {
-      authSubscription.unsubscribe();
+      authListener?.subscription.unsubscribe();
     };
   }, []);
 
   const login = async (email: string, password: string) => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      setUser(data.user);
-      setSession(data.session);
-      toast({
-        title: "Login successful",
-        description: "Welcome back!",
-      });
-    } catch (error) {
-      toast({
-        title: "Login failed",
-        description: error instanceof Error ? error.message : "Something went wrong",
-        variant: "destructive",
-      });
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
+    return loginWithEmailPassword(email, password);
   };
 
-  const register = async (email: string, password: string, name?: string) => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name,
-          },
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      setUser(data.user);
-      setSession(data.session);
-      toast({
-        title: "Registration successful",
-        description: "Your account has been created",
-      });
-    } catch (error) {
-      toast({
-        title: "Registration failed",
-        description: error instanceof Error ? error.message : "Something went wrong",
-        variant: "destructive",
-      });
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
+  const signup = async (email: string, password: string) => {
+    return signupWithEmailPassword(email, password);
   };
 
-  const signOut = async () => {
-    setIsLoading(true);
-    try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setSession(null);
-      toast({
-        title: "Logged out",
-        description: "You have been logged out successfully",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to log out",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const logoutUser = async () => {
+    return authLogout();
   };
+
+  const resendConfirmation = async (email: string) => {
+    return authResendConfirmationEmail(email);
+  };
+
+  const resetPasswordRequest = async (email: string) => {
+    return authResetPassword(email);
+  };
+
+  const updateUserPassword = async (newPassword: string) => {
+    return authUpdatePassword(newPassword);
+  };
+
+  const adminLoginHandler = async () => {
+    return authAdminLogin();
+  };
+
+  const register = signup;
+
+  const isAdmin = user?.email === 'admin@example.com';
+  
+  const isAuthenticated = !!user && !!session;
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        isLoading,
-        isAuthenticated: !!user && !!session,
-        signOut,
-        login,
-        register,
-        subscription,
-        canAddDataset,
-        canRunQuery,
-        incrementDatasetsUsed,
-        incrementQueriesUsed
-      }}
-    >
+    <AuthContext.Provider value={{ 
+      user, 
+      isLoading, 
+      login, 
+      signup, 
+      logout: logoutUser, 
+      adminLogin: adminLoginHandler, 
+      isAuthenticated,
+      isAdmin,
+      register,
+      session,
+      subscription,
+      resendConfirmationEmail: resendConfirmation,
+      resetPassword: resetPasswordRequest,
+      updatePassword: updateUserPassword
+    }}>
       {children}
     </AuthContext.Provider>
   );
-}
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };
