@@ -51,6 +51,19 @@ serve(async (req) => {
       case "checkout.session.completed": {
         const session = event.data.object;
         const customerId = session.customer;
+        const subscriptionId = session.subscription;
+
+        if (!customerId || !subscriptionId) {
+          console.log("Missing customer ID or subscription ID in checkout session");
+          break;
+        }
+
+        // Get subscription details
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        
+        // Calculate period start and end dates
+        const currentPeriodStart = new Date(subscription.current_period_start * 1000).toISOString();
+        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
 
         // Get user from subscription
         const { data: subscriptionData, error: subError } = await supabaseClient
@@ -71,10 +84,48 @@ serve(async (req) => {
             isPremium: true,
             datasetQuota: 100,
             queryQuota: 1000,
-            stripeSubscriptionId: session.subscription
+            stripeSubscriptionId: subscriptionId,
+            currentPeriodStart,
+            currentPeriodEnd,
+            cancelAtPeriodEnd: false
           })
           .eq('userId', subscriptionData.userId);
         
+        break;
+      }
+      
+      case "customer.subscription.updated": {
+        const subscription = event.data.object;
+        const customerId = subscription.customer;
+        const subscriptionId = subscription.id;
+        
+        // Calculate period dates
+        const currentPeriodStart = new Date(subscription.current_period_start * 1000).toISOString();
+        const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+        const cancelAtPeriodEnd = subscription.cancel_at_period_end;
+        
+        // Get user from subscription
+        const { data: subscriptionData, error: subError } = await supabaseClient
+          .from('user_subscriptions')
+          .select('userId')
+          .eq('stripeCustomerId', customerId)
+          .single();
+
+        if (subError) {
+          console.error("Error finding user for customer:", subError);
+          break;
+        }
+
+        // Update subscription details
+        await supabaseClient
+          .from('user_subscriptions')
+          .update({
+            currentPeriodStart,
+            currentPeriodEnd,
+            cancelAtPeriodEnd
+          })
+          .eq('userId', subscriptionData.userId);
+          
         break;
       }
       
@@ -101,7 +152,10 @@ serve(async (req) => {
             isPremium: false,
             datasetQuota: 2,
             queryQuota: 10,
-            stripeSubscriptionId: null
+            stripeSubscriptionId: null,
+            currentPeriodStart: null,
+            currentPeriodEnd: null,
+            cancelAtPeriodEnd: false
           })
           .eq('userId', subscriptionData.userId);
         

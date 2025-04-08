@@ -9,6 +9,9 @@ export interface UserSubscription {
   trialEndDate: Date | null;
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  cancelAtPeriodEnd?: boolean;
 }
 
 export const FREE_TIER_LIMITS = {

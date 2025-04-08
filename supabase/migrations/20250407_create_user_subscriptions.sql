@@ -1,9 +1,9 @@
 
--- Create user_subscriptions table to track usage and limits
-CREATE TABLE public.user_subscriptions (
+-- Create user_subscriptions table
+CREATE TABLE IF NOT EXISTS public.user_subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  userId UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  isPremium BOOLEAN NOT NULL DEFAULT false,
+  userId UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  isPremium BOOLEAN NOT NULL DEFAULT FALSE,
   datasetQuota INTEGER NOT NULL DEFAULT 2,
   queryQuota INTEGER NOT NULL DEFAULT 10,
   datasetsUsed INTEGER NOT NULL DEFAULT 0,
@@ -11,29 +11,36 @@ CREATE TABLE public.user_subscriptions (
   trialEndDate TIMESTAMP WITH TIME ZONE,
   stripeCustomerId TEXT,
   stripeSubscriptionId TEXT,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+  currentPeriodStart TIMESTAMP WITH TIME ZONE,
+  currentPeriodEnd TIMESTAMP WITH TIME ZONE,
+  cancelAtPeriodEnd BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- Add RLS policies
+-- Add RLS policies for user_subscriptions
 ALTER TABLE public.user_subscriptions ENABLE ROW LEVEL SECURITY;
 
--- Allow users to read only their own subscription
-CREATE POLICY "Users can view their own subscription" 
+-- Allow users to read their own subscription data
+CREATE POLICY "Users can view their own subscription data" 
   ON public.user_subscriptions 
   FOR SELECT 
   USING (auth.uid() = userId);
 
--- Create trigger for updated_at
-CREATE OR REPLACE FUNCTION public.handle_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- Allow users to update their own subscription data
+CREATE POLICY "Users can update their own subscription data" 
+  ON public.user_subscriptions 
+  FOR UPDATE 
+  USING (auth.uid() = userId);
 
-CREATE TRIGGER set_updated_at
-  BEFORE UPDATE ON public.user_subscriptions
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_updated_at();
+-- Allow the service role and authenticated users to insert subscription data
+CREATE POLICY "Service role can insert subscription data" 
+  ON public.user_subscriptions 
+  FOR INSERT 
+  WITH CHECK (true);
+
+-- Create an index for faster lookups by userId
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON public.user_subscriptions(userId);
+
+-- Create an index for faster lookups by stripeCustomerId
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_stripe_customer_id ON public.user_subscriptions(stripeCustomerId);

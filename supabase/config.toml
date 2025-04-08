@@ -2,57 +2,39 @@
 project_id = "rehadpogugijylybwmoe"
 
 [api]
-# Port to use for the API URL
+enabled = true
 port = 54321
-scheme = "http"
+schemas = ["public", "storage", "graphql_public"]
 
 [db]
-# Port to use when connecting to the database
 port = 54322
 
 [studio]
-# Port to use for Supabase Studio
+enabled = true
 port = 54323
-
-# Email testing server. Emails sent with the local dev setup are not actually sent - the
-# inbox server is used to catch the emails and display them for testing purposes.
-[inbucket]
-# Port to use for the email inbox server
-port = 54324
+api_url = "http://localhost:54321"
 
 [storage]
-# The maximum file size allowed to be uploaded to storage when using the Storage API (in bytes)
-file_size_limit = "50MiB"
+enabled = true
 
 [auth]
-# The base URL of your website. Used as an allowlist for redirects and for constructing URLs used
-# in emails.
-site_url = "http://localhost:3000"
-# A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://localhost:3000"]
-# How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
-jwt_expiry = 3600
-# If disabled, the refresh token will never expire.
-enable_refresh_token_rotation = true
-# Allows refreshing of tokens prior to expiry.
-refresh_token_reuse_interval = 10
-# Allow/disallow new user signups to your project.
-enable_signup = true
+enabled = true
+site_url = "http://localhost:5173"
 
-[auth.email]
-# Allow/disallow new user signups via email to your project.
-enable_signup = true
-# If enabled, a user will be required to confirm any email change on both the old, and new email
-# addresses. If disabled, only the new email is required to confirm.
-double_confirm_changes = true
-# If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+[realtime]
+enabled = true
 
-[functions.storage-manager]
-verify_jwt = false
-
+[functions]
 [functions.admin-setup]
+verify_jwt = true
+[functions.ai-query]
+verify_jwt = true
+[functions.create-checkout]
+verify_jwt = true
+[functions.cancel-subscription]
+verify_jwt = true
+[functions.stripe-webhook]
 verify_jwt = false
 
-[functions.ai-query]
-verify_jwt = false
+[[transformers]]
+functions = ["*"]
