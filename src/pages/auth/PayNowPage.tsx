@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -19,7 +18,6 @@ const PayNowPage = () => {
   const { user } = useAuth();
 
   const validateEmail = (email: string): boolean => {
-    // More forgiving email validation regex
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
@@ -27,7 +25,6 @@ const PayNowPage = () => {
     const newEmail = e.target.value;
     setEmail(newEmail);
     
-    // Clear email error when user starts typing again
     if (emailError) setEmailError(null);
   };
 
@@ -37,7 +34,6 @@ const PayNowPage = () => {
     setError(null);
     setEmailError(null);
 
-    // If user is already logged in, use their email
     const paymentEmail = user?.email || email;
 
     if (!validateEmail(paymentEmail)) {
@@ -47,15 +43,8 @@ const PayNowPage = () => {
     }
 
     try {
-      // First generate a random secure password for new signups
-      const tempPassword = Array(16)
-        .fill('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!@#$%^&*')
-        .map(x => x[Math.floor(Math.random() * x.length)])
-        .join('');
-      
       console.log("Creating checkout session for:", paymentEmail);
       
-      // Check if this is an admin testing account
       const isAdminTest = paymentEmail === 'admin@example.com';
       
       if (isAdminTest) {
@@ -66,15 +55,13 @@ const PayNowPage = () => {
       
       const { data, error: checkoutError } = await supabase.functions.invoke('create-checkout', {
         body: { 
-          email: paymentEmail, 
-          tempPassword 
+          email: paymentEmail
         }
       });
 
       if (checkoutError) {
         console.error("Checkout error:", checkoutError);
         
-        // Handle specific error cases
         if (checkoutError.message?.includes('invalid')) {
           setEmailError('The email address format is not valid');
         } else {
@@ -94,14 +81,11 @@ const PayNowPage = () => {
           toast.info('Redirecting to Stripe...');
         }
         
-        // Use top-level window.location.href to ensure we're not in an iframe
-        // This ensures Stripe Checkout runs at the top level as required
         window.top.location.href = data.url;
       }
     } catch (error: any) {
       console.error("Payment error:", error);
       
-      // Check for specific types of errors in the message
       if (error.message?.toLowerCase().includes('email')) {
         setEmailError(error.message || 'Please check your email address');
       } else {
@@ -114,7 +98,6 @@ const PayNowPage = () => {
     }
   };
 
-  // Pre-fill email field if user is logged in
   React.useEffect(() => {
     if (user?.email) {
       setEmail(user.email);
@@ -209,7 +192,7 @@ const PayNowPage = () => {
               
               <div className="flex items-center gap-3 pt-2 text-sm text-gray-300">
                 <Shield className="h-4 w-4 text-purple-400" />
-                <span>Your account will be created automatically</span>
+                <span>{user ? 'You will use your existing account' : 'Your account will be created after payment'}</span>
               </div>
               
               {email === 'admin@example.com' && (

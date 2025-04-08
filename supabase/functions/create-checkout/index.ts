@@ -23,7 +23,6 @@ serve(async (req) => {
     // Check if request has authentication
     let userId = null;
     let userEmail = null;
-    let tempPassword = null;
     let isAdminUser = false;
     
     const authHeader = req.headers.get("Authorization");
@@ -50,11 +49,10 @@ serve(async (req) => {
       return {};
     });
     
-    const { email, tempPassword: password } = requestBody;
+    const { email } = requestBody;
     
     if (email && !userEmail) {
       userEmail = email;
-      tempPassword = password || null;
       
       // Check if this is an admin user from the request body
       isAdminUser = userEmail === 'admin@example.com';
@@ -107,74 +105,16 @@ serve(async (req) => {
     });
 
     // Check if user exists
-    if (!userId && tempPassword) {
+    if (!userId) {
       // If email is from a common test domain, let's allow it
       const isTestEmail = userEmail.endsWith('@example.com') || 
                           userEmail.endsWith('@test.com') ||
                           userEmail.includes('test') || 
                           userEmail.includes('demo');
       
-      // Skip user creation for test emails and proceed to payment flow
-      if (!isTestEmail) {
-        // Create user account if coming from direct payment
-        try {
-          const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({
-            email: userEmail,
-            password: tempPassword,
-            options: {
-              emailRedirectTo: `${req.headers.get("origin") || "https://genbi.app"}/login`,
-            }
-          });
-
-          if (signUpError) {
-            console.log("Error creating user:", signUpError);
-            // Check if user already exists
-            if (signUpError.message && signUpError.message.includes('already registered')) {
-              console.log("User already exists, proceeding with checkout");
-            } else {
-              // If it's not a "user already exists" error, return more detailed error
-              return new Response(
-                JSON.stringify({ 
-                  error: "Could not create user account",
-                  details: signUpError.message,
-                  code: signUpError.code || "unknown"
-                }),
-                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-              );
-            }
-          } else if (signUpData?.user) {
-            userId = signUpData.user.id;
-            console.log("Created new user:", userId);
-            
-            // Set up user subscription entry with trial - 1 DAY TRIAL
-            try {
-              // Calculate trial end date (1 day from now)
-              const trialEndDate = new Date();
-              trialEndDate.setDate(trialEndDate.getDate() + 1);
-              
-              await supabaseClient.from('user_subscriptions').insert({
-                userId: userId,
-                isPremium: false,
-                datasetQuota: 2,
-                queryQuota: 10,
-                datasetsUsed: 0,
-                queriesUsed: 0,
-                trialEndDate: trialEndDate.toISOString()
-              });
-            } catch (dbError) {
-              console.error("Error setting up user subscription:", dbError);
-            }
-          }
-        } catch (authError) {
-          console.error("Auth error during signup:", authError);
-          return new Response(
-            JSON.stringify({ error: "Failed to process user authentication" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      } else {
-        console.log("Test email detected, skipping user creation");
-      }
+      // For non-test emails, we proceed without creating an account upfront
+      // The account will be created by the webhook after successful payment
+      console.log(`Proceeding without account creation for: ${userEmail}`);
     }
 
     // Get customer id if user exists
@@ -236,7 +176,7 @@ serve(async (req) => {
       }
     }
 
-    // Create a price on the fly - FIX THE PRODUCT DATA FORMAT
+    // Create a price on the fly
     try {
       const price = await stripe.prices.create({
         currency: 'usd',
@@ -255,11 +195,6 @@ serve(async (req) => {
       const successParams = new URLSearchParams({
         email: userEmail,
       });
-      
-      // Add temp password parameter if available, for auto-login
-      if (tempPassword) {
-        successParams.append('temp', tempPassword);
-      }
 
       // Create the checkout session using the newly created price
       const session = await stripe.checkout.sessions.create({

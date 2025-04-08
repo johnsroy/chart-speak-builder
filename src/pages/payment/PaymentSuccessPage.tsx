@@ -12,7 +12,6 @@ const PaymentSuccessPage = () => {
   const location = useLocation();
   const { user, login } = useAuth();
   const [email, setEmail] = useState<string | null>(null);
-  const [password, setPassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isAdminTest, setIsAdminTest] = useState(false);
   const [processingComplete, setProcessingComplete] = useState(false);
@@ -22,10 +21,8 @@ const PaymentSuccessPage = () => {
     const params = new URLSearchParams(location.search);
     const emailParam = params.get('email');
     const testParam = params.get('test');
-    const tempPassParam = params.get('temp');
     
     setEmail(emailParam);
-    setPassword(tempPassParam);
     setIsAdminTest(testParam === 'true');
     
     // If this is an admin test payment, we need to manually update their subscription
@@ -84,20 +81,12 @@ const PaymentSuccessPage = () => {
               toast.error("Admin auto-login failed");
               console.error("Admin login failed:", result.error);
             }
-          } else if (password) {
-            // Try to login with the temporary password if provided
-            console.log("Attempting to log in with temporary password");
-            const result = await login(email, password);
-            
-            if (result.success) {
-              toast.success("Logged in successfully");
-              setProcessingComplete(true);
-            } else {
-              console.error("Auto-login failed with temp password:", result.error);
-              toast.error("Couldn't log in automatically. Please use the login link below.");
-            }
           } else {
-            console.log("No temporary password available for auto-login");
+            // For payment-created accounts, we don't have access to the password
+            // So we cannot perform auto-login - just inform the user
+            console.log("No credentials available for auto-login");
+            toast.info("Please use the login link below to access your account");
+            setProcessingComplete(true);
           }
         } catch (error) {
           console.error("Auto-login failed:", error);
@@ -112,7 +101,7 @@ const PaymentSuccessPage = () => {
     };
     
     autoLogin();
-  }, [email, user, login, password, loginAttempted]);
+  }, [email, user, login, loginAttempted]);
 
   const handleDashboardRedirect = () => {
     if (user) {
@@ -173,7 +162,7 @@ const PaymentSuccessPage = () => {
                   We've created an account for you using: <strong>{email}</strong>
                 </p>
                 <p className="text-sm text-gray-300 mb-2">
-                  A confirmation email has been sent to your inbox.
+                  A confirmation email has been sent to your inbox with your login details.
                 </p>
                 {!isAdminTest && (
                   <Button 
