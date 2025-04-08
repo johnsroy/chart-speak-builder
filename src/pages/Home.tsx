@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -173,13 +174,13 @@ const Home = () => {
                   </linearGradient>
                 </defs>
               </svg>
-              <style jsx>{`
+              <style dangerouslySetInnerHTML={{__html: `
                 @keyframes dash {
                   to {
                     stroke-dashoffset: 0;
                   }
                 }
-              `}</style>
+              `}} />
             </div>
             <p className="mt-4 text-lg font-semibold">Revenue Growth</p>
           </div>
