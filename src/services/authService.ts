@@ -73,23 +73,24 @@ export const loginWithEmailPassword = async (email: string, password: string) =>
         
         if (retryError) {
           console.error("Login retry error:", retryError);
-          return { success: false, error: retryError.message };
+          return { success: false, error: retryError.message, user: null };
         }
         
         console.log("Login successful after auto-confirmation");
-        return { success: true };
+        return { success: true, user: retryData.user };
       }
       
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, user: null };
     }
     
     console.log("Login successful:", data.user?.email);
-    return { success: true };
+    return { success: true, user: data.user };
   } catch (error) {
     console.error('Login error:', error);
     return { 
       success: false, 
-      error: error instanceof Error ? error.message : 'An unknown error occurred' 
+      error: error instanceof Error ? error.message : 'An unknown error occurred',
+      user: null
     };
   }
 };
@@ -276,12 +277,13 @@ export const updatePassword = async (newPassword: string) => {
       return { success: false, error: error.message };
     }
     
-    return { success: true };
+    return { success: true, data: {} };
   } catch (error) {
     console.error('Password update error:', error);
     return { 
       success: false, 
-      error: error instanceof Error ? error.message : 'An unknown error occurred' 
+      error: error instanceof Error ? error.message : 'An unknown error occurred',
+      data: null
     };
   }
 };

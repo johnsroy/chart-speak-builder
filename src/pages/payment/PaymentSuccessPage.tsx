@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -25,12 +24,10 @@ const PaymentSuccessPage = () => {
     setEmail(emailParam);
     setIsAdminTest(testParam === 'true');
     
-    // If this is an admin test payment, we need to manually update their subscription
     const handleAdminTestPayment = async () => {
       if (isAdminTest && emailParam === 'admin@example.com') {
         setLoading(true);
         try {
-          // Call the webhook function directly with adminTest parameter
           const { error } = await supabase.functions.invoke('stripe-webhook', {
             body: { 
               adminTest: true,
@@ -52,7 +49,6 @@ const PaymentSuccessPage = () => {
           setLoading(false);
         }
       } else {
-        // For non-admin users, assume the subscription has been processed by Stripe webhook
         setProcessingComplete(true);
       }
     };
@@ -61,9 +57,7 @@ const PaymentSuccessPage = () => {
   }, [location.search, isAdminTest]);
 
   useEffect(() => {
-    // Auto-login if we have email but no user
     const autoLogin = async () => {
-      // Only attempt login once
       if (loginAttempted) return;
       
       if (email && !user) {
@@ -72,13 +66,11 @@ const PaymentSuccessPage = () => {
         
         try {
           if (email === 'admin@example.com') {
-            // Admin login with hardcoded password for demo
             const result = await login('admin@example.com', 'password123');
             if (result.success) {
               toast.success("Logged in as admin");
               setProcessingComplete(true);
               
-              // Add a small delay to ensure auth state is updated before redirect
               setTimeout(() => {
                 navigate('/dashboard', { replace: true });
               }, 500);
@@ -87,7 +79,6 @@ const PaymentSuccessPage = () => {
               console.error("Admin login failed:", result.error);
             }
           } else {
-            // For payment users, inform them they need to log in
             console.log("No credentials available for auto-login");
             toast.success("Payment successful! Please log in to access your premium account.");
             setProcessingComplete(true);
@@ -99,11 +90,9 @@ const PaymentSuccessPage = () => {
           setLoading(false);
         }
       } else if (user) {
-        // User is already logged in
         setProcessingComplete(true);
         toast.success("Payment successful! Your premium features are now active.");
         
-        // Add a small delay to ensure auth state is updated before redirect
         setTimeout(() => {
           navigate('/dashboard', { replace: true });
         }, 500);
@@ -115,9 +104,8 @@ const PaymentSuccessPage = () => {
 
   const handleDashboardRedirect = () => {
     if (user) {
-      navigate('/dashboard', { replace: true }); // Use replace to prevent back button issues
+      navigate('/dashboard', { replace: true });
     } else {
-      // If auto-login failed, direct them to login page with their email prefilled
       navigate(`/login?email=${encodeURIComponent(email || '')}`, { 
         replace: true,
         state: { fromPayment: true } 

@@ -233,7 +233,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       resendConfirmationEmail: resendConfirmation,
       resetPassword: resetPasswordRequest,
       updatePassword: updateUserPassword,
-      canUseAIFeatures // Make sure this property is included
+      canUseAIFeatures
     }}>
       {children}
     </AuthContext.Provider>

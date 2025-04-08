@@ -10,14 +10,14 @@ export interface AuthContextProps {
   isAuthenticated: boolean;
   isAdmin: boolean;
   canUseAIFeatures: boolean;
-  login: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
-  signup: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
-  register: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  adminLogin: () => Promise<{ user: User | null; error: Error | null }>;
-  resendConfirmationEmail: (email: string) => Promise<{ data: any | null; error: Error | null }>;
-  resetPassword: (email: string) => Promise<{ data: any | null; error: Error | null }>;
-  updatePassword: (password: string) => Promise<{ data: any | null; error: Error | null }>;
+  adminLogin: () => Promise<{ success: boolean; error?: string }>;
+  resendConfirmationEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export interface AuthProviderProps {
