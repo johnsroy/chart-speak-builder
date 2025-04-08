@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import ChartVisualization from '@/components/ChartVisualization';
@@ -13,7 +12,7 @@ import {
   CircleDot, 
   ArrowUpDown,
   CircleDashed, 
-  CircleStack
+  Layers
 } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { dataService } from '@/services/dataService';
@@ -53,7 +52,6 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     'gauge', 'heatmap', 'treemap', 'waterfall', 'funnel', 'sankey'
   ]);
 
-  // Determine which dataset ID to use
   const effectiveDatasetId = datasetId || externalSelectedId || internalSelectedId;
   const isMultiDataset = Boolean(datasets && datasets.length > 0);
   const isLoading = externalLoading || false;
@@ -65,7 +63,6 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   }, [activeView, effectiveDatasetId]);
 
   React.useEffect(() => {
-    // If we have datasets but no selection, select the first one
     if (isMultiDataset && datasets && datasets.length > 0 && !effectiveDatasetId) {
       const firstId = datasets[0].id;
       if (externalSetSelectedId) {
@@ -76,12 +73,10 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     }
   }, [datasets, effectiveDatasetId, externalSetSelectedId, isMultiDataset]);
 
-  // Determine suitable chart types based on data
   useEffect(() => {
     if (dataPreview && dataPreview.length > 0) {
       const suggestedTypes = getSuitableChartTypes(dataPreview);
       
-      // Ensure we maintain the extended chart types
       const extendedTypes: ChartType[] = [
         'bar', 'line', 'pie', 'column', 'area', 'scatter', 'bubble', 'donut', 
         'stacked', 'polar', 'gauge', 'heatmap', 'treemap', 'waterfall', 'funnel', 'sankey'
@@ -89,7 +84,6 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
       
       setSuitableChartTypes(extendedTypes);
       
-      // If current chart type is not suitable, change to a suitable one
       if (!suggestedTypes.includes(selectedChartType) && suggestedTypes.length > 0) {
         setSelectedChartType(suggestedTypes[0]);
       }
@@ -139,9 +133,9 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     } else {
       setInternalSelectedId(id);
     }
-    setDataPreview(null); // Reset preview when changing dataset
+    setDataPreview(null);
   };
-  
+
   const getChartIcon = (chartType: ChartType) => {
     switch (chartType) {
       case 'bar': return <BarChart className="h-4 w-4 mr-2" />;
@@ -151,7 +145,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
       case 'area': return <ArrowUpDown className="h-4 w-4 mr-2" />;
       case 'column': return <BarChart className="h-4 w-4 mr-2" />;
       case 'donut': return <CircleDashed className="h-4 w-4 mr-2" />;
-      case 'stacked': return <CircleStack className="h-4 w-4 mr-2" />;
+      case 'stacked': return <Layers className="h-4 w-4 mr-2" />;
       case 'polar': return <PieChart className="h-4 w-4 mr-2" />;
       case 'gauge': return <CircleDot className="h-4 w-4 mr-2" />;
       case 'heatmap': return <TableIcon className="h-4 w-4 mr-2" />;
@@ -160,7 +154,6 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     }
   };
 
-  // Handle the case where we're asked to visualize with no dataset
   if (!effectiveDatasetId && !isMultiDataset) {
     return (
       <div className="glass-card p-6">
@@ -174,7 +167,6 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     <div className="glass-card p-6">
       <h2 className="text-xl font-medium mb-4 text-left">Dataset Visualization</h2>
       
-      {/* Multi-dataset selector */}
       {isMultiDataset && datasets && datasets.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto">
           {datasets.map(dataset => (
