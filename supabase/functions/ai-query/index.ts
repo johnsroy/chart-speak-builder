@@ -67,10 +67,10 @@ serve(async (req) => {
     
     console.log(`Got ${previewData.length} rows and ${columnNames.length} columns for analysis`);
     
-    // Create a prompt for the AI
+    // Enhanced prompt for better visualizations and explanations
     const systemPrompt = `
-You are an expert data analyst assistant that helps analyze datasets and suggest visualizations.
-Your task is to interpret natural language queries about data and provide visualization recommendations.
+You are an expert data analyst assistant that helps analyze datasets and create insightful visualizations.
+Your task is to interpret natural language queries about data and provide detailed, step-by-step analysis with visualization recommendations.
 
 Dataset Information:
 - Name: ${dataset.name || 'Unnamed Dataset'}
@@ -78,14 +78,17 @@ Dataset Information:
 - Available Columns: ${columnNames.join(', ')}
 - Schema: ${JSON.stringify(schema)}
 - Sample Data: ${JSON.stringify(previewData.slice(0, 5))}
+- Total Rows: ${previewData.length}
 
 Instructions:
-1. Analyze the user's query to understand what visualization they want.
-2. Determine the most appropriate chart type (bar, line, pie, scatter, etc.) based on the query and data.
-3. Select appropriate columns for x-axis and y-axis based on the data types.
-4. Provide a descriptive title and brief explanation for the visualization.
-5. Include step-by-step reasoning in your explanation.
-6. Never include your reasoning or explanations in the response - ONLY return a JSON object.
+1. Carefully analyze the user's query to understand what data insights they're looking for.
+2. Think step-by-step about which chart type would best represent this data (bar, line, pie, scatter, etc.).
+3. Select appropriate columns for x-axis and y-axis based on the data types and query context.
+4. Provide a clear, descriptive title for the visualization.
+5. Write a detailed, step-by-step explanation that walks through your analysis process and insights found.
+6. Include specific data points, trends, comparisons, and actionable insights in your explanation.
+7. Use sequential reasoning: first analyze the data, then identify patterns, then explain implications.
+8. Never include your reasoning process in the response - ONLY return a JSON object.
 
 Return ONLY a JSON object with the following structure:
 {
@@ -93,7 +96,7 @@ Return ONLY a JSON object with the following structure:
   "x_axis": "column_name",
   "y_axis": "column_name",
   "chart_title": "Descriptive title",
-  "explanation": "Detailed explanation of what the visualization shows, including step-by-step insights about the data"
+  "explanation": "Detailed step-by-step explanation of what the visualization shows, including specific data insights and sequential analysis"
 }
 `;
 
@@ -103,93 +106,103 @@ Return ONLY a JSON object with the following structure:
     if (model === 'anthropic' && anthropicApiKey) {
       console.log('Using Claude API for analysis');
       
-      // Call Anthropic API with updated model name for Claude 3
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicApiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-3-haiku-20240307',
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [
-            { role: 'user', content: query }
-          ],
-          temperature: 0.2
-        })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Claude API error: Status ${response.status}`, errorText);
-        throw new Error(`Claude API error: ${response.status} - ${errorText}`);
-      }
-      
-      const responseData = await response.json();
-      
-      if (!responseData.content || responseData.content.length === 0) {
-        throw new Error('Empty response from Claude API');
-      }
-      
-      const claudeResponse = responseData.content[0].text;
-      
-      // Extract JSON from Claude's response
       try {
-        // Use a regex to extract JSON from any surrounding text Claude might add
-        const jsonMatch = claudeResponse.match(/\{.*\}/s);
-        if (!jsonMatch) {
-          throw new Error('No valid JSON found in Claude response');
+        // Call Anthropic API with Claude 3 Haiku
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': anthropicApiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-3-haiku-20240307',
+            max_tokens: 1500,
+            system: systemPrompt,
+            messages: [
+              { role: 'user', content: query }
+            ],
+            temperature: 0.2
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Claude API error: Status ${response.status}`, errorText);
+          throw new Error(`Claude API error: ${response.status} - ${errorText}`);
         }
-        aiResponse = JSON.parse(jsonMatch[0]);
-      } catch (err) {
-        console.error('Error parsing Claude JSON response:', err);
-        throw new Error('Invalid response format from Claude API');
+        
+        const responseData = await response.json();
+        
+        if (!responseData.content || responseData.content.length === 0) {
+          throw new Error('Empty response from Claude API');
+        }
+        
+        const claudeResponse = responseData.content[0].text;
+        
+        // Extract JSON from Claude's response
+        try {
+          // Use a regex to extract JSON from any surrounding text Claude might add
+          const jsonMatch = claudeResponse.match(/\{.*\}/s);
+          if (!jsonMatch) {
+            throw new Error('No valid JSON found in Claude response');
+          }
+          aiResponse = JSON.parse(jsonMatch[0]);
+        } catch (err) {
+          console.error('Error parsing Claude JSON response:', err);
+          throw new Error('Invalid response format from Claude API');
+        }
+      } catch (claudeError) {
+        console.error('Claude API error:', claudeError);
+        throw new Error(`Claude API failed: ${claudeError.message}`);
       }
     } 
     else if (openaiApiKey) {
       console.log('Using OpenAI GPT-4o API for analysis');
       
-      // Call OpenAI API
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${openaiApiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: query }
-          ],
-          temperature: 0.2,
-          response_format: { type: "json_object" }
-        })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`OpenAI API error: Status ${response.status}`, errorText);
-        throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
-      }
-      
-      const responseData = await response.json();
-      
-      if (!responseData.choices || responseData.choices.length === 0) {
-        throw new Error('Empty response from OpenAI API');
-      }
-      
-      const openaiResponse = responseData.choices[0].message.content;
-      
-      // Extract JSON from OpenAI's response
       try {
-        aiResponse = JSON.parse(openaiResponse);
-      } catch (err) {
-        console.error('Error parsing OpenAI JSON response:', err);
-        throw new Error('Invalid response format from OpenAI API');
+        // Call OpenAI API
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openaiApiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: query }
+            ],
+            temperature: 0.2,
+            response_format: { type: "json_object" }
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`OpenAI API error: Status ${response.status}`, errorText);
+          throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+        }
+        
+        const responseData = await response.json();
+        
+        if (!responseData.choices || responseData.choices.length === 0) {
+          throw new Error('Empty response from OpenAI API');
+        }
+        
+        const openaiResponse = responseData.choices[0].message.content;
+        
+        // Extract JSON from OpenAI's response
+        try {
+          aiResponse = JSON.parse(openaiResponse);
+        } catch (err) {
+          console.error('Error parsing OpenAI JSON response:', err);
+          throw new Error('Invalid response format from OpenAI API');
+        }
+      } catch (openaiError) {
+        console.error('OpenAI API error:', openaiError);
+        throw new Error(`OpenAI API failed: ${openaiError.message}`);
       }
     } 
     else {
@@ -233,6 +246,9 @@ Return ONLY a JSON object with the following structure:
       } else {
         console.log('Saved query with ID:', savedQuery.id);
         
+        // Ensure data is properly formatted for visualization
+        const processedData = preprocessData(previewData, aiResponse.x_axis, aiResponse.y_axis, aiResponse.chart_type);
+        
         // Return the complete response with data
         const result = {
           chart_type: aiResponse.chart_type,
@@ -243,7 +259,7 @@ Return ONLY a JSON object with the following structure:
           yAxis: aiResponse.y_axis, 
           chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
           explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
-          data: previewData,
+          data: processedData,
           columns: columnNames,
           query_id: savedQuery?.id,
           model_used: model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'
@@ -259,6 +275,9 @@ Return ONLY a JSON object with the following structure:
       console.error('Error in query saving process:', queryError);
     }
     
+    // Ensure data is properly formatted for visualization even if saving fails
+    const processedData = preprocessData(previewData, aiResponse.x_axis, aiResponse.y_axis, aiResponse.chart_type);
+    
     // If query saving fails, still return the analysis result
     const result = {
       chart_type: aiResponse.chart_type,
@@ -269,7 +288,7 @@ Return ONLY a JSON object with the following structure:
       yAxis: aiResponse.y_axis, 
       chart_title: aiResponse.chart_title || `${aiResponse.y_axis} by ${aiResponse.x_axis}`,
       explanation: aiResponse.explanation || `Visualization showing the relationship between ${aiResponse.x_axis} and ${aiResponse.y_axis} from the ${dataset.name} dataset.`,
-      data: previewData,
+      data: processedData,
       columns: columnNames,
       model_used: model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'
     };
@@ -318,4 +337,62 @@ function inferSchema(sample: Record<string, any>) {
   }
   
   return schema;
+}
+
+// Helper function to preprocess data for better visualization
+function preprocessData(data: any[], xAxis: string, yAxis: string, chartType: string): any[] {
+  if (!data || data.length === 0) {
+    return [];
+  }
+  
+  try {
+    // Make a deep copy to avoid mutating the original data
+    const processedData = JSON.parse(JSON.stringify(data));
+    
+    // For bar and pie charts, aggregate data by category
+    if (chartType === 'bar' || chartType === 'pie') {
+      // Group data by x-axis values and sum y-axis values
+      const aggregated: Record<string, number> = {};
+      
+      processedData.forEach((item: any) => {
+        const key = String(item[xAxis] || 'Unknown');
+        const value = Number(item[yAxis] || 0);
+        
+        if (aggregated[key] === undefined) {
+          aggregated[key] = 0;
+        }
+        aggregated[key] += value;
+      });
+      
+      // Convert back to array format
+      return Object.entries(aggregated)
+        .map(([key, value]) => ({ [xAxis]: key, [yAxis]: value }))
+        .sort((a, b) => (b[yAxis] as number) - (a[yAxis] as number))
+        .slice(0, 15); // Limit to top 15 for readability
+    }
+    
+    // For line charts, sort by date if applicable
+    if (chartType === 'line') {
+      try {
+        const isDateColumn = processedData.every((item: any) => {
+          return !isNaN(Date.parse(String(item[xAxis])));
+        });
+        
+        if (isDateColumn) {
+          return processedData
+            .sort((a: any, b: any) => {
+              return new Date(a[xAxis]).getTime() - new Date(b[xAxis]).getTime();
+            });
+        }
+      } catch (e) {
+        console.error('Error sorting date data:', e);
+      }
+    }
+    
+    // For scatter plots or other chart types
+    return processedData;
+  } catch (error) {
+    console.error('Error preprocessing data:', error);
+    return data;
+  }
 }

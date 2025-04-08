@@ -7,7 +7,8 @@ import { dataService } from '@/services/dataService';
 export const processNLQuery = async (
   datasetId: string,
   query: string,
-  model: 'openai' | 'anthropic' = 'openai'
+  model: 'openai' | 'anthropic' = 'openai',
+  previewData: any[] = []
 ): Promise<QueryResult> => {
   try {
     console.log(`Calling AI query function for dataset ${datasetId} with model ${model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'}`);
@@ -24,37 +25,40 @@ export const processNLQuery = async (
       throw new Error(`Could not retrieve dataset: ${datasetError.message}`);
     }
     
-    // Try to get preview data directly first
-    let previewData;
-    try {
-      console.log('Attempting to retrieve dataset preview');
-      // Try the edge function first
-      const previewResponse = await supabase.functions.invoke('data-processor', {
-        body: { 
-          action: 'preview', 
-          dataset_id: datasetId 
+    // If no preview data was provided, fetch it
+    if (!previewData || !Array.isArray(previewData) || previewData.length === 0) {
+      try {
+        console.log('Attempting to retrieve dataset preview');
+        // Try the edge function first
+        const previewResponse = await supabase.functions.invoke('data-processor', {
+          body: { 
+            action: 'preview', 
+            dataset_id: datasetId 
+          }
+        });
+        
+        if (previewResponse.error) {
+          console.error('Edge function preview error:', previewResponse.error);
+          throw new Error(previewResponse.error.message || 'Error retrieving dataset preview');
         }
-      });
-      
-      if (previewResponse.error) {
-        console.error('Edge function preview error:', previewResponse.error);
-        throw new Error(previewResponse.error.message || 'Error retrieving dataset preview');
+        
+        previewData = previewResponse.data?.data;
+        console.log(`Retrieved ${previewData?.length || 0} rows from edge function`);
+      } catch (previewError) {
+        console.warn('Edge function for preview failed, falling back to direct data access:', previewError);
+        
+        // Use direct data access method as fallback
+        previewData = await dataService.previewDataset(datasetId);
+        
+        if (!previewData || !Array.isArray(previewData) || previewData.length === 0) {
+          console.error('Could not retrieve preview data through any method');
+          throw new Error('Failed to load dataset preview through any available method');
+        }
+        
+        console.log(`Retrieved ${previewData.length} rows via direct data access fallback`);
       }
-      
-      previewData = previewResponse.data?.data;
-      console.log(`Retrieved ${previewData?.length || 0} rows from edge function`);
-    } catch (previewError) {
-      console.warn('Edge function for preview failed, falling back to direct data access:', previewError);
-      
-      // Use direct data access method as fallback
-      previewData = await dataService.previewDataset(datasetId);
-      
-      if (!previewData || !Array.isArray(previewData) || previewData.length === 0) {
-        console.error('Could not retrieve preview data through any method');
-        throw new Error('Failed to load dataset preview through any available method');
-      }
-      
-      console.log(`Retrieved ${previewData.length} rows via direct data access fallback`);
+    } else {
+      console.log(`Using provided preview data with ${previewData.length} rows`);
     }
 
     // Make sure we have data to work with
@@ -133,7 +137,11 @@ export const processNLQuery = async (
       if (!result.yAxis && !result.y_axis) {
         console.log('Setting default y-axis as none was returned');
         const columns = Object.keys(previewData[0] || {});
-        result.yAxis = result.y_axis = columns[1] || 'Value';
+        // Look for numeric columns
+        const numericColumn = columns.find(col => 
+          previewData.some(row => typeof row[col] === 'number' || !isNaN(Number(row[col])))
+        );
+        result.yAxis = result.y_axis = numericColumn || columns[1] || 'Value';
       }
       
       console.log('Final processed AI result:', {
@@ -336,18 +344,6 @@ const processQueryLocally = async (
         }
       }
     }
-    // For relationships between variables, use scatter plots
-    else if (/relation|relationship|correlation|scatter|versus|vs\.?|against/i.test(lowerQuery)) {
-      chartType = 'scatter';
-      
-      // For scatter plots, ideally both axes are numeric
-      if (numericColumns.length >= 2) {
-        xAxis = numericColumns[0];
-        yAxis = numericColumns[1];
-      } else if (numericColumns.length === 1) {
-        yAxis = numericColumns[0];
-      }
-    }
     
     // Look for specific column mentions in the query - improved matching
     columns.forEach(col => {
@@ -377,88 +373,142 @@ const processQueryLocally = async (
     
     // Add data-specific insights with sequential analysis - improved insights
     if (chartType === 'bar' || chartType === 'pie') {
-      // Sort data for insights
-      const groupedData: Record<string, { count: number, sum: number }> = {};
-      
-      // Group and summarize data
-      previewData.forEach(row => {
-        const key = String(row[xAxis]);
-        if (!groupedData[key]) {
-          groupedData[key] = { count: 0, sum: 0 };
-        }
-        groupedData[key].count += 1;
-        groupedData[key].sum += Number(row[yAxis]) || 0;
-      });
-      
-      // Convert grouped data to sortable array
-      const sortedEntries = Object.entries(groupedData)
-        .map(([key, data]) => ({ key, count: data.count, sum: data.sum }))
-        .sort((a, b) => b.sum - a.sum);
-      
-      // Add insights about top values
-      explanation += `\n\nStep 3: I analyzed the distribution of data and found these insights:`;
-      
-      if (sortedEntries.length > 0) {
-        explanation += `\n\n- The highest ${yAxis} is in the ${xAxis} category "${sortedEntries[0].key}" with a value of ${sortedEntries[0].sum.toFixed(2)}.`;
-        
-        // Add comparison to average
-        const total = sortedEntries.reduce((acc, item) => acc + item.sum, 0);
-        const average = total / sortedEntries.length;
-        explanation += `\n- The average ${yAxis} across categories is ${average.toFixed(2)}.`;
-        
-        // Add insight about the range
-        if (sortedEntries.length > 1) {
-          const lowest = sortedEntries[sortedEntries.length - 1];
-          explanation += `\n- The range between highest and lowest values is ${(sortedEntries[0].sum - lowest.sum).toFixed(2)}.`;
-        }
-        
-        // Add distribution insight
-        explanation += `\n- The top 3 ${xAxis} categories represent ${((sortedEntries.slice(0, 3).reduce((acc, item) => acc + item.sum, 0) / total) * 100).toFixed(1)}% of the total ${yAxis}.`;
-      }
-      
-      // Top categories summary
-      explanation += `\n\nStep 4: I selected a ${chartType} chart to best visualize this distribution and highlight the relative proportions of different ${xAxis} categories.`;
-      
-    } else if (chartType === 'line') {
-      // Time series analysis
-      explanation += `\n\nStep 3: Since you're interested in trends over time, I analyzed how ${yAxis} changes over different ${xAxis} values:`;
-      
-      // Sort data chronologically for time series analysis if possible
-      let sortedData = [...previewData];
       try {
-        sortedData.sort((a, b) => {
-          const dateA = new Date(a[xAxis]).getTime();
-          const dateB = new Date(b[xAxis]).getTime();
-          return dateA - dateB;
+        // Sort data for insights
+        const groupedData: Record<string, { count: number, sum: number }> = {};
+        
+        // Group and summarize data
+        previewData.forEach(row => {
+          const key = String(row[xAxis]);
+          if (!groupedData[key]) {
+            groupedData[key] = { count: 0, sum: 0 };
+          }
+          groupedData[key].count += 1;
+          groupedData[key].sum += Number(row[yAxis]) || 0;
         });
+        
+        // Convert grouped data to sortable array
+        const sortedEntries = Object.entries(groupedData)
+          .map(([key, data]) => ({ key, count: data.count, sum: data.sum }))
+          .sort((a, b) => b.sum - a.sum);
+        
+        // Add insights about top values
+        explanation += `\n\nStep 3: I analyzed the distribution of data and found these insights:`;
+        
+        if (sortedEntries.length > 0) {
+          explanation += `\n\n- The highest ${yAxis} is in the ${xAxis} category "${sortedEntries[0].key}" with a value of ${sortedEntries[0].sum.toFixed(2)}.`;
+          
+          // Add comparison to average
+          const total = sortedEntries.reduce((acc, item) => acc + item.sum, 0);
+          const average = total / sortedEntries.length;
+          explanation += `\n- The average ${yAxis} across categories is ${average.toFixed(2)}.`;
+          
+          // Add insight about the range
+          if (sortedEntries.length > 1) {
+            const lowest = sortedEntries[sortedEntries.length - 1];
+            explanation += `\n- The range between highest and lowest values is ${(sortedEntries[0].sum - lowest.sum).toFixed(2)}.`;
+          }
+          
+          // Add distribution insight
+          const topCategories = sortedEntries.slice(0, Math.min(3, sortedEntries.length));
+          explanation += `\n- The top ${topCategories.length} ${xAxis} categories are ${topCategories.map(e => e.key).join(', ')}.`;
+          
+          // Distribution analysis
+          const topSum = topCategories.reduce((acc, item) => acc + item.sum, 0);
+          if (total > 0) {
+            explanation += `\n- These top categories represent ${((topSum / total) * 100).toFixed(1)}% of the total ${yAxis}.`;
+          }
+        }
+        
+        explanation += `\n\nStep 4: I selected a ${chartType} chart to best visualize this distribution and highlight the relative proportions of different ${xAxis} categories.`;
       } catch (e) {
-        // If date sorting fails, use the data as-is
+        console.error('Error in bar/pie chart analysis:', e);
+        explanation += `\n\nStep 3: The data shows variation in ${yAxis} across different ${xAxis} categories.`;
+        explanation += `\n\nStep 4: A ${chartType} chart is used to visualize these differences clearly.`;
       }
-      
-      // Calculate trend statistics
-      const firstValue = Number(sortedData[0]?.[yAxis]) || 0;
-      const lastValue = Number(sortedData[sortedData.length - 1]?.[yAxis]) || 0;
-      const changeAmount = lastValue - firstValue;
-      const changePercent = firstValue !== 0 ? (changeAmount / firstValue) * 100 : 0;
-      
-      // Add trend insights
-      if (changePercent > 0) {
-        explanation += `\n\n- There is an upward trend of ${changePercent.toFixed(1)}% in ${yAxis} from ${firstValue.toFixed(1)} to ${lastValue.toFixed(1)}.`;
-      } else if (changePercent < 0) {
-        explanation += `\n\n- There is a downward trend of ${Math.abs(changePercent).toFixed(1)}% in ${yAxis} from ${firstValue.toFixed(1)} to ${lastValue.toFixed(1)}.`;
-      } else {
-        explanation += `\n\n- The ${yAxis} remains relatively stable across the timeline at around ${firstValue.toFixed(1)}.`;
+    } else if (chartType === 'line') {
+      try {
+        // Time series analysis
+        explanation += `\n\nStep 3: Since you're interested in trends over time, I analyzed how ${yAxis} changes over different ${xAxis} values:`;
+        
+        // Sort data chronologically for time series analysis if possible
+        let sortedData = [...previewData];
+        try {
+          sortedData.sort((a, b) => {
+            const dateA = new Date(a[xAxis]).getTime();
+            const dateB = new Date(b[xAxis]).getTime();
+            return dateA - dateB;
+          });
+        } catch (e) {
+          // If date sorting fails, use the data as-is
+          console.warn('Unable to sort dates:', e);
+        }
+        
+        // Calculate trend statistics
+        if (sortedData.length > 1) {
+          const firstValue = Number(sortedData[0]?.[yAxis]) || 0;
+          const lastValue = Number(sortedData[sortedData.length - 1]?.[yAxis]) || 0;
+          const changeAmount = lastValue - firstValue;
+          const changePercent = firstValue !== 0 ? (changeAmount / firstValue) * 100 : 0;
+          
+          // Add trend insights
+          if (changePercent > 0) {
+            explanation += `\n\n- There is an upward trend of ${changePercent.toFixed(1)}% in ${yAxis} from ${firstValue.toFixed(1)} to ${lastValue.toFixed(1)}.`;
+          } else if (changePercent < 0) {
+            explanation += `\n\n- There is a downward trend of ${Math.abs(changePercent).toFixed(1)}% in ${yAxis} from ${firstValue.toFixed(1)} to ${lastValue.toFixed(1)}.`;
+          } else {
+            explanation += `\n\n- The ${yAxis} remains relatively stable across the timeline at around ${firstValue.toFixed(1)}.`;
+          }
+          
+          // Find peak value
+          const peakValue = Math.max(...sortedData.map(item => Number(item[yAxis]) || 0));
+          const peakItem = sortedData.find(item => Number(item[yAxis]) === peakValue);
+          
+          if (peakItem) {
+            explanation += `\n- The peak ${yAxis} was ${peakValue.toFixed(1)} at ${peakItem[xAxis]}.`;
+          }
+          
+          // Find lowest value
+          const minValue = Math.min(...sortedData.map(item => Number(item[yAxis]) || 0));
+          const minItem = sortedData.find(item => Number(item[yAxis]) === minValue);
+          
+          if (minItem) {
+            explanation += `\n- The lowest ${yAxis} was ${minValue.toFixed(1)} at ${minItem[xAxis]}.`;
+          }
+          
+          // Pattern detection
+          const increases = [];
+          const decreases = [];
+          
+          for (let i = 0; i < sortedData.length - 1; i++) {
+            const curr = Number(sortedData[i][yAxis]);
+            const next = Number(sortedData[i + 1][yAxis]);
+            
+            if (next > curr) {
+              increases.push({ from: sortedData[i][xAxis], to: sortedData[i + 1][xAxis], change: next - curr });
+            } else if (next < curr) {
+              decreases.push({ from: sortedData[i][xAxis], to: sortedData[i + 1][xAxis], change: curr - next });
+            }
+          }
+          
+          // Report most significant changes
+          if (increases.length > 0) {
+            const maxIncrease = increases.reduce((max, item) => item.change > max.change ? item : max, increases[0]);
+            explanation += `\n- The most significant increase occurred from ${maxIncrease.from} to ${maxIncrease.to}.`;
+          }
+          
+          if (decreases.length > 0) {
+            const maxDecrease = decreases.reduce((max, item) => item.change > max.change ? item : max, decreases[0]);
+            explanation += `\n- The most significant decrease occurred from ${maxDecrease.from} to ${maxDecrease.to}.`;
+          }
+        }
+        
+        explanation += `\n\nStep 4: I selected a line chart to best visualize this time series data and highlight the trends over time.`;
+      } catch (e) {
+        console.error('Error in line chart analysis:', e);
+        explanation += `\n\nStep 3: The data shows how ${yAxis} evolves over time.`;
+        explanation += `\n\nStep 4: A line chart is used to visualize this trend clearly.`;
       }
-      
-      // Find peak value
-      const peakValue = Math.max(...sortedData.map(item => Number(item[yAxis]) || 0));
-      const peakItem = sortedData.find(item => Number(item[yAxis]) === peakValue);
-      
-      if (peakItem) {
-        explanation += `\n- The peak ${yAxis} was ${peakValue.toFixed(1)} at ${peakItem[xAxis]}.`;
-      }
-      
-      explanation += `\n\nStep 4: I selected a line chart to best visualize this time series data and highlight the trends over time.`;
     }
     
     explanation += `\n\nStep 5: The visualization shows ${chartType === 'pie' ? 'the proportional distribution' : 'the relationship'} between ${xAxis} and ${yAxis}, helping you understand ${chartType === 'line' ? 'trends over time' : chartType === 'pie' ? 'relative proportions' : 'comparative values'}.`;
@@ -471,34 +521,8 @@ const processQueryLocally = async (
     
     console.log(`Local processing complete - Using ${chartType} chart with X: ${xAxis}, Y: ${yAxis}`);
     
-    // Prepare data for visualization - improve data preprocessing
-    let processedData = [...previewData]; 
-    
-    // For bar and pie charts, aggregate data by the x-axis category
-    if (chartType === 'bar' || chartType === 'pie') {
-      const aggregated: Record<string, number> = {};
-      const counts: Record<string, number> = {};
-      
-      previewData.forEach(item => {
-        const key = String(item[xAxis] || 'Unknown');
-        const value = Number(item[yAxis] || 0);
-        
-        if (!aggregated[key]) {
-          aggregated[key] = 0;
-          counts[key] = 0;
-        }
-        
-        aggregated[key] += value;
-        counts[key] += 1;
-      });
-      
-      // Convert aggregated data back to array format
-      processedData = Object.entries(aggregated).map(([key, value]) => ({
-        [xAxis]: key,
-        [yAxis]: value,
-        count: counts[key]
-      }));
-    }
+    // Process data for visualization
+    const processedData = processDataForVisualization(previewData, xAxis, yAxis, chartType);
     
     // Return the result in the expected format
     return {
@@ -509,9 +533,9 @@ const processQueryLocally = async (
       yAxis, 
       y_axis: yAxis,
       chart_title: chartTitle,
-      explanation,
+      explanation: explanation,
       data: processedData,
-      model_used: `Local processing (${modelName} unavailable)`
+      model_used: model === 'anthropic' ? 'Claude 3 Haiku (Local Processing)' : 'GPT-4o (Local Processing)'
     };
   } catch (error) {
     console.error('Error in local query processing:', error);
@@ -519,159 +543,175 @@ const processQueryLocally = async (
   }
 };
 
-// NLP service with additional helper functions
+// Helper function to process data for better visualization
+const processDataForVisualization = (data: any[], xAxis: string, yAxis: string, chartType: string): any[] => {
+  if (!data || data.length === 0) return [];
+  
+  try {
+    if (chartType === 'bar' || chartType === 'pie') {
+      // Group data by x-axis values
+      const aggregated: Record<string, number> = {};
+      
+      data.forEach(item => {
+        const key = String(item[xAxis] || 'Unknown');
+        const value = Number(item[yAxis] || 0);
+        
+        if (aggregated[key] === undefined) {
+          aggregated[key] = 0;
+        }
+        aggregated[key] += value;
+      });
+      
+      // Convert to array and sort by value
+      return Object.entries(aggregated)
+        .map(([key, value]) => ({ [xAxis]: key, [yAxis]: value }))
+        .sort((a, b) => (b[yAxis] as number) - (a[yAxis] as number))
+        .slice(0, 12); // Limit to top 12 for readability
+    } 
+    else if (chartType === 'line') {
+      // For line charts, sort by date if it's a date column
+      try {
+        const isDateColumn = data.some(item => 
+          !isNaN(Date.parse(String(item[xAxis])))
+        );
+        
+        if (isDateColumn) {
+          return [...data]
+            .sort((a, b) => {
+              const dateA = new Date(a[xAxis]).getTime();
+              const dateB = new Date(b[xAxis]).getTime();
+              return dateA - dateB;
+            });
+        }
+      } catch (e) {
+        console.error('Error sorting date data:', e);
+      }
+    }
+    
+    // Default: return the original data
+    return data;
+    
+  } catch (error) {
+    console.error('Error processing visualization data:', error);
+    return data;
+  }
+};
+
 export const nlpService = {
-  processQuery: async (query: string, datasetId: string, model: 'openai' | 'anthropic' = 'openai'): Promise<QueryResult> => {
+  processQuery: async (query: string, datasetId: string, model: 'openai' | 'anthropic' = 'openai', previewData: any[] = []): Promise<QueryResult> => {
     try {
       console.log(`Processing query using ${model === 'anthropic' ? 'Claude 3 Haiku' : 'GPT-4o'} model: "${query}"`);
 
       // Process query through Edge function with fallback
-      const result = await processNLQuery(datasetId, query, model);
-      
-      // Additional post-processing to ensure valid data for visualization
-      if (result) {
-        // Ensure data exists
-        if (!result.data || result.data.length === 0) {
-          console.warn('No data in result, fetching dataset directly');
-          try {
-            const dataPreview = await dataService.previewDataset(datasetId);
-            if (dataPreview && dataPreview.length > 0) {
-              result.data = dataPreview;
-            }
-          } catch (err) {
-            console.error('Error fetching data preview:', err);
-          }
-        }
-        
-        // Validate that the selected axes exist in the data
-        if (result.data && result.data.length > 0) {
-          const columns = Object.keys(result.data[0]);
-          const xAxis = result.xAxis || result.x_axis;
-          const yAxis = result.yAxis || result.y_axis;
-          
-          if (xAxis && !columns.includes(xAxis)) {
-            console.warn(`X-axis "${xAxis}" not found in data, resetting to first column`);
-            result.xAxis = result.x_axis = columns[0];
-          }
-          
-          if (yAxis && !columns.includes(yAxis)) {
-            console.warn(`Y-axis "${yAxis}" not found in data, resetting to second column or first numeric column`);
-            // Find first numeric column
-            const numericColumn = columns.find(col => {
-              const val = result.data![0][col];
-              return typeof val === 'number' || (typeof val === 'string' && !isNaN(parseFloat(val)));
-            });
-            result.yAxis = result.y_axis = numericColumn || columns[1] || columns[0];
-          }
-        }
-        
-        // Save the query to the database
-        try {
-          if (!result.query_id) {
-            const { data: queryData, error: queryError } = await supabase.from('queries').insert({
-              dataset_id: datasetId,
-              query_text: query,
-              query_type: model,
-              name: query.substring(0, 50),
-              query_config: {
-                chart_type: result.chartType || result.chart_type || 'bar',
-                x_axis: result.xAxis || result.x_axis,
-                y_axis: result.yAxis || result.y_axis,
-                result: {
-                  chart_title: result.chart_title,
-                  explanation: result.explanation
-                }
-              }
-            }).select('id').single();
-            
-            if (!queryError && queryData) {
-              result.query_id = queryData.id;
-            }
-          }
-        } catch (saveError) {
-          console.error('Error saving query:', saveError);
-          // Non-fatal error, continue
-        }
-      }
-      
+      const result = await processNLQuery(datasetId, query, model, previewData);
+
       return result;
     } catch (error) {
-      console.error('Error processing query:', error);
+      console.error('Error in query processing:', error);
       throw error;
     }
   },
-
+  
   getRecommendationsForDataset: (dataset: any): string[] => {
-    // Generate dataset-specific query recommendations
     const recommendations = [
-      "Show me a summary of the main trends",
-      "Create a breakdown by category",
-      "Compare the top values in this dataset",
-      "Show the distribution across regions",
-      "What patterns can you find in this data?"
+      "Show me a summary of this dataset",
+      "What are the top values in this dataset?",
+      "How are the values distributed?",
+      "Compare the highest and lowest values",
+      "Show trends over time if applicable"
     ];
     
-    // If we have dataset schema, make more specific recommendations
-    if (dataset && dataset.column_schema) {
-      const columns = Object.keys(dataset.column_schema);
+    if (dataset) {
+      // Try to create dataset-specific recommendations based on its schema or name
+      const name = dataset.name?.toLowerCase() || '';
+      const columns = Object.keys(dataset.column_schema || {});
       
-      // Look for date columns to suggest time analysis
-      const dateColumns = columns.filter(col => 
-        dataset.column_schema[col] === 'date' || 
-        col.toLowerCase().includes('date') || 
-        col.toLowerCase().includes('time') ||
-        col.toLowerCase().includes('year')
-      );
-      
-      if (dateColumns.length > 0) {
-        recommendations.push(`Show trends over time using ${dateColumns[0]}`);
-      }
-      
-      // Look for categorical columns to suggest breakdowns
-      const categoryColumns = columns.filter(col => 
-        dataset.column_schema[col] === 'string' && 
-        !col.toLowerCase().includes('id') &&
-        !col.toLowerCase().includes('name')
-      );
-      
-      if (categoryColumns.length > 0) {
-        recommendations.push(`Show distribution by ${categoryColumns[0]}`);
-      }
-      
-      // Look for numeric columns to suggest aggregations
-      const numericColumns = columns.filter(col => 
-        dataset.column_schema[col] === 'number' || 
-        dataset.column_schema[col] === 'integer'
-      );
-      
-      if (numericColumns.length > 0) {
-        recommendations.push(`What's the average ${numericColumns[0]} by category?`);
+      if (name.includes('sales') || name.includes('revenue')) {
+        return [
+          "Show me the sales trend over time",
+          "Which product category has the highest revenue?",
+          "Compare sales across different regions",
+          "What's the monthly revenue breakdown?",
+          "Show me top 5 performing products"
+        ];
+      } else if (name.includes('customer') || name.includes('user')) {
+        return [
+          "Show customer distribution by region",
+          "What's the age breakdown of our customers?",
+          "Compare customer acquisition by month",
+          "Which customer segment has the highest lifetime value?",
+          "Show me customer retention trends"
+        ];
+      } else if (columns.length > 0) {
+        // Create recommendations based on column names
+        const dateColumns = columns.filter(c => 
+          c.toLowerCase().includes('date') || 
+          c.toLowerCase().includes('time') || 
+          c.toLowerCase().includes('year')
+        );
+        
+        const numericColumns = columns.filter(c => 
+          c.toLowerCase().includes('amount') || 
+          c.toLowerCase().includes('value') || 
+          c.toLowerCase().includes('price') ||
+          c.toLowerCase().includes('count') ||
+          c.toLowerCase().includes('number')
+        );
+        
+        const categoryColumns = columns.filter(c => 
+          c.toLowerCase().includes('category') || 
+          c.toLowerCase().includes('type') || 
+          c.toLowerCase().includes('group') ||
+          c.toLowerCase().includes('region') ||
+          c.toLowerCase().includes('country')
+        );
+        
+        const customRecs = [];
+        
+        if (dateColumns.length > 0 && numericColumns.length > 0) {
+          customRecs.push(`Show me ${numericColumns[0]} trends over time`);
+          customRecs.push(`What's the monthly ${numericColumns[0]} breakdown?`);
+        }
+        
+        if (categoryColumns.length > 0 && numericColumns.length > 0) {
+          customRecs.push(`Compare ${numericColumns[0]} across different ${categoryColumns[0]} values`);
+          customRecs.push(`Which ${categoryColumns[0]} has the highest ${numericColumns[0]}?`);
+        }
+        
+        if (numericColumns.length > 1) {
+          customRecs.push(`Show the relationship between ${numericColumns[0]} and ${numericColumns[1]}`);
+        }
+        
+        if (customRecs.length >= 3) {
+          return customRecs;
+        }
       }
     }
     
     return recommendations;
   },
-
+  
   getPreviousQueries: async (datasetId: string): Promise<any[]> => {
     try {
       const { data, error } = await supabase
         .from('queries')
         .select('*')
         .eq('dataset_id', datasetId)
-        .order('created_at', { ascending: false });
-
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
       if (error) {
         console.error('Error fetching previous queries:', error);
         return [];
       }
-
+      
       return data || [];
     } catch (error) {
-      console.error('Error fetching previous queries:', error);
+      console.error('Error in getPreviousQueries:', error);
       return [];
     }
   },
-
+  
   getQueryById: async (queryId: string): Promise<any> => {
     try {
       const { data, error } = await supabase
@@ -679,19 +719,18 @@ export const nlpService = {
         .select('*')
         .eq('id', queryId)
         .single();
-
+        
       if (error) {
-        console.error('Error fetching query:', error);
+        console.error('Error fetching query by ID:', error);
         return null;
       }
-
+      
       return data;
     } catch (error) {
-      console.error('Error fetching query:', error);
+      console.error('Error in getQueryById:', error);
       return null;
     }
   }
 };
 
-// Update exports to use the common QueryResult type
-export type { QueryResult };
+export default nlpService;
