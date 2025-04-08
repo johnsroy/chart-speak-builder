@@ -299,11 +299,15 @@ export const adminLogin = async () => {
     console.log("Both admin logins failed, attempting to create admin user via edge function");
     
     try {
-      const response = await fetch(`https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup`, {
+      // Use the supabaseUrl and anon key from the supabase.ts file
+      const supabaseUrl = 'https://rehadpogugijylybwmoe.supabase.co';
+      const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaGFkcG9ndWdpanlseWJ3bW9lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4MzcyOTEsImV4cCI6MjA1OTQxMzI5MX0.jMgvzUUum46NpLp4ZKfXI06M1nIvu82L9bmAuxqYYZw';
+      
+      const response = await fetch(`${supabaseUrl}/functions/v1/admin-setup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.supabaseKey}`
+          'Authorization': `Bearer ${anonKey}`
         }
       });
       
@@ -392,11 +396,15 @@ export const setupAdminUser = async () => {
   try {
     console.log("Setting up admin user via edge function");
     
-    const response = await fetch(`https://rehadpogugijylybwmoe.supabase.co/functions/v1/admin-setup`, {
+    // Use the supabaseUrl and anon key from the supabase.ts file instead of accessing protected property
+    const supabaseUrl = 'https://rehadpogugijylybwmoe.supabase.co';
+    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlaGFkcG9ndWdpanlseWJ3bW9lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4MzcyOTEsImV4cCI6MjA1OTQxMzI5MX0.jMgvzUUum46NpLp4ZKfXI06M1nIvu82L9bmAuxqYYZw';
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/admin-setup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabase.supabaseKey}`
+        'Authorization': `Bearer ${anonKey}`
       }
     });
     
