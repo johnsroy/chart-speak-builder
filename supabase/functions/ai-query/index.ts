@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
@@ -30,6 +29,11 @@ serve(async (req) => {
       throw new Error('Query text is required');
     }
     
+    // Check if API keys are available
+    if ((model === 'openai' && !openaiApiKey) || (model === 'anthropic' && !anthropicApiKey)) {
+      throw new Error(`${model.toUpperCase()} API key is not configured. Please contact support.`);
+    }
+    
     // Connect to Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -55,10 +59,35 @@ serve(async (req) => {
         .from('dataset_data')
         .select('*')
         .eq('dataset_id', datasetId)
-        .limit(5000); // Increasing the limit significantly to get more data
+        .limit(10000); // Increased limit significantly
       
       if (dataError) {
         console.error('Error fetching full dataset:', dataError);
+        
+        // Try fetching directly from storage as a fallback
+        try {
+          console.log('Attempting to fetch data directly from storage');
+          if (dataset.storage_path) {
+            const { data: fileData, error: fileError } = await supabase
+              .storage
+              .from('datasets')
+              .download(dataset.storage_path);
+            
+            if (fileError) {
+              console.error('Error downloading dataset file:', fileError);
+            } else {
+              // Parse CSV data
+              const text = await fileData.text();
+              const parsedData = await parseCSV(text);
+              if (parsedData.length > previewData.length) {
+                console.log(`Successfully loaded ${parsedData.length} rows from storage`);
+                fullData = parsedData;
+              }
+            }
+          }
+        } catch (storageError) {
+          console.error('Error fetching from storage:', storageError);
+        }
       } else if (completeData && completeData.length > previewData.length) {
         console.log(`Successfully fetched ${completeData.length} rows of data`);
         fullData = completeData;
@@ -351,6 +380,34 @@ Return ONLY a JSON object with the following structure:
   }
 });
 
+// Helper function to parse CSV
+async function parseCSV(text: string) {
+  const lines = text.split('\n');
+  if (lines.length === 0) return [];
+  
+  const headers = lines[0].split(',').map(h => h.trim());
+  
+  const data = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    
+    const values = lines[i].split(',').map(v => v.trim());
+    const row: Record<string, any> = {};
+    
+    headers.forEach((header, index) => {
+      const value = values[index] || '';
+      
+      // Try to convert to number if possible
+      const numValue = Number(value);
+      row[header] = isNaN(numValue) ? value : numValue;
+    });
+    
+    data.push(row);
+  }
+  
+  return data;
+}
+
 // Helper function to infer schema from data
 function inferSchema(sample: Record<string, any>) {
   const schema: Record<string, string> = {};
@@ -552,7 +609,7 @@ function processMultiSeriesData(data: any[], xAxis: string, yAxis: string, categ
   });
 }
 
-// New helper function to calculate additional statistics for the data
+// Helper function to calculate additional statistics for the data
 function calculateDataStats(data: any[], yAxis: string): any {
   if (!data || data.length === 0) return null;
   

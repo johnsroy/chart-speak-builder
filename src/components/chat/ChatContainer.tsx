@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import ChatMessage from './ChatMessage';
 import { Message } from './types';
 import { QueryResult } from '@/services/types/queryTypes';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ChatContainerProps {
   messages: Message[];
@@ -13,6 +14,7 @@ interface ChatContainerProps {
 
 const ChatContainer: React.FC<ChatContainerProps> = ({ messages, downloadVisualization }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { canUseAIFeatures } = useAuth();
 
   useEffect(() => {
     if (bottomRef.current) {
@@ -21,6 +23,21 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ messages, downloadVisuali
       });
     }
   }, [messages]);
+
+  if (!canUseAIFeatures && messages.length === 0) {
+    return (
+      <Card className="flex-1 overflow-hidden glass-card backdrop-blur-xl bg-gray-950/30 border border-purple-500/20 shadow-xl">
+        <CardContent className="pt-6 pb-2 flex items-center justify-center h-full">
+          <div className="text-center">
+            <h3 className="text-xl font-semibold mb-2">AI Chat Feature</h3>
+            <p className="text-gray-400">
+              Please log in to access the AI chat features and analyze your data.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="flex-1 overflow-hidden glass-card backdrop-blur-xl bg-gray-950/30 border border-purple-500/20 shadow-xl">

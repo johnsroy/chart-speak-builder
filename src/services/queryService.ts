@@ -37,6 +37,26 @@ export const queryService = {
     try {
       console.log("Executing query with config:", config);
       
+      // Always try to get full dataset first if not provided
+      if (!config.dataPreview || !Array.isArray(config.dataPreview) || config.dataPreview.length < 100) {
+        console.log("No sufficient data preview provided, attempting to get full dataset");
+        try {
+          const { data: fullData, error } = await supabase
+            .from('dataset_data')
+            .select('*')
+            .eq('dataset_id', config.datasetId)
+            .limit(10000);
+            
+          if (!error && fullData && Array.isArray(fullData) && fullData.length > 0) {
+            console.log(`Successfully loaded ${fullData.length} rows for processing`);
+            config.dataPreview = fullData;
+            config.useDirectAccess = true;
+          }
+        } catch (err) {
+          console.error("Error fetching full dataset:", err);
+        }
+      }
+      
       // Check if we should use direct data access
       if ((config.useDirectAccess && config.dataPreview && Array.isArray(config.dataPreview)) || 
           (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0)) {
@@ -203,13 +223,24 @@ function processQueryLocally(config: QueryConfig): QueryResult {
       .filter(key => key !== 'count') // Remove helper fields
       .map(key => ({ name: key, type: typeof filteredData[0][key] }));
     
+    // Calculate statistics for the dataset
+    const numValues = filteredData.map(item => Number(item[yField])).filter(val => !isNaN(val));
+    const stats = {
+      count: numValues.length,
+      sum: numValues.reduce((sum, val) => sum + val, 0),
+      avg: numValues.length > 0 ? numValues.reduce((sum, val) => sum + val, 0) / numValues.length : 0,
+      min: numValues.length > 0 ? Math.min(...numValues) : 0,
+      max: numValues.length > 0 ? Math.max(...numValues) : 0
+    };
+    
     console.log("Local processing complete");
     return {
       data: filteredData,
       columns,
       chartType: chartType || 'bar',
       xAxis: xField,
-      yAxis: yField
+      yAxis: yField,
+      stats
     };
   } catch (error) {
     console.error('Local query processing error:', error);

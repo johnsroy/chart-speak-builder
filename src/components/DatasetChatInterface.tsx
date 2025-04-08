@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { nlpService } from '@/services/nlpService';
@@ -93,16 +92,69 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         .from('dataset_data')
         .select('*')
         .eq('dataset_id', datasetId)
-        .limit(5000); // Get a much larger sample for better analysis
+        .limit(10000); // Significantly increased limit for better analysis
       
       if (error) {
         console.error('Error getting full dataset data:', error);
+        await fetchDatasetFromStorage(datasetId);
       } else if (data && Array.isArray(data) && data.length > 0) {
         console.log(`Successfully loaded ${data.length} rows for analysis`);
         setFullDataset(data);
+      } else {
+        console.log('No data found in dataset_data table, trying storage');
+        await fetchDatasetFromStorage(datasetId);
       }
     } catch (err) {
       console.error('Error in fetching full dataset:', err);
+      await fetchDatasetFromStorage(datasetId);
+    }
+  };
+  
+  // New function to fetch dataset directly from storage if needed
+  const fetchDatasetFromStorage = async (datasetId: string) => {
+    try {
+      console.log("Attempting to fetch dataset directly from storage");
+      const dataset = await dataService.getDataset(datasetId);
+      
+      if (!dataset || !dataset.storage_path) {
+        console.error('No storage path found for dataset');
+        return;
+      }
+      
+      const { data: fileData, error: fileError } = await supabase
+        .storage
+        .from('datasets')
+        .download(dataset.storage_path);
+      
+      if (fileError) {
+        console.error('Error downloading dataset file:', fileError);
+        return;
+      }
+      
+      const text = await fileData.text();
+      const rows = text.split('\n');
+      const headers = rows[0].split(',').map(h => h.trim());
+      
+      const parsedData = [];
+      
+      for (let i = 1; i < rows.length; i++) {
+        if (!rows[i].trim()) continue;
+        
+        const values = rows[i].split(',');
+        const row: any = {};
+        
+        headers.forEach((header, index) => {
+          row[header] = values[index]?.trim() || '';
+        });
+        
+        parsedData.push(row);
+      }
+      
+      console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
+      setFullDataset(parsedData);
+      
+    } catch (err) {
+      console.error('Error fetching from storage:', err);
     }
   };
 
@@ -125,41 +177,46 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     try {
       console.log(`Sending query to ${activeModel} model:`, messageText);
       
-      // Use the full dataset if available, otherwise fall back to preview
+      // Always use the full dataset if available
       let dataForAnalysis = fullDataset;
       
       if (!dataForAnalysis || !Array.isArray(dataForAnalysis) || dataForAnalysis.length === 0) {
-        dataForAnalysis = await dataService.previewDataset(datasetId)
-          .catch(err => {
-            console.error('Error fetching data preview:', err);
-            return null;
-          });
-        
-        if (!dataForAnalysis || !Array.isArray(dataForAnalysis) || dataForAnalysis.length === 0) {
-          console.warn('No data available, fetching dataset directly');
-          try {
-            const { data, error } = await supabase
-              .from('dataset_data')
-              .select('*')
-              .eq('dataset_id', datasetId)
-              .limit(1000);
-            
-            if (error) {
-              console.error('Error getting dataset data:', error);
-              throw new Error('Failed to retrieve dataset data');
-            }
-            
-            if (data && Array.isArray(data) && data.length > 0) {
-              dataForAnalysis = data;
-              console.log('Successfully retrieved data directly:', data.length, 'rows');
-            } else {
-              throw new Error('No data returned from direct query');
-            }
-          } catch (dataError) {
-            toast.error('Could not load dataset data');
-            throw new Error('Failed to load dataset data for analysis');
+        console.log('Full dataset not available, fetching dataset data');
+        try {
+          const { data, error } = await supabase
+            .from('dataset_data')
+            .select('*')
+            .eq('dataset_id', datasetId)
+            .limit(10000); // Significantly increased limit
+          
+          if (error) {
+            console.error('Error getting dataset data:', error);
+            throw new Error('Failed to retrieve dataset data');
           }
+          
+          if (data && Array.isArray(data) && data.length > 0) {
+            dataForAnalysis = data;
+            console.log('Successfully retrieved data directly:', data.length, 'rows');
+          } else {
+            dataForAnalysis = await dataService.previewDataset(datasetId)
+              .catch(err => {
+                console.error('Error fetching data preview:', err);
+                return [];
+              });
+          }
+        } catch (dataError) {
+          console.error('Error loading dataset data:', dataError);
+          toast.error('Could not load full dataset data');
+          dataForAnalysis = await dataService.previewDataset(datasetId)
+            .catch(err => {
+              console.error('Error fetching data preview:', err);
+              return [];
+            });
         }
+      }
+      
+      if (!dataForAnalysis || dataForAnalysis.length === 0) {
+        throw new Error('No data available for analysis');
       }
       
       console.log(`Sending ${dataForAnalysis.length} rows of data for analysis`);
@@ -283,7 +340,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         throw new Error('Query not found');
       }
       
-      // Use full dataset if available
       const data = fullDataset || await dataService.previewDataset(datasetId);
       
       const config = query.query_config;

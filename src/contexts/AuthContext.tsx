@@ -47,9 +47,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             if (sub) {
               console.log("User subscription loaded:", sub.isPremium ? "Premium" : "Free");
               setSubscription(sub);
+            } else {
+              // If no subscription found, create a default subscription object
+              // This ensures all users can use features without being admin
+              console.log("No subscription found, creating default subscription");
+              setSubscription({
+                userId: session.user.id,
+                level: 'free',
+                status: 'active',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                isPremium: false,
+                stripeCustomerId: null,
+                stripeSubscriptionId: null,
+                features: {
+                  maxDatasets: 5,
+                  maxQueries: 100,
+                  aiAccess: true, // Enable AI access for all authenticated users
+                  advancedVisualizations: true,
+                  dataExport: true
+                }
+              });
             }
           }).catch(err => {
             console.error("Error fetching subscription:", err);
+            // On error, still provide a default subscription
+            setSubscription({
+              userId: session.user.id,
+              level: 'free',
+              status: 'active',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              isPremium: false,
+              stripeCustomerId: null,
+              stripeSubscriptionId: null,
+              features: {
+                maxDatasets: 5,
+                maxQueries: 100,
+                aiAccess: true, // Enable AI access for all authenticated users
+                advancedVisualizations: true,
+                dataExport: true
+              }
+            });
           });
         }, 0);
       } else if (event === 'SIGNED_OUT') {
@@ -77,9 +116,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (sub) {
             console.log("User subscription loaded:", sub.isPremium ? "Premium" : "Free");
             setSubscription(sub);
+          } else {
+            // If no subscription found, create a default subscription object
+            console.log("No subscription found, creating default subscription");
+            setSubscription({
+              userId: session.user.id,
+              level: 'free',
+              status: 'active',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              isPremium: false,
+              stripeCustomerId: null,
+              stripeSubscriptionId: null,
+              features: {
+                maxDatasets: 5,
+                maxQueries: 100,
+                aiAccess: true, // Enable AI access for all authenticated users
+                advancedVisualizations: true,
+                dataExport: true
+              }
+            });
           }
         }).catch(err => {
           console.error("Error fetching subscription:", err);
+          // On error, still provide a default subscription
+          setSubscription({
+            userId: session.user.id,
+            level: 'free',
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            isPremium: false,
+            stripeCustomerId: null,
+            stripeSubscriptionId: null,
+            features: {
+              maxDatasets: 5,
+              maxQueries: 100,
+              aiAccess: true, // Enable AI access for all authenticated users
+              advancedVisualizations: true,
+              dataExport: true
+            }
+          });
         });
       }
       setIsLoading(false);
@@ -120,8 +197,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const register = signup;
 
-  // Check if user is admin - this could be expanded to include roles from database
-  const isAdmin = user?.email === 'admin@example.com';
+  // Modified to check for subscription status rather than just admin email
+  const isAdmin = user?.email === 'admin@example.com' || (subscription?.isPremium === true);
+  
+  // All authenticated users can use AI features, not just admins
+  const canUseAIFeatures = !!user && !!session;
   
   const isAuthenticated = !!user && !!session;
 
@@ -140,7 +220,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       subscription,
       resendConfirmationEmail: resendConfirmation,
       resetPassword: resetPasswordRequest,
-      updatePassword: updateUserPassword
+      updatePassword: updateUserPassword,
+      canUseAIFeatures // New property for feature access control
     }}>
       {children}
     </AuthContext.Provider>

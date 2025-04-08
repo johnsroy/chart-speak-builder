@@ -45,6 +45,13 @@ serve(async (req) => {
     
     const { query_type, dataset_id, query_text, query_config } = await req.json();
     
+    if (!dataset_id) {
+      return new Response(
+        JSON.stringify({ error: "Dataset ID is required" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+    
     // Get the dataset metadata
     const { data: dataset, error: datasetError } = await supabase
       .from('datasets')
@@ -59,22 +66,40 @@ serve(async (req) => {
       );
     }
     
-    // Download the dataset file
-    const { data: fileData, error: fileError } = await supabase
-      .storage
-      .from('datasets')
-      .download(dataset.storage_path);
-      
-    if (fileError) {
-      return new Response(
-        JSON.stringify({ error: fileError.message }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-      );
-    }
+    let data;
     
-    // Parse the CSV data
-    const text = await fileData.text();
-    const data = await parseCSV(text);
+    // First try to get data from dataset_data table
+    console.log("Attempting to fetch data from dataset_data table");
+    const { data: tableData, error: tableError } = await supabase
+      .from('dataset_data')
+      .select('*')
+      .eq('dataset_id', dataset_id)
+      .limit(10000); // Increased limit significantly
+    
+    if (!tableError && tableData && tableData.length > 0) {
+      console.log(`Retrieved ${tableData.length} rows from dataset_data table`);
+      data = tableData;
+    } else {
+      console.log("No data in dataset_data table or error occurred, falling back to storage");
+      
+      // Download the dataset file from storage as a backup approach
+      const { data: fileData, error: fileError } = await supabase
+        .storage
+        .from('datasets')
+        .download(dataset.storage_path);
+        
+      if (fileError) {
+        return new Response(
+          JSON.stringify({ error: fileError.message }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        );
+      }
+      
+      // Parse the CSV data
+      const text = await fileData.text();
+      data = await parseCSV(text);
+      console.log(`Parsed ${data.length} rows from CSV file`);
+    }
     
     // Process data based on query type
     let result;

@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import DatasetChatInterface from '@/components/DatasetChatInterface';
 import DataTable from '@/components/DataTable';
 import { formatByteSize } from '@/utils/storageUtils';
+import { supabase } from '@/lib/supabase';
 
 const Visualize = () => {
   const { datasetId } = useParams<{ datasetId: string; }>();
@@ -125,7 +126,26 @@ const Visualize = () => {
     setPreviewError(null);
     
     try {
-      console.log("Loading dataset preview for ID:", datasetId);
+      console.log("Loading full dataset for ID:", datasetId);
+      
+      const { data: fullData, error: fullDataError } = await supabase
+        .from('dataset_data')
+        .select('*')
+        .eq('dataset_id', datasetId)
+        .limit(5000);
+      
+      if (fullDataError) {
+        console.error('Error loading full dataset:', fullDataError);
+        throw new Error(fullDataError.message);
+      }
+      
+      if (fullData && Array.isArray(fullData) && fullData.length > 0) {
+        console.log(`Successfully loaded ${fullData.length} rows from dataset`);
+        setDataPreview(fullData);
+        return;
+      }
+      
+      console.log("No data found in dataset_data table, falling back to preview method");
       const data = await dataService.previewDataset(datasetId);
       console.log("Preview data loaded:", data?.length || 0, "rows");
       
