@@ -5,8 +5,15 @@ import ChartVisualization from '@/components/ChartVisualization';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  BarChart, TableIcon, LineChart, PieChart, CircleDot, AreaChart,
-  Circle, CircleDashed, BarChartBig, BarChartHorizontal, ChevronDown
+  TableIcon, 
+  ChevronDown,
+  BarChart, 
+  LineChart, 
+  PieChart, 
+  CircleDot, 
+  ArrowUpDown,
+  CircleDashed, 
+  CircleStack
 } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { dataService } from '@/services/dataService';
@@ -41,7 +48,10 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
-  const [suitableChartTypes, setSuitableChartTypes] = useState<ChartType[]>(['bar', 'line', 'pie', 'table']);
+  const [suitableChartTypes, setSuitableChartTypes] = useState<ChartType[]>([
+    'bar', 'line', 'pie', 'column', 'area', 'scatter', 'bubble', 'donut', 'stacked', 'polar', 
+    'gauge', 'heatmap', 'treemap', 'waterfall', 'funnel', 'sankey'
+  ]);
 
   // Determine which dataset ID to use
   const effectiveDatasetId = datasetId || externalSelectedId || internalSelectedId;
@@ -70,7 +80,14 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   useEffect(() => {
     if (dataPreview && dataPreview.length > 0) {
       const suggestedTypes = getSuitableChartTypes(dataPreview);
-      setSuitableChartTypes(suggestedTypes);
+      
+      // Ensure we maintain the extended chart types
+      const extendedTypes: ChartType[] = [
+        'bar', 'line', 'pie', 'column', 'area', 'scatter', 'bubble', 'donut', 
+        'stacked', 'polar', 'gauge', 'heatmap', 'treemap', 'waterfall', 'funnel', 'sankey'
+      ];
+      
+      setSuitableChartTypes(extendedTypes);
       
       // If current chart type is not suitable, change to a suitable one
       if (!suggestedTypes.includes(selectedChartType) && suggestedTypes.length > 0) {
@@ -131,11 +148,13 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
       case 'line': return <LineChart className="h-4 w-4 mr-2" />;
       case 'pie': return <PieChart className="h-4 w-4 mr-2" />;
       case 'scatter': return <CircleDot className="h-4 w-4 mr-2" />;
-      case 'area': return <AreaChart className="h-4 w-4 mr-2" />;
-      case 'bubble': return <Circle className="h-4 w-4 mr-2" />;
-      case 'column': return <BarChartBig className="h-4 w-4 mr-2" />;
+      case 'area': return <ArrowUpDown className="h-4 w-4 mr-2" />;
+      case 'column': return <BarChart className="h-4 w-4 mr-2" />;
       case 'donut': return <CircleDashed className="h-4 w-4 mr-2" />;
-      case 'stacked': return <BarChartHorizontal className="h-4 w-4 mr-2" />;
+      case 'stacked': return <CircleStack className="h-4 w-4 mr-2" />;
+      case 'polar': return <PieChart className="h-4 w-4 mr-2" />;
+      case 'gauge': return <CircleDot className="h-4 w-4 mr-2" />;
+      case 'heatmap': return <TableIcon className="h-4 w-4 mr-2" />;
       case 'table': return <TableIcon className="h-4 w-4 mr-2" />;
       default: return <BarChart className="h-4 w-4 mr-2" />;
     }
@@ -200,7 +219,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="end"
-                    className="w-56 p-2 bg-gray-900/90 backdrop-blur-md border border-purple-500/30"
+                    className="w-56 p-2 bg-gray-900/90 backdrop-blur-md border border-purple-500/30 max-h-[60vh] overflow-y-auto"
                   >
                     {suitableChartTypes.map((chartType) => (
                       <DropdownMenuItem
@@ -219,12 +238,13 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
               )}
             </div>
             
-            <TabsContent value="chart">
+            <TabsContent value="chart" className="min-h-[500px]">
               {effectiveDatasetId && (
                 <ChartVisualization 
                   datasetId={effectiveDatasetId} 
                   chartType={selectedChartType}
                   data={dataPreview}
+                  heightClass="h-[500px]"
                 />
               )}
             </TabsContent>

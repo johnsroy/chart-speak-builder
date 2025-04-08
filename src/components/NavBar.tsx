@@ -6,7 +6,6 @@ import {
   Settings as SettingsIcon,
   User as UserIcon,
   Beaker as BeakerIcon,
-  BarChart3 as BarChartIcon,
   Database as DatabaseIcon,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
@@ -41,12 +40,7 @@ const NavBar = () => {
       icon: <DatabaseIcon className="h-5 w-5" />,
       adminOnly: false,
     },
-    {
-      name: "Visualizations",
-      path: "/visualize",
-      icon: <BarChartIcon className="h-5 w-5" />,
-      adminOnly: false,
-    },
+    // Removed Visualizations tab as it overlaps with Data Explorer functionality
     {
       name: "Talk to me",
       path: "/analyze",
@@ -84,7 +78,7 @@ const NavBar = () => {
     {
       name: "Subscribe",
       path: "/signup",
-      icon: <BarChartIcon className="h-5 w-5" />,
+      icon: <DatabaseIcon className="h-5 w-5" />,
       adminOnly: false,
     },
   ];

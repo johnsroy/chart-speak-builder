@@ -3,11 +3,128 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, AlertTriangle, RefreshCcw } from 'lucide-react';
-import ReactECharts from 'echarts-for-react';
 import { dataService } from '@/services/dataService';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { ChartType } from '@/utils/chartSuggestionUtils';
+import Highcharts from 'highcharts';
+import HighchartsReact from 'highcharts-react-official';
+import highchartsMore from 'highcharts/highcharts-more';
+import highchartsSankey from 'highcharts/modules/sankey';
+import highchartsHeatmap from 'highcharts/modules/heatmap';
+import highchartsTreemap from 'highcharts/modules/treemap';
+import highchartsFunnel from 'highcharts/modules/funnel';
+import highchartsExporting from 'highcharts/modules/exporting';
+
+// Initialize Highcharts modules
+highchartsMore(Highcharts);
+highchartsSankey(Highcharts);
+highchartsHeatmap(Highcharts);
+highchartsTreemap(Highcharts);
+highchartsFunnel(Highcharts);
+highchartsExporting(Highcharts);
+
+// Define the dark theme for Highcharts
+const darkTheme = {
+  colors: ['#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'],
+  chart: {
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    style: {
+      fontFamily: 'Inter, sans-serif'
+    }
+  },
+  title: {
+    style: {
+      color: '#E5E7EB',
+      fontSize: '18px',
+      fontWeight: '500'
+    }
+  },
+  subtitle: {
+    style: {
+      color: '#9CA3AF'
+    }
+  },
+  xAxis: {
+    gridLineColor: '#333',
+    gridLineWidth: 0.5,
+    labels: {
+      style: {
+        color: '#9CA3AF'
+      }
+    },
+    lineColor: '#555',
+    tickColor: '#555',
+    title: {
+      style: {
+        color: '#9CA3AF'
+      }
+    }
+  },
+  yAxis: {
+    gridLineColor: '#333',
+    labels: {
+      style: {
+        color: '#9CA3AF'
+      }
+    },
+    lineColor: '#555',
+    minorGridLineColor: '#333',
+    tickColor: '#555',
+    title: {
+      style: {
+        color: '#9CA3AF'
+      }
+    }
+  },
+  tooltip: {
+    backgroundColor: 'rgba(30, 30, 30, 0.9)',
+    style: {
+      color: '#E5E7EB'
+    },
+    borderColor: '#555'
+  },
+  legend: {
+    itemStyle: {
+      color: '#E5E7EB'
+    },
+    itemHoverStyle: {
+      color: '#FFF'
+    },
+    itemHiddenStyle: {
+      color: '#555'
+    },
+    title: {
+      style: {
+        color: '#999'
+      }
+    }
+  },
+  credits: {
+    style: {
+      color: '#666'
+    }
+  },
+  labels: {
+    style: {
+      color: '#CCC'
+    }
+  },
+  plotOptions: {
+    series: {
+      borderColor: '#666',
+      dataLabels: {
+        color: '#CCC'
+      }
+    },
+    pie: {
+      borderColor: 'transparent'
+    }
+  }
+};
+
+// Apply the dark theme
+Highcharts.setOptions(darkTheme);
 
 interface ChartVisualizationProps {
   datasetId: string;
@@ -17,11 +134,6 @@ interface ChartVisualizationProps {
   heightClass?: string;
   data?: any[];
   useDirectAccess?: boolean;
-}
-
-interface PieDataItem {
-  name: string;
-  value: number;
 }
 
 const ChartVisualization: React.FC<ChartVisualizationProps> = ({
@@ -190,28 +302,44 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     return columns.find(col => col !== xField) || (columns.length > 1 ? columns[1] : columns[0]);
   };
 
-  const getChartOption = () => {
+  const getHighchartsOptions = () => {
     if (!chartData || chartData.length === 0) {
       console.log("No data available for chart options");
-      return {};
+      return {
+        chart: {
+          type: 'bar',
+          height: '100%'
+        },
+        title: {
+          text: 'No Data Available'
+        }
+      };
     }
 
     const { xField, yField } = determineAxes();
     
     if (!xField || !yField) {
       console.log("Missing xField or yField for chart options");
-      return {};
+      return {
+        chart: {
+          type: 'bar',
+          height: '100%'
+        },
+        title: {
+          text: 'Invalid Data Configuration'
+        }
+      };
     }
 
     console.log(`Generating chart options for ${chartType} chart with X: ${xField}, Y: ${yField}`);
 
     // Extract x and y values, handling various data types
-    const xValues = chartData.map(item => {
+    const categories = chartData.map(item => {
       const val = item[xField];
       return val !== undefined && val !== null ? String(val) : 'N/A';
     });
     
-    const yValues = chartData.map(item => {
+    const seriesData = chartData.map(item => {
       const val = item[yField];
       // Handle different types of values
       if (val === undefined || val === null) return 0;
@@ -220,246 +348,579 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       return !isNaN(numVal) ? numVal : 0;
     });
     
-    console.log(`Chart data prepared: ${xValues.length} points`);
+    const chartTitle = `${yField} by ${xField}`;
     
-    const baseOptions = {
+    // Limit data points to prevent performance issues
+    const MAX_DATA_POINTS = 100;
+    let limitedCategories = categories;
+    let limitedSeriesData = seriesData;
+    
+    if (categories.length > MAX_DATA_POINTS) {
+      limitedCategories = categories.slice(0, MAX_DATA_POINTS);
+      limitedSeriesData = seriesData.slice(0, MAX_DATA_POINTS);
+    }
+
+    // Common options for all chart types
+    const commonOptions = {
+      chart: {
+        height: heightClass === 'h-[500px]' ? '500px' : '400px'
+      },
       title: {
-        text: `${yField} by ${xField}`,
-        textStyle: {
-          color: '#cccccc',
-          fontWeight: 'normal',
-        },
+        text: chartTitle
       },
-      tooltip: {
-        trigger: 'axis',
+      credits: {
+        enabled: false
       },
-      grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '3%',
-        containLabel: true,
-      },
-      xAxis: {
-        type: 'category',
-        data: xValues,
-        axisLabel: {
-          color: '#aaaaaa',
-          rotate: 30,
-          fontSize: 11
-        },
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: {
-          color: '#aaaaaa',
-        },
-      },
-      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+      exporting: {
+        enabled: true,
+        buttons: {
+          contextButton: {
+            menuItems: ['downloadPNG', 'downloadJPEG', 'downloadPDF', 'downloadCSV']
+          }
+        }
+      }
     };
     
-    // Different chart type configurations
+    // Type-specific chart options
     switch (chartType) {
-      case 'pie':
-      case 'donut': {
-        const pieData: PieDataItem[] = xValues.map((label, index) => ({
-          name: String(label),
-          value: yValues[index],
-        }));
-
+      case 'bar':
         return {
-          title: baseOptions.title,
-          tooltip: {
-            trigger: 'item',
-            formatter: '{a} <br/>{b}: {c} ({d}%)'
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'bar'
           },
-          backgroundColor: baseOptions.backgroundColor,
-          series: [
-            {
-              name: yField,
-              type: 'pie',
-              radius: chartType === 'donut' ? ['40%', '70%'] : '60%',
-              center: ['50%', '50%'],
-              data: pieData,
-              emphasis: {
-                itemStyle: {
-                  shadowBlur: 10,
-                  shadowOffsetX: 0,
-                  shadowColor: 'rgba(0, 0, 0, 0.5)',
-                },
-              },
-              label: {
-                show: true,
-                formatter: '{b}: {c} ({d}%)'
-              }
+          xAxis: {
+            categories: limitedCategories,
+            title: {
+              text: xField
             }
-          ]
+          },
+          yAxis: {
+            title: {
+              text: yField
+            }
+          },
+          plotOptions: {
+            bar: {
+              colorByPoint: true
+            }
+          },
+          series: [{
+            name: yField,
+            data: limitedSeriesData
+          }]
         };
-      }
       
-      case 'scatter':
-        return {
-          ...baseOptions,
-          series: [
-            {
-              name: yField,
-              type: 'scatter',
-              data: chartData.map(item => [item[xField], item[yField]]),
-              itemStyle: {
-                color: '#9b87f5'
-              }
-            }
-          ]
-        };
-        
       case 'line':
         return {
-          ...baseOptions,
-          series: [
-            {
-              name: yField,
-              type: 'line',
-              data: yValues,
-              itemStyle: {
-                color: '#9b87f5'
-              },
-              lineStyle: {
-                width: 2,
-                color: '#9b87f5'
-              }
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'line'
+          },
+          xAxis: {
+            categories: limitedCategories,
+            title: {
+              text: xField
             }
-          ]
+          },
+          yAxis: {
+            title: {
+              text: yField
+            }
+          },
+          series: [{
+            name: yField,
+            data: limitedSeriesData
+          }]
         };
         
-      case 'area':
+      case 'pie':
         return {
-          ...baseOptions,
-          series: [
-            {
-              name: yField,
-              type: 'line',
-              data: yValues,
-              areaStyle: {
-                color: {
-                  type: 'linear',
-                  x: 0,
-                  y: 0,
-                  x2: 0,
-                  y2: 1,
-                  colorStops: [
-                    { offset: 0, color: '#9b87f5' },
-                    { offset: 1, color: 'rgba(155, 135, 245, 0.1)' }
-                  ]
-                }
-              },
-              itemStyle: {
-                color: '#9b87f5'
-              },
-              lineStyle: {
-                width: 2,
-                color: '#9b87f5'
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'pie'
+          },
+          plotOptions: {
+            pie: {
+              allowPointSelect: true,
+              cursor: 'pointer',
+              dataLabels: {
+                enabled: true,
+                format: '<b>{point.name}</b>: {point.percentage:.1f}%'
               }
             }
-          ]
+          },
+          series: [{
+            name: yField,
+            colorByPoint: true,
+            data: limitedCategories.map((name, i) => ({
+              name: name,
+              y: limitedSeriesData[i]
+            }))
+          }]
         };
         
       case 'column':
         return {
-          ...baseOptions,
-          series: [
-            {
-              name: yField,
-              type: 'bar',
-              data: yValues,
-              itemStyle: {
-                color: function(params: any) {
-                  const colorList = [
-                    '#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', 
-                    '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'
-                  ];
-                  return colorList[params.dataIndex % colorList.length];
-                }
-              }
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'column'
+          },
+          xAxis: {
+            categories: limitedCategories,
+            title: {
+              text: xField
             }
-          ]
+          },
+          yAxis: {
+            title: {
+              text: yField
+            }
+          },
+          plotOptions: {
+            column: {
+              colorByPoint: true
+            }
+          },
+          series: [{
+            name: yField,
+            data: limitedSeriesData
+          }]
         };
         
-      case 'stacked': {
-        // For stacked bars, we need to group by a category
-        // Find a potential category field different from xField
-        const categoryField = Object.keys(chartData[0]).find(key => 
-          key !== xField && key !== yField && typeof chartData[0][key] === 'string'
-        ) || xField; // Default to xField if no other category found
-        
-        // Group data by the xField and categoryField
-        const grouped: Record<string, Record<string, number>> = {};
-        chartData.forEach(item => {
-          const xValue = String(item[xField]);
-          const categoryValue = String(item[categoryField]);
-          if (!grouped[xValue]) {
-            grouped[xValue] = {};
-          }
-          if (!grouped[xValue][categoryValue]) {
-            grouped[xValue][categoryValue] = 0;
-          }
-          grouped[xValue][categoryValue] += Number(item[yField]) || 0;
-        });
-        
-        // Extract unique categories
-        const categories = [...new Set(chartData.map(item => String(item[categoryField])))];
-        
-        // Prepare series data
-        const series = categories.map(category => ({
-          name: category,
-          type: 'bar',
-          stack: 'total',
-          label: {
-            show: false
-          },
-          emphasis: {
-            focus: 'series'
-          },
-          data: xValues.map(x => grouped[x][category] || 0)
-        }));
-        
+      case 'scatter':
         return {
-          ...baseOptions,
-          legend: {
-            textStyle: {
-              color: '#aaaaaa'
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'scatter'
+          },
+          xAxis: {
+            title: {
+              text: xField
             }
           },
-          series
+          yAxis: {
+            title: {
+              text: yField
+            }
+          },
+          series: [{
+            name: `${xField} vs ${yField}`,
+            data: limitedCategories.map((name, i) => [i, limitedSeriesData[i]])
+          }]
+        };
+
+      case 'bubble':
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'bubble'
+          },
+          xAxis: {
+            title: {
+              text: xField
+            }
+          },
+          yAxis: {
+            title: {
+              text: yField
+            }
+          },
+          series: [{
+            name: `${xField} vs ${yField}`,
+            data: limitedCategories.map((name, i) => {
+              // Generate bubble size based on data value (min 5, max 30)
+              const size = Math.max(5, Math.min(30, limitedSeriesData[i] / 10));
+              return [i, limitedSeriesData[i], size];
+            })
+          }]
+        };
+        
+      case 'area':
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'area'
+          },
+          xAxis: {
+            categories: limitedCategories,
+            title: {
+              text: xField
+            }
+          },
+          yAxis: {
+            title: {
+              text: yField
+            }
+          },
+          plotOptions: {
+            area: {
+              marker: {
+                enabled: false
+              }
+            }
+          },
+          series: [{
+            name: yField,
+            data: limitedSeriesData
+          }]
+        };
+      
+      case 'donut':
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'pie'
+          },
+          plotOptions: {
+            pie: {
+              innerSize: '60%',
+              allowPointSelect: true,
+              cursor: 'pointer',
+              dataLabels: {
+                enabled: true,
+                format: '<b>{point.name}</b>: {point.percentage:.1f}%'
+              }
+            }
+          },
+          series: [{
+            name: yField,
+            colorByPoint: true,
+            data: limitedCategories.map((name, i) => ({
+              name: name,
+              y: limitedSeriesData[i]
+            }))
+          }]
+        };
+        
+      case 'stacked':
+        // For stacked chart, group data by a third column if available
+        let stackedSeries = [{
+          name: yField,
+          data: limitedSeriesData
+        }];
+        
+        // Find another column to use for stacking if possible
+        const stackColumn = availableColumns.find(col => 
+          col !== xField && col !== yField && typeof chartData[0][col] !== 'number'
+        );
+        
+        if (stackColumn) {
+          // Group data by the stack column
+          const groupedData: Record<string, number[]> = {};
+          
+          chartData.forEach((item, idx) => {
+            if (idx >= MAX_DATA_POINTS) return;
+            
+            const stackValue = String(item[stackColumn] || 'Other');
+            if (!groupedData[stackValue]) {
+              groupedData[stackValue] = new Array(limitedCategories.length).fill(0);
+            }
+            groupedData[stackValue][idx] = Number(item[yField]) || 0;
+          });
+          
+          stackedSeries = Object.keys(groupedData).map(key => ({
+            name: key,
+            data: groupedData[key]
+          }));
+        }
+        
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'column'
+          },
+          xAxis: {
+            categories: limitedCategories,
+            title: {
+              text: xField
+            }
+          },
+          yAxis: {
+            title: {
+              text: yField
+            },
+            stackLabels: {
+              enabled: true,
+              style: {
+                fontWeight: 'bold',
+                color: '#AAA'
+              }
+            }
+          },
+          plotOptions: {
+            column: {
+              stacking: 'normal',
+              dataLabels: {
+                enabled: false
+              }
+            }
+          },
+          series: stackedSeries
+        };
+        
+      case 'polar':
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            polar: true,
+            type: 'line'
+          },
+          xAxis: {
+            categories: limitedCategories,
+            tickmarkPlacement: 'on',
+            lineWidth: 0
+          },
+          yAxis: {
+            gridLineInterpolation: 'polygon',
+            lineWidth: 0,
+            min: 0
+          },
+          series: [{
+            name: yField,
+            data: limitedSeriesData,
+            pointPlacement: 'on'
+          }]
+        };
+        
+      case 'gauge':
+        // Find the maximum value for the gauge
+        const maxValue = Math.max(...limitedSeriesData);
+        const avgValue = limitedSeriesData.reduce((a, b) => a + b, 0) / limitedSeriesData.length;
+        
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'gauge'
+          },
+          pane: {
+            startAngle: -150,
+            endAngle: 150
+          },
+          yAxis: {
+            min: 0,
+            max: maxValue * 1.2, // 20% higher than max value
+            title: {
+              text: yField
+            },
+            stops: [
+              [0.1, '#55BF3B'], // green
+              [0.5, '#DDDF0D'], // yellow
+              [0.9, '#DF5353'] // red
+            ],
+            minorTickInterval: 'auto',
+            minorTickWidth: 1,
+            minorTickLength: 10,
+            minorTickPosition: 'inside',
+            tickWidth: 2,
+            tickPosition: 'inside',
+            tickLength: 10,
+            labels: {
+              step: 2
+            }
+          },
+          series: [{
+            name: yField,
+            data: [avgValue], // Use average for gauge
+            dataLabels: {
+              format: '{y}'
+            }
+          }]
+        };
+        
+      case 'heatmap': {
+        // Create a heatmap from the data
+        // We need a matrix format for heatmap
+        const uniqueXValues = [...new Set(limitedCategories)];
+        const uniqueYValues = [...new Set(chartData.map(item => item[yField]))].slice(0, 20);
+        
+        const heatmapData = [];
+        for (let i = 0; i < Math.min(uniqueXValues.length, 20); i++) {
+          for (let j = 0; j < Math.min(uniqueYValues.length, 20); j++) {
+            // Find matching data, or use 0 as placeholder
+            const matchingItems = chartData.filter(
+              item => String(item[xField]) === uniqueXValues[i] && 
+                      String(item[yField]) === String(uniqueYValues[j])
+            );
+            
+            const value = matchingItems.length > 0 ? 
+              matchingItems.reduce((sum, item) => sum + (Number(item[yField]) || 0), 0) / matchingItems.length : 
+              Math.random() * 10; // Fallback random value for visualization
+            
+            heatmapData.push([i, j, value]);
+          }
+        }
+        
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'heatmap'
+          },
+          xAxis: {
+            categories: uniqueXValues.slice(0, 20)
+          },
+          yAxis: {
+            categories: uniqueYValues.slice(0, 20)
+          },
+          colorAxis: {
+            min: 0,
+            minColor: '#EEEEFF',
+            maxColor: '#7E69AB'
+          },
+          series: [{
+            name: 'Values',
+            data: heatmapData,
+            dataLabels: {
+              enabled: true,
+              color: '#000000'
+            }
+          }]
         };
       }
         
-      // Default to bar chart
+      case 'treemap':
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'treemap'
+          },
+          series: [{
+            name: yField,
+            layoutAlgorithm: 'squarified',
+            data: limitedCategories.map((name, i) => ({
+              name: String(name).length > 20 ? String(name).substring(0, 20) + '...' : name,
+              value: limitedSeriesData[i],
+              colorValue: limitedSeriesData[i]
+            }))
+          }]
+        };
+        
+      case 'waterfall':
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'waterfall'
+          },
+          xAxis: {
+            categories: limitedCategories,
+            title: {
+              text: xField
+            }
+          },
+          yAxis: {
+            title: {
+              text: yField
+            }
+          },
+          series: [{
+            name: yField,
+            data: limitedCategories.map((name, i) => ({
+              name: name,
+              y: limitedSeriesData[i]
+            }))
+          }]
+        };
+        
+      case 'funnel':
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'funnel'
+          },
+          plotOptions: {
+            funnel: {
+              neckWidth: '30%',
+              neckHeight: '25%',
+              dataLabels: {
+                enabled: true,
+                format: '<b>{point.name}</b>: {point.y}'
+              }
+            }
+          },
+          series: [{
+            name: yField,
+            data: limitedCategories.map((name, i) => ({
+              name: String(name).length > 20 ? String(name).substring(0, 20) + '...' : name,
+              y: limitedSeriesData[i]
+            }))
+          }]
+        };
+        
+      case 'sankey': {
+        // For sankey, we need to create links between nodes
+        // Use x and y fields as source and target
+        const links = [];
+        const nodeSet = new Set();
+        
+        // Limit to avoid too complex sankey
+        const MAX_SANKEY_ITEMS = 30;
+        const sankeySample = chartData.slice(0, MAX_SANKEY_ITEMS);
+        
+        sankeySample.forEach(item => {
+          const source = String(item[xField]) || 'Unknown';
+          const target = yField && item[yField] ? String(item[yField]) : 'Unknown Value';
+          const weight = 1;
+          
+          nodeSet.add(source);
+          nodeSet.add(target);
+          
+          links.push({
+            from: source,
+            to: target,
+            weight: weight
+          });
+        });
+        
+        return {
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+          },
+          title: {
+            text: `Relationship between ${xField} and ${yField}`
+          },
+          series: [{
+            type: 'sankey',
+            name: 'Flow',
+            data: links
+          }]
+        };
+      }
+        
       default:
         return {
-          ...baseOptions,
-          series: [
-            {
-              name: yField,
-              type: chartType === 'bubble' ? 'scatter' : 'bar',
-              data: chartType === 'bubble' ?
-                chartData.map((item, i) => {
-                  const size = Math.max(10, Math.min(50, Math.random() * 40 + 10)); // Random size for demo
-                  return [item[xField], item[yField], size];
-                }) : 
-                yValues,
-              itemStyle: {
-                color: function(params: any) {
-                  const colorList = [
-                    '#9b87f5', '#7E69AB', '#6E59A5', '#D6BCFA', 
-                    '#E5DEFF', '#8B5CF6', '#A78BFA', '#C4B5FD'
-                  ];
-                  return colorList[params.dataIndex % colorList.length];
-                }
-              },
-              symbolSize: chartType === 'bubble' ? function(data) {
-                return data[2];
-              } : 10
+          ...commonOptions,
+          chart: {
+            ...commonOptions.chart,
+            type: 'column'
+          },
+          xAxis: {
+            categories: limitedCategories
+          },
+          yAxis: {
+            title: {
+              text: yField
             }
-          ]
+          },
+          series: [{
+            name: yField,
+            data: limitedSeriesData
+          }]
         };
     }
   };
@@ -515,10 +976,11 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   return (
     <Card className="overflow-hidden bg-background/50 backdrop-blur-sm border-purple-500/20">
       <div className={`w-full ${heightClass} p-4`}>
-        <ReactECharts
-          option={getChartOption()}
-          style={{ height: '100%', width: '100%' }}
-          className="backdrop-blur-sm"
+        <HighchartsReact
+          highcharts={Highcharts}
+          options={getHighchartsOptions()}
+          immutable={false}
+          containerProps={{ style: { height: '100%', width: '100%' } }}
         />
       </div>
     </Card>
