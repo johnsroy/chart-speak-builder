@@ -4,19 +4,20 @@ import { UserSubscription } from '@/models/UserSubscription';
 
 export interface AuthContextProps {
   user: User | null;
-  isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => Promise<{ success: boolean; error?: string }>;
-  adminLogin: () => Promise<{ success: boolean; error?: string }>;
-  isAuthenticated: boolean;
-  isAdmin: boolean;
-  register: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   session: Session | null;
   subscription: UserSubscription | null;
-  resendConfirmationEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
-  resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
-  updatePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  canUseAIFeatures: boolean; // Added this property
+  login: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
+  signup: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
+  register: (email: string, password: string) => Promise<{ user: User | null; error: Error | null }>;
+  logout: () => Promise<void>;
+  adminLogin: () => Promise<{ user: User | null; error: Error | null }>;
+  resendConfirmationEmail: (email: string) => Promise<{ data: any | null; error: Error | null }>;
+  resetPassword: (email: string) => Promise<{ data: any | null; error: Error | null }>;
+  updatePassword: (password: string) => Promise<{ data: any | null; error: Error | null }>;
 }
 
 export interface AuthProviderProps {

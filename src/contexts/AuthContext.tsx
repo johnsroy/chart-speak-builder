@@ -53,7 +53,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               console.log("No subscription found, creating default subscription");
               setSubscription({
                 userId: session.user.id,
-                level: 'free',
                 status: 'active',
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -74,7 +73,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // On error, still provide a default subscription
             setSubscription({
               userId: session.user.id,
-              level: 'free',
               status: 'active',
               createdAt: new Date(),
               updatedAt: new Date(),
@@ -121,7 +119,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             console.log("No subscription found, creating default subscription");
             setSubscription({
               userId: session.user.id,
-              level: 'free',
               status: 'active',
               createdAt: new Date(),
               updatedAt: new Date(),
@@ -142,7 +139,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // On error, still provide a default subscription
           setSubscription({
             userId: session.user.id,
-            level: 'free',
             status: 'active',
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -221,7 +217,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       resendConfirmationEmail: resendConfirmation,
       resetPassword: resetPasswordRequest,
       updatePassword: updateUserPassword,
-      canUseAIFeatures // New property for feature access control
+      canUseAIFeatures // Make sure this property is included
     }}>
       {children}
     </AuthContext.Provider>
