@@ -15,5 +15,14 @@ export interface QueryResult {
   explanation?: string;
   error?: string;
   query_id?: string;
-  model_used?: string; // Add this property to fix the TypeScript errors
+  model_used?: string;
+  color_scheme?: string; // Add color scheme property
+  stats?: {
+    min?: number;
+    max?: number;
+    avg?: number;
+    sum?: number;
+    count?: number;
+  }; // Add stats property
 }
+

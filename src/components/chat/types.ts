@@ -23,4 +23,12 @@ export interface DataAnalysisResult {
     count?: number;
   } | null;
   insights?: string[] | null;
+  color_scheme?: string;
+  stats?: {
+    min?: number;
+    max?: number;
+    avg?: number;
+    sum?: number;
+    count?: number;
+  };
 }
