@@ -421,10 +421,10 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         explanation += `Step 3: I analyzed the trends over time and found:\n\n`;
         
         if (timeData.length > 1) {
-          const firstVal = Number(timeData[0][yAxis]);
-          const lastVal = Number(timeData[timeData.length - 1][yAxis]);
-          const change = lastVal - firstVal;
-          const percentChange = (change / (firstVal || 1) * 100).toFixed(1);
+          const firstValue = Number(timeData[0]?.[yAxis]);
+          const lastValue = Number(timeData[timeData.length - 1]?.[yAxis]);
+          const change = lastValue - firstValue;
+          const percentChange = (change / (firstValue || 1) * 100).toFixed(1);
           
           explanation += `- From ${timeData[0][xAxis]} to ${timeData[timeData.length - 1][xAxis]}, there was a ${change >= 0 ? 'increase' : 'decrease'} of ${Math.abs(change).toFixed(2)} (${change >= 0 ? '+' : ''}${percentChange}%)\n`;
           

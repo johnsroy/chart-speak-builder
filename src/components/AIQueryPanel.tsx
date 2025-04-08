@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,7 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, MessageSquare, Brain, BrainCircuit, Database } from "lucide-react";
-import { nlpService, QueryResult } from '@/services/nlpService';
+import { nlpService } from '@/services/nlpService';
+import { QueryResult } from '@/services/types/queryTypes';
 import { useToast } from '@/hooks/use-toast';
 import { dataService } from '@/services/dataService';
 

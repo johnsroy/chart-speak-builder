@@ -23,7 +23,8 @@ import {
 import { dataService } from '@/services/dataService';
 import AIQueryPanel from '@/components/AIQueryPanel';
 import EnhancedVisualization from '@/components/EnhancedVisualization';
-import { nlpService, QueryResult } from '@/services/nlpService';
+import { nlpService } from '@/services/nlpService';
+import { QueryResult } from '@/services/types/queryTypes';
 import { Badge } from '@/components/ui/badge';
 import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
 
