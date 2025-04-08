@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ const SignupPage = () => {
   // Redirect authenticated users
   useEffect(() => {
     if (isAuthenticated) {
+      console.log("User is authenticated, redirecting to dashboard");
       navigate('/dashboard');
     }
   }, [isAuthenticated, navigate]);
@@ -36,9 +38,10 @@ const SignupPage = () => {
       
       if (result.success) {
         console.log("Signup successful, redirecting to dashboard");
-        setRegistrationComplete(true);
-        navigate('/dashboard'); // Auto-redirect to dashboard since email confirmation is disabled
         toast.success('Account created successfully!');
+        // The user should be automatically logged in due to the auto-login in the signup function
+        // The useEffect above will redirect to dashboard once isAuthenticated is true
+        // No need to manually navigate here
       } else if (result.error) {
         console.error("Signup error:", result.error);
         setError(result.error);
@@ -80,7 +83,7 @@ const SignupPage = () => {
             </CardTitle>
             <CardDescription className="text-gray-300 text-center">
               {registrationComplete 
-                ? 'Please check your email to confirm your account' 
+                ? 'You will be redirected to the dashboard' 
                 : 'Join GenBI to start analyzing your data with AI'}
             </CardDescription>
           </CardHeader>
@@ -211,23 +214,13 @@ const SignupPage = () => {
               </div>
               
               <div className="space-y-3">
-                <h3 className="text-xl font-medium">Almost there!</h3>
+                <h3 className="text-xl font-medium">Success!</h3>
                 <p className="text-gray-300">
-                  We've sent a confirmation email to <span className="font-medium text-white">{email}</span>
+                  Your account has been created successfully.
                 </p>
                 <p className="text-gray-300">
-                  Please check your inbox and click on the confirmation link to complete your registration.
+                  You will be redirected to the dashboard automatically.
                 </p>
-              </div>
-              
-              <div className="pt-4">
-                <Button
-                  onClick={() => navigate('/login')}
-                  variant="outline"
-                  className="border-purple-500/30 hover:bg-purple-500/20 text-white"
-                >
-                  Return to Login
-                </Button>
               </div>
             </CardContent>
           )}

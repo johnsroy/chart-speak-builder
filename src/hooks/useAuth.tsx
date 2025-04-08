@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
@@ -68,14 +67,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   useEffect(() => {
+    console.log("Setting up auth state change listener");
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("Auth state change event:", event);
       
       if (event === 'SIGNED_IN' && session?.user) {
+        console.log("User signed in:", session.user.email);
         setUser(session.user);
         setSession(session);
         fetchSubscriptionData(session.user.id);
       } else if (event === 'SIGNED_OUT') {
+        console.log("User signed out");
         setUser(null);
         setSession(null);
         setSubscription(null);
@@ -88,6 +90,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log("Initial session:", session ? "Present" : "Not present");
       
       if (session?.user) {
+        console.log("Initial user:", session.user.email);
         setUser(session.user);
         setSession(session);
         fetchSubscriptionData(session.user.id);
@@ -104,12 +107,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log("Attempting login for:", email);
       
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      // Use signInWithPassword method
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      });
       
       if (error) {
         console.error("Login error from Supabase:", error);
-        
-        // Don't check for email confirmation since we're disabling it
         return { success: false, error: error.message };
       }
       
@@ -125,28 +130,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log("Attempting signup for:", email);
       
-      // First check if email exists in profiles table
-      const { data: profilesCheck, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email);
+      // First check for existing users with this email
+      const { data: existingUsers, error: checkError } = await supabase.auth.admin.listUsers();
       
-      if (profilesError) {
-        console.error("Error checking profiles:", profilesError);
+      if (checkError) {
+        console.error("Error checking existing users:", checkError);
+      } else if (existingUsers) {
+        const userExists = existingUsers.users.some(user => user.email === email);
+        if (userExists) {
+          console.log("User already exists:", email);
+          return { success: false, error: 'This email is already registered. Please try logging in instead.' };
+        }
       }
       
-      if (profilesCheck && profilesCheck.length > 0) {
-        console.error("Email already exists in profiles:", email);
-        return { success: false, error: 'This email is already registered. Please try logging in instead.' };
-      }
-      
-      // Directly try to sign up without the dummy password check
+      // Directly sign up - with autoconfirm since we're disabling email confirmation
       const { data, error } = await supabase.auth.signUp({ 
         email, 
         password,
-        options: {
-          emailRedirectTo: window.location.origin + '/login'
-        }
       });
       
       if (error) {
@@ -160,18 +160,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: false, error: error.message };
       }
       
-      // Auto-login the user after signup if email confirmation is disabled
-      // Note: In production, this should respect the email confirmation setting
+      // Auto-login the user after signup since email confirmation is disabled
       if (data.user) {
-        // Try to sign in immediately
+        console.log("Signup successful, attempting auto-login");
+        
+        // Direct sign-in after signup
         const { error: signInError } = await supabase.auth.signInWithPassword({ 
           email, 
           password 
         });
         
-        if (!signInError) {
-          console.log("Auto-login successful after signup");
+        if (signInError) {
+          console.error("Auto-login failed after signup:", signInError);
+          return { success: true, error: "Account created, but you need to log in manually." };
         }
+        
+        console.log("Auto-login successful after signup");
       }
       
       console.log("Signup successful:", data.user?.email);
