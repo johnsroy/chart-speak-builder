@@ -15,6 +15,8 @@ import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import PaymentSuccessPage from './pages/payment/PaymentSuccessPage';
+import PaymentCanceledPage from './pages/payment/PaymentCanceledPage';
 import TestAnalysisTools from "./components/TestAnalysisTools";
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './hooks/useAuth';
@@ -61,6 +63,10 @@ function App() {
             {/* Protected routes */}
             <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            
+            {/* Payment routes */}
+            <Route path="/payment-success" element={<ProtectedRoute><PaymentSuccessPage /></ProtectedRoute>} />
+            <Route path="/payment-cancelled" element={<ProtectedRoute><PaymentCanceledPage /></ProtectedRoute>} />
 
             {/* Auth routes */}
             <Route path="/login" element={<LoginPage />} />

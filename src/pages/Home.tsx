@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -66,11 +65,9 @@ const Home = () => {
         <meta name="twitter:title" content="GenBI - Generative Business Intelligence" />
         <meta name="twitter:description" content="Transform your business data into powerful insights with AI-powered analytics." />
         
-        {/* Additional SEO metadata */}
         <link rel="canonical" href="https://genbi.app" />
         <meta name="robots" content="index, follow" />
         
-        {/* Structured data for rich results */}
         <script type="application/ld+json">
           {`
             {
@@ -90,9 +87,7 @@ const Home = () => {
         </script>
       </Helmet>
 
-      {/* Hero Section with enhanced glassmorphism */}
       <section className="py-20 md:py-28 px-4 relative overflow-hidden">
-        {/* Background gradient elements */}
         <div className="absolute inset-0 -z-10">
           <div className="absolute top-0 right-1/4 w-[500px] h-[500px] rounded-full bg-purple-600/20 blur-[100px] animate-pulse"></div>
           <div className="absolute bottom-0 left-1/3 w-[400px] h-[400px] rounded-full bg-blue-500/20 blur-[100px] animate-pulse"></div>
@@ -154,11 +149,11 @@ const Home = () => {
                 <img 
                   src="/dashboard-demo.webp" 
                   alt="GenBI Dashboard Demo" 
-                  className="w-full h-auto rounded-xl object-cover hover:scale-105 transition-all duration-500 relative z-10" 
+                  className="w-full h-auto rounded-xl object-cover transition-all duration-500 relative z-10 animate-float" 
                 />
                 <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
                   <div className="w-16 h-16 bg-purple-600/80 rounded-full flex items-center justify-center backdrop-blur-sm animate-bounce shadow-lg cursor-pointer">
-                    <ArrowRight className="h-8 w-8 text-white" />
+                    <ArrowRight className="h-8 w-8 text-white animate-pulse" />
                   </div>
                 </div>
                 <div className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-full text-xs text-white">
@@ -170,7 +165,6 @@ const Home = () => {
         </div>
       </section>
       
-      {/* How it Works Section - ENHANCED */}
       <section className="py-16 px-4 relative animate-on-scroll" id="how-it-works">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
@@ -184,7 +178,6 @@ const Home = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Step 1 */}
             <div className="glass-card backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 hover:-translate-y-2 animate-on-scroll">
               <div className="h-12 w-12 flex items-center justify-center rounded-full bg-purple-900/50 border border-purple-600/30 mb-6 animate-bounce">
                 <span className="text-2xl font-bold text-purple-400">1</span>
@@ -195,7 +188,6 @@ const Home = () => {
               </p>
             </div>
 
-            {/* Step 2 */}
             <div className="glass-card backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 hover:-translate-y-2 animate-on-scroll" style={{animationDelay: "0.2s"}}>
               <div className="h-12 w-12 flex items-center justify-center rounded-full bg-purple-900/50 border border-purple-600/30 mb-6 animate-bounce" style={{animationDelay: "0.1s"}}>
                 <span className="text-2xl font-bold text-purple-400">2</span>
@@ -206,7 +198,6 @@ const Home = () => {
               </p>
             </div>
 
-            {/* Step 3 */}
             <div className="glass-card backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 hover:-translate-y-2 animate-on-scroll" style={{animationDelay: "0.4s"}}>
               <div className="h-12 w-12 flex items-center justify-center rounded-full bg-purple-900/50 border border-purple-600/30 mb-6 animate-bounce" style={{animationDelay: "0.2s"}}>
                 <span className="text-2xl font-bold text-purple-400">3</span>
@@ -232,7 +223,6 @@ const Home = () => {
         </div>
       </section>
       
-      {/* Features Section with enhanced glassmorphism */}
       <section className="py-20 px-4 relative animate-on-scroll" id="features">
         <div className="absolute inset-0 -z-10">
           <div className="absolute top-40 right-1/4 w-96 h-96 rounded-full bg-blue-400/10 blur-3xl animate-pulse"></div>
@@ -252,7 +242,6 @@ const Home = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
-            {/* Feature Cards with improved glassmorphism */}
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-all duration-300 shadow-xl hover:-translate-y-2 animate-on-scroll">
               <div className="bg-purple-500/20 p-3 rounded-full w-14 h-14 flex items-center justify-center mb-4 animate-bounce">
                 <MessageSquare className="h-6 w-6 text-purple-400" />
@@ -310,10 +299,8 @@ const Home = () => {
         </div>
       </section>
       
-      {/* CTA Section with bouncing elements */}
       <section className="py-16 px-4 animate-on-scroll">
         <div className="max-w-4xl mx-auto glass-card backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-12 shadow-xl relative overflow-hidden">
-          {/* Floating elements in background */}
           <div className="absolute -top-10 -right-10 w-20 h-20 rounded-full bg-purple-500/20 animate-bounce" style={{animationDuration: "2.5s"}}></div>
           <div className="absolute -bottom-8 -left-8 w-16 h-16 rounded-full bg-blue-500/20 animate-bounce" style={{animationDuration: "3.5s"}}></div>
           <div className="absolute top-1/2 right-10 w-8 h-8 rounded-full bg-pink-500/30 animate-bounce" style={{animationDuration: "4s"}}></div>
@@ -330,15 +317,15 @@ const Home = () => {
               </div>
               <div className="bg-white/10 backdrop-blur-md rounded-lg px-4 py-3 flex items-center">
                 <CheckCircle className="h-5 w-5 text-green-400 mr-2 animate-pulse" />
-                <span>5 free datasets</span>
+                <span>Free plan includes up to 2 datasets and 10 queries</span>
               </div>
               <div className="bg-white/10 backdrop-blur-md rounded-lg px-4 py-3 flex items-center">
                 <CheckCircle className="h-5 w-5 text-green-400 mr-2 animate-pulse" />
-                <span>100 free queries</span>
+                <span>Upgrade anytime</span>
               </div>
             </div>
             <Button 
-              onClick={() => navigate('/upload')}
+              onClick={() => navigate('/signup')}
               size="lg"
               className="purple-gradient px-8 py-6 text-lg shadow-lg shadow-purple-500/20 hover:scale-110 transition-transform duration-300"
             >
