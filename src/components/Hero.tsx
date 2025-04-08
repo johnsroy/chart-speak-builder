@@ -6,7 +6,7 @@ import { ChevronRight, Upload, BarChart2 } from 'lucide-react';
 import HeroDemo from './HeroDemo';
 import AnalyticsDashboardDemo from './AnalyticsDashboardDemo';
 import { useAuth } from '@/hooks/useAuth';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Hero = () => {
   const { isAuthenticated, user, adminLogin } = useAuth();
@@ -70,15 +70,15 @@ const Hero = () => {
                   Analytics Dashboard
                 </TabsTrigger>
               </TabsList>
+              
+              <TabsContent value="chart" className="m-0 animate-fade-in">
+                <HeroDemo />
+              </TabsContent>
+              
+              <TabsContent value="dashboard" className="m-0 animate-fade-in">
+                <AnalyticsDashboardDemo />
+              </TabsContent>
             </Tabs>
-            
-            <TabsContent value="chart" className="m-0 animate-fade-in">
-              <HeroDemo />
-            </TabsContent>
-            
-            <TabsContent value="dashboard" className="m-0 animate-fade-in">
-              <AnalyticsDashboardDemo />
-            </TabsContent>
           </div>
         </div>
       </div>
