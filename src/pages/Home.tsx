@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import { Helmet } from 'react-helmet';
 
 const Home = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, adminLogin } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -52,6 +53,13 @@ const Home = () => {
     return () => observer.disconnect();
   }, []);
   
+  // Function to handle the dashboard or login button click
+  const handleDashboardClick = () => {
+    if (!isAuthenticated && !user) {
+      adminLogin();
+    }
+  };
+
   return (
     <div className="min-h-screen">
       <Helmet>
@@ -117,13 +125,13 @@ const Home = () => {
                 </Button>
                 
                 <Button 
-                  onClick={() => navigate('/visualize')} 
+                  onClick={handleDashboardClick}
                   variant="outline" 
                   size="lg"
                   className="border-purple-500 text-lg px-8 py-6 hover:bg-purple-500/20 backdrop-blur-sm hover:scale-105 transition-transform duration-300"
                 >
                   <BarChart3 className="mr-2 h-5 w-5 animate-pulse" />
-                  Explore Demos
+                  Dashboard
                 </Button>
               </div>
               

@@ -26,9 +26,8 @@ const Visualize = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'chat' | 'query' | 'explore'>(
-    viewFromUrl === 'chat' ? 'chat' : 
-    viewFromUrl === 'query' ? 'query' : 'explore'
+  const [activeTab, setActiveTab] = useState<'chat' | 'explore'>(
+    viewFromUrl === 'chat' ? 'chat' : 'explore'
   );
   const [exampleQuery, setExampleQuery] = useState('');
   const [dataPreview, setDataPreview] = useState<any[] | null>(null);
@@ -68,8 +67,8 @@ const Visualize = () => {
     } else if (viewFromUrl === 'bar' || viewFromUrl === 'line' || viewFromUrl === 'pie') {
       setActiveChartType(viewFromUrl as 'bar' | 'line' | 'pie');
       setActiveTab('explore');
-    } else if (viewFromUrl === 'chat' || viewFromUrl === 'query') {
-      setActiveTab(viewFromUrl as 'chat' | 'query');
+    } else if (viewFromUrl === 'chat') {
+      setActiveTab('chat');
     }
   }, [viewFromUrl]);
 
@@ -266,7 +265,6 @@ const Visualize = () => {
   const setQuery = (query: string) => {
     setExampleQuery(query);
     toast.info(`Selected example query: "${query}"`);
-    setActiveTab('query');
   };
   
   const handleRetry = () => {
@@ -390,17 +388,13 @@ const Visualize = () => {
             <Tabs 
               defaultValue={activeTab} 
               value={activeTab}
-              onValueChange={value => setActiveTab(value as 'chat' | 'query' | 'explore')} 
+              onValueChange={value => setActiveTab(value as 'chat' | 'explore')} 
               className="space-y-4"
             >
-              <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
+              <TabsList className="grid grid-cols-2 w-full max-w-md mx-auto">
                 <TabsTrigger value="chat" className="flex items-center justify-center gap-2">
                   <MessageSquare className="h-4 w-4" />
                   Talk to me
-                </TabsTrigger>
-                <TabsTrigger value="query" className="flex items-center justify-center gap-2">
-                  <BrainCircuit className="h-4 w-4" />
-                  AI Query
                 </TabsTrigger>
                 <TabsTrigger value="explore" className="flex items-center justify-center gap-2">
                   <BarChart className="h-4 w-4" />
@@ -410,39 +404,6 @@ const Visualize = () => {
               
               <TabsContent value="chat" className="space-y-6">
                 <DatasetChatInterface datasetId={datasetId!} datasetName={dataset.name} />
-              </TabsContent>
-              
-              <TabsContent value="query" className="space-y-6">
-                <AIQueryPanel 
-                  datasetId={datasetId!} 
-                  onQueryResult={handleQueryResult} 
-                  useDirectAccess={true}
-                  dataPreview={dataPreview || []}
-                />
-                
-                {queryResult ? <EnhancedVisualization result={queryResult} /> : <Card className="glass-card p-8 text-center">
-                    <CardContent className="pt-8">
-                      <BrainCircuit className="h-16 w-16 mx-auto mb-4 text-indigo-400" />
-                      <h3 className="text-xl font-medium mb-2">Ask AI About Your Data</h3>
-                      <p className="max-w-md mx-auto mb-4 text-gray-50">
-                        Use natural language queries to explore insights from your dataset. Here are some examples:
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
-                        <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Show me a breakdown of sales by category as a bar chart")}>
-                          "Show me a breakdown by category"
-                        </Button>
-                        <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("What's the trend of revenue over time?")}>
-                          "What's the trend over time?"
-                        </Button>
-                        <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Compare the distribution of values across regions")}>
-                          "Compare the distribution"
-                        </Button>
-                        <Button variant="outline" size="sm" className="justify-start" onClick={() => setQuery("Show the correlation between price and quantity")}>
-                          "Show correlation between values"
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>}
               </TabsContent>
               
               <TabsContent value="explore">
