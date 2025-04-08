@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { UserSubscription } from '@/models/UserSubscription';
+import { toast } from 'sonner';
 
 interface AuthContextProps {
   user: User | null;
@@ -16,6 +17,7 @@ interface AuthContextProps {
   register: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   session: Session | null;
   subscription: UserSubscription | null;
+  resendConfirmationEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 interface AuthProviderProps {
@@ -93,8 +95,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (error) {
+        // Handle specific error types
+        if (error.message.includes('Email not confirmed')) {
+          throw new Error('Email not confirmed. Please check your inbox for a confirmation email.');
+        }
+        throw error;
+      }
+      
       return { success: true };
     } catch (error) {
       console.error('Login error:', error);
@@ -104,8 +114,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signup = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+          emailRedirectTo: window.location.origin + '/login'
+        }
+      });
+      
       if (error) throw error;
+      
+      // Check if email confirmation is required
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        throw new Error('This email is already registered. Try logging in instead.');
+      }
+      
       return { success: true };
     } catch (error) {
       console.error('Signup error:', error);
@@ -120,6 +143,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { success: true };
     } catch (error) {
       console.error('Logout error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
+    }
+  };
+
+  const resendConfirmationEmail = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email
+      });
+      
+      if (error) throw error;
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Resend confirmation email error:', error);
       return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred' };
     }
   };
@@ -162,7 +201,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const isAdmin = user?.email === 'admin@example.com';
   
-  const isAuthenticated = !!user;
+  const isAuthenticated = !!user && !!session;
 
   return (
     <AuthContext.Provider value={{ 
@@ -176,7 +215,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       isAdmin,
       register,
       session,
-      subscription
+      subscription,
+      resendConfirmationEmail
     }}>
       {children}
     </AuthContext.Provider>
