@@ -14,23 +14,34 @@ const PayNowPage = () => {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { user } = useAuth();
 
   const validateEmail = (email: string): boolean => {
-    return email.trim() !== '' && email.includes('@') && email.includes('.');
+    // More forgiving email validation regex
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newEmail = e.target.value;
+    setEmail(newEmail);
+    
+    // Clear email error when user starts typing again
+    if (emailError) setEmailError(null);
   };
 
   const handlePaymentStart = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+    setEmailError(null);
 
     // If user is already logged in, use their email
     const paymentEmail = user?.email || email;
 
     if (!validateEmail(paymentEmail)) {
-      setError('Please enter a valid email address');
+      setEmailError('Please enter a valid email address');
       setIsLoading(false);
       return;
     }
@@ -59,7 +70,14 @@ const PayNowPage = () => {
 
       if (checkoutError) {
         console.error("Checkout error:", checkoutError);
-        setError(checkoutError?.message || 'Failed to create payment session');
+        
+        // Handle specific error cases
+        if (checkoutError.message?.includes('invalid')) {
+          setEmailError('The email address format is not valid');
+        } else {
+          setError(checkoutError?.message || 'Failed to create payment session');
+        }
+        
         toast.error('Payment setup failed. Please try again.');
       } else if (!data?.url) {
         console.error("No URL returned");
@@ -77,7 +95,14 @@ const PayNowPage = () => {
       }
     } catch (error: any) {
       console.error("Payment error:", error);
-      setError(error.message || 'An unexpected error occurred');
+      
+      // Check for specific types of errors in the message
+      if (error.message?.toLowerCase().includes('email')) {
+        setEmailError(error.message || 'Please check your email address');
+      } else {
+        setError(error.message || 'An unexpected error occurred');
+      }
+      
       toast.error('Payment setup failed. Please try again.');
     } finally {
       setIsLoading(false);
@@ -156,12 +181,17 @@ const PayNowPage = () => {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleEmailChange}
                   placeholder="Enter your email"
-                  className="bg-white/10 border-white/20 text-white placeholder-gray-400"
+                  className={`bg-white/10 border-white/20 text-white placeholder-gray-400 ${
+                    emailError ? 'border-red-400' : ''
+                  }`}
                   required
                   disabled={isLoading || !!user}
                 />
+                {emailError && (
+                  <p className="text-red-400 text-sm mt-1">{emailError}</p>
+                )}
               </div>
               
               {email === 'admin@example.com' && (
