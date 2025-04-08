@@ -8,7 +8,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const PRICE_ID = "price_1OvBCIKLaKlEjRbOOVQaBB1w"; // Replace with your price id
+// Create a price ID for $50/month
+const PRICE_ID = "price_1OvBCIKLaKlEjRbOOVQaBB1w"; // This should be your actual Stripe price ID
 
 serve(async (req) => {
   // Handle CORS preflight requests

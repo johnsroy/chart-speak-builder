@@ -21,7 +21,7 @@ import { Helmet } from 'react-helmet';
 
 const Home = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, user, adminLogin } = useAuth();
+  const { isAuthenticated, user, adminLogin, subscription } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -57,6 +57,48 @@ const Home = () => {
   const handleDashboardClick = () => {
     if (!isAuthenticated && !user) {
       adminLogin();
+    } else {
+      navigate('/dashboard');
+    }
+  };
+
+  // Function to determine the best CTA based on user subscription status
+  const renderMainCTA = () => {
+    if (isAuthenticated) {
+      if (subscription?.isPremium) {
+        return (
+          <Button 
+            onClick={() => navigate('/upload')}
+            size="lg" 
+            className="purple-gradient shadow-lg shadow-purple-900/30 text-lg px-8 py-6 hover:scale-105 transition-transform duration-300"
+          >
+            <Upload className="mr-2 h-5 w-5 animate-bounce" />
+            Upload Your Data
+          </Button>
+        );
+      } else {
+        return (
+          <Button 
+            onClick={() => navigate('/account')}
+            size="lg" 
+            className="purple-gradient shadow-lg shadow-purple-900/30 text-lg px-8 py-6 hover:scale-105 transition-transform duration-300"
+          >
+            <Zap className="mr-2 h-5 w-5 animate-bounce" />
+            Upgrade to Premium
+          </Button>
+        );
+      }
+    } else {
+      return (
+        <Button 
+          onClick={() => navigate('/upload')}
+          size="lg" 
+          className="purple-gradient shadow-lg shadow-purple-900/30 text-lg px-8 py-6 hover:scale-105 transition-transform duration-300"
+        >
+          <Upload className="mr-2 h-5 w-5 animate-bounce" />
+          Start Analyzing Now
+        </Button>
+      );
     }
   };
 
@@ -115,14 +157,7 @@ const Home = () => {
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                <Button 
-                  onClick={() => navigate('/upload')}
-                  size="lg" 
-                  className="purple-gradient shadow-lg shadow-purple-900/30 text-lg px-8 py-6 hover:scale-105 transition-transform duration-300"
-                >
-                  <Upload className="mr-2 h-5 w-5 animate-bounce" />
-                  Start Analyzing Now
-                </Button>
+                {renderMainCTA()}
                 
                 <Button 
                   onClick={handleDashboardClick}
@@ -329,15 +364,15 @@ const Home = () => {
               </div>
               <div className="bg-white/10 backdrop-blur-md rounded-lg px-4 py-3 flex items-center">
                 <CheckCircle className="h-5 w-5 text-green-400 mr-2 animate-pulse" />
-                <span>Upgrade anytime</span>
+                <span>Premium plan: $50/month</span>
               </div>
             </div>
             <Button 
-              onClick={() => navigate('/signup')}
+              onClick={() => isAuthenticated ? navigate('/account') : navigate('/signup')}
               size="lg"
               className="purple-gradient px-8 py-6 text-lg shadow-lg shadow-purple-500/20 hover:scale-110 transition-transform duration-300"
             >
-              Start Now - It's Free
+              {isAuthenticated ? 'Upgrade Now' : 'Start Now - It\'s Free'}
             </Button>
           </div>
         </div>
