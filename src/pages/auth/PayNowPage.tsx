@@ -93,8 +93,10 @@ const PayNowPage = () => {
         } else {
           toast.info('Redirecting to Stripe...');
         }
-        // Redirect to Stripe checkout or success page for admin
-        window.location.href = data.url;
+        
+        // Use top-level window.location.href to ensure we're not in an iframe
+        // This ensures Stripe Checkout runs at the top level as required
+        window.top.location.href = data.url;
       }
     } catch (error: any) {
       console.error("Payment error:", error);
