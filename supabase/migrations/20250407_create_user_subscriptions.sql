@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS public.user_subscriptions (
   queryQuota INTEGER NOT NULL DEFAULT 10,
   datasetsUsed INTEGER NOT NULL DEFAULT 0,
   queriesUsed INTEGER NOT NULL DEFAULT 0,
-  trialEndDate TIMESTAMP WITH TIME ZONE,
+  trialEndDate TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '1 day'), -- Changed from 14 days to 1 day
   stripeCustomerId TEXT,
   stripeSubscriptionId TEXT,
   currentPeriodStart TIMESTAMP WITH TIME ZONE,

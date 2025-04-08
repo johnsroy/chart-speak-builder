@@ -96,11 +96,11 @@ serve(async (req) => {
         userId = signUpData.user.id;
         console.log("Created new user:", userId);
         
-        // Set up user subscription entry with trial
+        // Set up user subscription entry with trial - UPDATED FROM 14 DAYS TO 1 DAY
         try {
-          // Calculate trial end date (14 days from now)
+          // Calculate trial end date (1 day from now)
           const trialEndDate = new Date();
-          trialEndDate.setDate(trialEndDate.getDate() + 14);
+          trialEndDate.setDate(trialEndDate.getDate() + 1); // Changed from 14 to 1
           
           await supabaseClient.from('user_subscriptions').insert({
             userId: userId,

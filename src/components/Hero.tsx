@@ -4,10 +4,13 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ChevronRight, Upload, BarChart2 } from 'lucide-react';
 import HeroDemo from './HeroDemo';
+import AnalyticsDashboardDemo from './AnalyticsDashboardDemo';
 import { useAuth } from '@/hooks/useAuth';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
 const Hero = () => {
   const { isAuthenticated, user, adminLogin } = useAuth();
+  const [activeDemo, setActiveDemo] = React.useState('chart');
   
   // Function to handle the dashboard or login button click
   const handleDashboardClick = () => {
@@ -53,7 +56,29 @@ const Hero = () => {
           </div>
 
           <div className="glass-card p-1 rounded-2xl">
-            <HeroDemo />
+            <Tabs 
+              defaultValue="chart" 
+              value={activeDemo}
+              onValueChange={setActiveDemo}
+              className="mb-3 flex justify-center"
+            >
+              <TabsList className="bg-white/10 backdrop-blur-sm">
+                <TabsTrigger value="chart" className="text-sm">
+                  Chart Generator
+                </TabsTrigger>
+                <TabsTrigger value="dashboard" className="text-sm">
+                  Analytics Dashboard
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            
+            <TabsContent value="chart" className="m-0 animate-fade-in">
+              <HeroDemo />
+            </TabsContent>
+            
+            <TabsContent value="dashboard" className="m-0 animate-fade-in">
+              <AnalyticsDashboardDemo />
+            </TabsContent>
           </div>
         </div>
       </div>
