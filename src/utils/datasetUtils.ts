@@ -14,7 +14,7 @@ export const datasetUtils = {
    * @param options Optional parameters
    * @returns Promise resolving to array of data rows or null if all loading methods fail
    */
-  loadDatasetContent: async (
+  loadDatasetContent: async function(
     datasetId: string,
     options: {
       limitRows?: number;
@@ -115,7 +115,8 @@ export const datasetUtils = {
         // Create the bucket if it doesn't exist first
         await ensureStorageBucketExists(dataset.storage_type);
         
-        const { data: fileData, error: storageError } = await supabase.storage
+        let fileData;
+        const { data: downloadData, error: storageError } = await supabase.storage
           .from(dataset.storage_type)
           .download(dataset.storage_path);
 
@@ -135,6 +136,8 @@ export const datasetUtils = {
               console.error("Alternate storage error:", altError);
             }
           }
+        } else {
+          fileData = downloadData;
         }
 
         if (fileData) {
@@ -240,7 +243,7 @@ export const datasetUtils = {
   /**
    * Create database tables necessary for dataset storage if they don't exist
    */
-  ensureDatasetDataTableExists: async (): Promise<boolean> => {
+  ensureDatasetDataTableExists: async function(): Promise<boolean> {
     try {
       // Check if the table exists first
       const { data, error } = await supabase
