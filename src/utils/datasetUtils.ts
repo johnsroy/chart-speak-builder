@@ -115,8 +115,7 @@ export const datasetUtils = {
         // Create the bucket if it doesn't exist first
         await ensureStorageBucketExists(dataset.storage_type);
         
-        let fileData;
-        const { data: downloadData, error: storageError } = await supabase.storage
+        const { data: fileData, error: storageError } = await supabase.storage
           .from(dataset.storage_type)
           .download(dataset.storage_path);
 
@@ -131,13 +130,29 @@ export const datasetUtils = {
               .download(dataset.storage_path);
               
             if (!altError && altFileData) {
-              fileData = altFileData; // Use the alternate data
+              const text = await altFileData.text();
+              console.log(`Successfully downloaded ${text.length} bytes from alternate storage`);
+              
+              // If it's a CSV file, parse it
+              if (dataset.file_name.toLowerCase().endsWith('.csv')) {
+                const parsed = Papa.parse(text, {
+                  header: true,
+                  skipEmptyLines: true,
+                });
+                
+                if (parsed.data && Array.isArray(parsed.data) && parsed.data.length > 0) {
+                  console.log(`Successfully parsed ${parsed.data.length} rows from CSV`);
+                  data = parsed.data;
+                  
+                  // Save to caches
+                  cacheDataset(datasetId, data);
+                  return limitRows ? data.slice(0, limitRows) : data;
+                }
+              }
             } else {
               console.error("Alternate storage error:", altError);
             }
           }
-        } else {
-          fileData = downloadData;
         }
 
         if (fileData) {

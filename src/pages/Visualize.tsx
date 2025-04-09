@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
@@ -160,7 +161,7 @@ const Visualize = () => {
       
       if (dataset) {
         console.log("Generating fallback data from schema");
-        const sampleData = generateSampleDataFromFilename(dataset?.file_name || '');
+        const sampleData = generateFallbackDataFromFilename(dataset?.file_name || '');
         setDataPreview(sampleData);
       }
     } finally {

@@ -8,12 +8,13 @@ import { queryService } from '@/services/queryService';
 import ChatContainer from './chat/ChatContainer';
 import ModelSelector from './chat/ModelSelector';
 import ChatInput from './chat/ChatInput';
-import { AIModelType, ChatMessage, AIQueryResponse } from './chat/types';
+import { AIModelType, ChatMessage, AIQueryResponse, Message } from './chat/types';
 import { Loader2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ChatUtils } from './chat/ChatUtils';
 import { datasetUtils } from '@/utils/datasetUtils';
+import { v4 as uuidv4 } from 'uuid';
 
 interface DatasetChatInterfaceProps {
   datasetId: string;
@@ -35,10 +36,12 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   onVisualizationChange,
   hasFullHeightLayout = false
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [messages, setMessages] = useState<Message[]>([
     {
-      role: 'system',
-      content: initialSystemMessage(datasetName)
+      id: uuidv4(),
+      sender: 'ai',
+      content: `I'm analyzing the ${datasetName} dataset. Ask me anything about it!`,
+      timestamp: new Date()
     }
   ]);
   const [currentModel, setCurrentModel] = useState<AIModelType>('openai');
@@ -68,9 +71,11 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     }
 
     setIsLoading(true);
-    const userMessage: ChatMessage = {
-      role: 'user',
-      content: newMessage
+    const userMessage: Message = {
+      id: uuidv4(),
+      sender: 'user',
+      content: newMessage,
+      timestamp: new Date()
     };
     setMessages(prevMessages => [...prevMessages, userMessage]);
 
@@ -78,9 +83,13 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       const aiResponse = await ChatUtils.getAIQuery(datasetId, newMessage, currentModel, fullData);
 
       if (aiResponse) {
-        const aiMessage: ChatMessage = {
-          role: 'assistant',
-          content: aiResponse.explanation || 'No explanation available'
+        const aiMessage: Message = {
+          id: uuidv4(),
+          sender: 'ai',
+          content: aiResponse.explanation || 'No explanation available',
+          timestamp: new Date(),
+          result: aiResponse,
+          model: currentModel
         };
         setMessages(prevMessages => [...prevMessages, aiMessage]);
         
@@ -98,8 +107,10 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       setMessages(prevMessages => [
         ...prevMessages,
         {
-          role: 'assistant',
-          content: 'Sorry, I encountered an error processing your request.'
+          id: uuidv4(),
+          sender: 'ai',
+          content: 'Sorry, I encountered an error processing your request.',
+          timestamp: new Date()
         }
       ]);
     } finally {
@@ -131,15 +142,15 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           setFullData(datasetRows);
           console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
           
-          // Update initial message to include row count
+          // Update message to include row count
           setMessages(prevMessages => {
-            const systemMsg = prevMessages[0];
             return [
               {
-                ...systemMsg,
-                content: `I'm analyzing the ${datasetName} dataset with ${datasetRows.length} rows. Ask me anything about it!`
-              },
-              ...prevMessages.slice(1)
+                id: uuidv4(),
+                sender: 'ai',
+                content: `I'm analyzing the ${datasetName} dataset with ${datasetRows.length} rows. Ask me anything about it!`,
+                timestamp: new Date()
+              }
             ];
           });
           
@@ -163,16 +174,14 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             const schemaSamples = generateSampleDataFromSchema(dataset.column_schema, 5000);
             setFullData(schemaSamples);
             
-            setMessages(prevMessages => {
-              const systemMsg = prevMessages[0];
-              return [
-                {
-                  ...systemMsg,
-                  content: `I'm analyzing the ${datasetName} dataset with sample data. Ask me anything about it!`
-                },
-                ...prevMessages.slice(1)
-              ];
-            });
+            setMessages(prevMessages => [
+              {
+                id: uuidv4(),
+                sender: 'ai',
+                content: `I'm analyzing the ${datasetName} dataset with sample data. Ask me anything about it!`,
+                timestamp: new Date()
+              }
+            ]);
           } else {
             // No schema available, generate based on filename
             console.log("Generating appropriate sample data based on filename:", dataset.file_name);
