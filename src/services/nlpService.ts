@@ -1,8 +1,9 @@
+
 import { AIModelType, AIQueryResponse } from '@/components/chat/types';
 
 export const nlpService = {
   // Add the missing processQuery method
-  processQuery: async (query: string, datasetId: string, model: AIModelType, data: any[]): Promise<AIQueryResponse> => {
+  processQuery: async (query: string, datasetId: string, model: AIModelType, data: any[] = []): Promise<AIQueryResponse> => {
     try {
       console.log(`Processing query: "${query}" for dataset ${datasetId} using model ${model}`);
       
@@ -11,7 +12,7 @@ export const nlpService = {
         console.log("Falling back to local processing");
         
         const response: AIQueryResponse = {
-          type: 'bar',
+          chartType: 'bar',
           data: [],
           explanation: `Analyzing your query: "${query}"`,
         };
@@ -43,7 +44,7 @@ export const nlpService = {
         
         // Generate a basic visualization based on query keywords
         if (lowerQuery.includes('compare') || lowerQuery.includes('comparison')) {
-          response.type = 'bar';
+          response.chartType = 'bar';
           
           if (categoricalFields.length > 0 && numericFields.length > 0) {
             const categoryField = categoricalFields[0];
@@ -73,7 +74,7 @@ export const nlpService = {
           }
         } 
         else if (lowerQuery.includes('trend') || lowerQuery.includes('time') || lowerQuery.includes('over time')) {
-          response.type = 'line';
+          response.chartType = 'line';
           
           // Look for date fields
           const dateField = fields.find(field => {
@@ -111,7 +112,7 @@ export const nlpService = {
           }
         }
         else if (lowerQuery.includes('distribution') || lowerQuery.includes('pie') || lowerQuery.includes('percentage')) {
-          response.type = 'pie';
+          response.chartType = 'pie';
           
           if (categoricalFields.length > 0) {
             const categoryField = categoricalFields[0];
@@ -159,7 +160,7 @@ export const nlpService = {
           }
         }
         else if (lowerQuery.includes('top') || lowerQuery.includes('highest') || lowerQuery.includes('largest')) {
-          response.type = 'bar';
+          response.chartType = 'bar';
           
           if (categoricalFields.length > 0 && numericFields.length > 0) {
             const categoryField = categoricalFields[0];
@@ -209,7 +210,7 @@ export const nlpService = {
               groupedData[category] += value;
             });
             
-            response.type = 'bar';
+            response.chartType = 'bar';
             response.data = Object.entries(groupedData)
               .map(([name, value]) => ({ name, value }))
               .sort((a, b) => b.value - a.value)
@@ -234,7 +235,7 @@ export const nlpService = {
         
         // Return a minimal response with error handling
         return {
-          type: 'bar',
+          chartType: 'bar',
           data: data.slice(0, 5).map((row, i) => ({ 
             name: `Item ${i+1}`, 
             value: 10 - i 
