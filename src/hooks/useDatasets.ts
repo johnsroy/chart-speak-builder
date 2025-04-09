@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast } from 'sonner';
@@ -124,58 +123,66 @@ export const useDatasets = () => {
         console.warn("Could not clear dataset cache:", e);
       }
 
-      // Step 1: Delete all visualizations related to this dataset's queries
-      try {
-        // Get all queries related to this dataset
-        const { data: queries, error: queriesError } = await supabase
-          .from('queries')
-          .select('id')
-          .eq('dataset_id', datasetId);
-          
-        if (queriesError) {
-          console.warn("Error fetching queries for cleanup:", queriesError);
-        } else if (queries && queries.length > 0) {
-          const queryIds = queries.map(q => q.id);
-          console.log(`Found ${queryIds.length} queries to clean up for dataset ${datasetId}`);
-          
-          // Delete all visualizations for these queries
-          if (queryIds.length > 0) {
-            const { error: vizError } = await supabase
-              .from('visualizations')
-              .delete()
-              .in('query_id', queryIds);
-              
-            if (vizError) {
-              console.warn("Error deleting related visualizations:", vizError);
-            } else {
-              console.log(`Successfully deleted visualizations related to dataset ${datasetId}`);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("Error during visualization cleanup:", err);
-      }
-      
-      // Step 2: Delete all queries for this dataset
-      try {
-        const { error: deleteQueriesError } = await supabase
-          .from('queries')
-          .delete()
-          .eq('dataset_id', datasetId);
+      // Step 1: Get all queries related to this dataset
+      const { data: queries, error: queriesError } = await supabase
+        .from('queries')
+        .select('id')
+        .eq('dataset_id', datasetId);
         
-        if (deleteQueriesError) {
-          console.warn("Error deleting queries:", deleteQueriesError);
-        } else {
-          console.log(`Successfully deleted all queries for dataset ${datasetId}`);
+      if (queriesError) {
+        console.warn("Error fetching queries for cleanup:", queriesError);
+      } else if (queries && queries.length > 0) {
+        const queryIds = queries.map(q => q.id);
+        console.log(`Found ${queryIds.length} queries to clean up for dataset ${datasetId}`);
+        
+        // Step 2: Delete all visualizations for these queries first
+        if (queryIds.length > 0) {
+          const { error: vizError } = await supabase
+            .from('visualizations')
+            .delete()
+            .in('query_id', queryIds);
+            
+          if (vizError) {
+            console.warn("Error deleting related visualizations:", vizError);
+          } else {
+            console.log(`Successfully deleted visualizations related to dataset ${datasetId}`);
+          }
+          
+          // Wait to ensure database processes deletion
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
-      } catch (err) {
-        console.warn("Error during query deletion:", err);
       }
       
-      // Small delay to ensure the database has processed the query deletions
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Step 3: Delete all queries for this dataset
+      const { error: deleteQueriesError } = await supabase
+        .from('queries')
+        .delete()
+        .eq('dataset_id', datasetId);
       
-      // Step 3: Execute actual deletion through the dataService
+      if (deleteQueriesError) {
+        console.warn("Error deleting queries:", deleteQueriesError);
+      } else {
+        console.log(`Successfully deleted all queries for dataset ${datasetId}`);
+      }
+      
+      // Wait to ensure database processes deletion
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Step 4: Verify queries are gone
+      const { count, error: countError } = await supabase
+        .from('queries')
+        .select('*', { count: 'exact', head: true })
+        .eq('dataset_id', datasetId);
+        
+      if (countError) {
+        console.warn("Error checking if queries exist:", countError);
+      } else if (count && count > 0) {
+        console.warn(`WARNING: ${count} queries still exist for dataset ${datasetId}`);
+        toast.error(`Could not delete all queries for this dataset. Please try again.`);
+        return false;
+      }
+      
+      // Step 5: Execute actual deletion through the dataService
       const success = await dataService.deleteDataset(datasetId);
       
       if (!success) {
