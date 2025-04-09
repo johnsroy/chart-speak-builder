@@ -96,7 +96,8 @@ export const dataService = {
       // Generate storage path
       const fileExtension = file.name.split('.').pop() || '';
       const timestamp = Date.now();
-      const safeUserId = userId || '00000000-0000-0000-0000-000000000000';
+      // Use system account ID for upload
+      const safeUserId = userId || 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
       const storagePath = `${safeUserId}/${timestamp}_${file.name}`;
       
       console.log("Attempting to upload file to storage path:", storagePath);
@@ -262,9 +263,9 @@ export const dataService = {
     try {
       console.log(`Attempting to delete dataset with ID: ${id}`);
       
-      // First delete any related queries to avoid foreign key constraint errors
+      // First delete any related visualizations
       try {
-        // Ensure we remove all dependencies by first deleting visualizations that depend on queries
+        // Delete visualizations that depend on queries
         const { error: deleteVisualizationsError } = await supabase
           .from('visualizations')
           .delete()
@@ -275,8 +276,12 @@ export const dataService = {
         } else {
           console.log(`Successfully deleted related visualizations for dataset ${id}`);
         }
-        
-        // Now safe to delete queries that reference this dataset
+      } catch (visError) {
+        console.warn("Error deleting visualizations:", visError);
+      }
+      
+      // Then delete related queries
+      try {
         const { error: deleteQueriesError } = await supabase
           .from('queries')
           .delete()
@@ -284,20 +289,15 @@ export const dataService = {
           
         if (deleteQueriesError) {
           console.warn("Warning when deleting related queries:", deleteQueriesError);
-          // Added recursive retry with RPC function if available
-          try {
-            await supabase.rpc('force_delete_dataset_queries', { dataset_id: id });
-            console.log("Used RPC function to force delete related queries");
-          } catch (rpcError) {
-            console.warn("RPC function not available or failed:", rpcError);
-          }
         } else {
           console.log(`Successfully deleted related queries for dataset ${id}`);
         }
-      } catch (relatedDeleteError) {
-        console.warn("Error clearing related records:", relatedDeleteError);
-        // Continue with deletion attempt anyway
+      } catch (queryError) {
+        console.warn("Error deleting queries:", queryError);
       }
+      
+      // Wait briefly to ensure related records are deleted
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Get dataset info to delete the file later
       const { data: dataset, error: getError } = await supabase
@@ -308,7 +308,6 @@ export const dataService = {
         
       if (getError) {
         console.error("Error getting dataset before delete:", getError);
-        // Continue with deletion attempt even if we can't get the dataset
       }
       
       // Delete the record from the database
@@ -331,15 +330,13 @@ export const dataService = {
             
           if (storageError) {
             console.warn("Warning: Deleted record but failed to delete storage file:", storageError);
-            // This is not a critical error since the record is gone
           }
         } catch (storageDeleteError) {
           console.warn("Storage deletion error:", storageDeleteError);
-          // Non-critical error
         }
       }
       
-      console.log(`Successfully deleted dataset ${id} using direct method`);
+      console.log(`Successfully deleted dataset ${id}`);
       
       // Dispatch an event to notify subscribers
       const event = new CustomEvent('dataset-deleted', { detail: { datasetId: id } });

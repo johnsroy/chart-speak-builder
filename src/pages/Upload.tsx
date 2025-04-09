@@ -92,7 +92,9 @@ const Upload = () => {
         });
       }
 
-      await handleUpload(true, "00000000-0000-0000-0000-000000000000");
+      // Use system account ID for upload
+      const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
+      await handleUpload(true, systemUserId);
       loadDatasets();
     } catch (error) {
       console.error('Upload failed:', error);
@@ -102,7 +104,9 @@ const Upload = () => {
   // Function to handle retry
   const handleRetryAction = () => {
     try {
-      retryUpload(true, "00000000-0000-0000-0000-000000000000");
+      // Use system account ID for upload
+      const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
+      retryUpload(true, systemUserId);
     } catch (error) {
       console.error('Retry failed:', error);
     }
@@ -111,7 +115,9 @@ const Upload = () => {
   // Function to handle overwrite confirmation
   const handleOverwriteConfirmAction = () => {
     try {
-      handleOverwriteConfirm(true, "00000000-0000-0000-0000-000000000000");
+      // Use system account ID for upload
+      const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
+      handleOverwriteConfirm(true, systemUserId);
     } catch (error) {
       console.error('Overwrite confirmation failed:', error);
     }

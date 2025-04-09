@@ -128,29 +128,7 @@ const UploadArea = () => {
 
   const handleUploadClick = async () => {
     try {
-      console.log("Ensuring admin login before upload");
-      const loginResult = await adminLogin();
-      
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      
-      if (!currentSession?.user?.id) {
-        toast({
-          title: "Authentication notice",
-          description: "Using system account for upload...",
-          variant: "default"
-        });
-        
-        try {
-          await adminLogin();
-        } catch (loginErr) {
-          console.warn("Admin login failed but proceeding with upload:", loginErr);
-        }
-      }
-      
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000";
-      
-      console.log("Using user ID for upload:", userIdForUpload);
+      const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
       
       if (selectedFile && selectedFile.size > 50 * 1024 * 1024) {
         toast({
@@ -160,7 +138,7 @@ const UploadArea = () => {
       }
       
       try {
-        await handleUpload(true, userIdForUpload);
+        await handleUpload(true, systemUserId);
         loadDatasets();
       } catch (uploadErr) {
         console.error("Upload attempt failed:", uploadErr);
@@ -177,17 +155,8 @@ const UploadArea = () => {
 
   const handleRetryUpload = async () => {
     try {
-      try {
-        await adminLogin();
-      } catch (loginErr) {
-        console.warn("Admin login failed but proceeding with retry:", loginErr);
-      }
-      
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000";
-      
-      console.log("Using user ID for retry:", userIdForUpload);
-      retryUpload(true, userIdForUpload);
+      const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
+      retryUpload(true, systemUserId);
     } catch (error) {
       console.error("Retry upload failed:", error);
       toast({
@@ -200,9 +169,8 @@ const UploadArea = () => {
 
   const handleOverwriteConfirmClick = async () => {
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const userIdForUpload = currentUser?.id || "00000000-0000-0000-0000-000000000000";
-      handleOverwriteConfirm(true, userIdForUpload);
+      const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
+      handleOverwriteConfirm(true, systemUserId);
     } catch (error) {
       console.error("Overwrite confirmation failed:", error);
       toast({

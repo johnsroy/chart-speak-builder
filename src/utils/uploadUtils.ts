@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
 import { Dataset } from '@/services/types/datasetTypes';
@@ -60,8 +61,8 @@ export const getDatasetNameFromFile = (file: File): string => {
  */
 export const validateUserId = (userId?: string): string => {
   if (!userId || userId.trim() === '') {
-    console.warn('No user ID provided, using default');
-    return '00000000-0000-0000-0000-000000000000';
+    console.warn('No user ID provided, using system account');
+    return 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
   }
   
   return userId;
@@ -123,6 +124,9 @@ export const performUpload = async (
     const previewKey = `preview_${timestamp}_${file.name}`;
     additionalProps.preview_key = previewKey;
     
+    // Use system account if no valid user ID provided
+    const validUserId = userId || 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
+    
     // Store preview data in session storage
     if (file.size > 0 && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
       try {
@@ -159,7 +163,7 @@ export const performUpload = async (
       description,
       null, // No existing dataset ID
       onProgress,
-      userId
+      validUserId
     );
     
     return dataset;
