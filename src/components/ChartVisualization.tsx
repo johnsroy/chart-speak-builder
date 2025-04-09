@@ -32,16 +32,17 @@ import {
 import HighchartsReact from 'highcharts-react-official';
 import Highcharts from 'highcharts';
 
-// Import Highcharts modules
-import highchartsMore from 'highcharts/highcharts-more';
-import highchartsExporting from 'highcharts/modules/exporting';
-import highchartsExportData from 'highcharts/modules/export-data';
+// Import Highcharts modules - but as a side effect import to ensure they work with SSR and ESM
+import 'highcharts/highcharts-more';
+import 'highcharts/modules/exporting';
+import 'highcharts/modules/export-data';
 
-// Apply modules directly
-if (typeof Highcharts === 'object') {
-  highchartsMore(Highcharts);
-  highchartsExporting(Highcharts);
-  highchartsExportData(Highcharts);
+// Initialize modules correctly when in browser environment
+if (typeof Highcharts === 'object' && typeof window !== 'undefined') {
+  // These modules modify the Highcharts object directly
+  require('highcharts/highcharts-more')(Highcharts);
+  require('highcharts/modules/exporting')(Highcharts);
+  require('highcharts/modules/export-data')(Highcharts);
 }
 
 interface ChartVisualizationProps {
