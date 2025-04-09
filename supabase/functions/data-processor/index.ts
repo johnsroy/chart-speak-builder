@@ -1,11 +1,11 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
-import { parse as csvParse } from "https://deno.land/std@0.181.0/csv/parse.ts";
 
+// CORS headers for cross-origin requests
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req) => {
@@ -15,23 +15,10 @@ serve(async (req) => {
   }
   
   try {
-    console.log("Data processor function invoked");
-    
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     
-    if (!supabaseUrl || !supabaseServiceRole) {
-      console.error("Missing Supabase credentials");
-      return new Response(
-        JSON.stringify({ 
-          error: "Server configuration error",
-          success: false 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
-      );
-    }
-    
-    // Create Supabase client with the service role key for admin access
+    // Create Supabase client with service role key for admin access
     const supabase = createClient(supabaseUrl, supabaseServiceRole);
     
     const requestData = await req.json();
@@ -49,37 +36,43 @@ serve(async (req) => {
     if (datasetError) {
       console.error('Error retrieving dataset:', datasetError);
       return new Response(
-        JSON.stringify({ 
-          error: `Failed to get dataset: ${datasetError.message}`,
-          success: false 
-        }),
+        JSON.stringify({ error: `Failed to get dataset: ${datasetError.message}`, success: false }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 404 }
       );
     }
     
-    console.log(`Dataset found: ${dataset.name}, Storage path: ${dataset.storage_path}, Type: ${dataset.storage_type}`);
-    
     if (action === 'delete') {
+      // Delete related queries first to avoid foreign key errors
+      try {
+        const { error: queriesError } = await supabase
+          .from('queries')
+          .delete()
+          .eq('dataset_id', dataset_id);
+          
+        if (queriesError) {
+          console.warn('Warning when deleting related queries:', queriesError);
+        }
+      } catch (error) {
+        console.warn('Exception during related queries deletion:', error);
+      }
+      
       // Delete file from storage
       try {
-        const storageBucket = dataset.storage_type || 'datasets';
-        console.log(`Attempting to delete file from ${storageBucket} bucket: ${dataset.storage_path}`);
+        console.log(`Attempting to delete file from ${dataset.storage_type || 'datasets'} bucket: ${dataset.storage_path}`);
         
         const { error: storageError } = await supabase.storage
-          .from(storageBucket)
+          .from(dataset.storage_type || 'datasets')
           .remove([dataset.storage_path]);
           
         if (storageError) {
           console.error('Error deleting from storage:', storageError);
           // Continue with deletion even if storage deletion fails
-          // The record is more important than the file
         }
-      } catch (storageError) {
-        console.error('Exception during storage deletion:', storageError);
-        // Continue with deletion even if storage deletion fails
+      } catch (error) {
+        console.warn('Exception during storage deletion:', error);
       }
       
-      // Delete database record
+      // Delete from database
       const { error: deleteError } = await supabase
         .from('datasets')
         .delete()
@@ -88,10 +81,7 @@ serve(async (req) => {
       if (deleteError) {
         console.error('Error deleting from database:', deleteError);
         return new Response(
-          JSON.stringify({ 
-            error: `Database deletion failed: ${deleteError.message}`,
-            success: false 
-          }),
+          JSON.stringify({ error: `Database deletion failed: ${deleteError.message}`, success: false }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
         );
       }
@@ -102,254 +92,121 @@ serve(async (req) => {
       );
     }
     
-    if (action === 'preview') {
+    if (action === 'preview' || action === 'load') {
+      const limit = requestData.limit || (action === 'preview' ? 1000 : 10000);
+      console.log(`Loading ${action === 'preview' ? 'preview' : 'full data'} with limit: ${limit}`);
+      
       try {
-        // Handle Electric Vehicle Population Data specifically
-        if (dataset.file_name.includes("Electric_Vehicle_Population_Data") || 
-            dataset.name.includes("Electric Vehicle")) {
-          console.log("Generating Electric Vehicle Population dataset");
-          const evData = generateElectricVehicleData(200);
+        // If we have a storage path, try to download and process the file
+        if (dataset.storage_path && dataset.storage_type) {
+          console.log(`Attempting to download from ${dataset.storage_type} bucket: ${dataset.storage_path}`);
           
-          // Update the dataset with schema info if needed
-          if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
-            const evSchema = inferElectricVehicleSchema();
-            console.log("Updating dataset with EV schema");
+          const { data: fileData, error: storageError } = await supabase
+            .storage
+            .from(dataset.storage_type)
+            .download(dataset.storage_path);
             
-            const { error: updateError } = await supabase
-              .from('datasets')
-              .update({ column_schema: evSchema })
-              .eq('id', dataset_id);
-              
-            if (updateError) {
-              console.error('Error updating EV schema:', updateError);
-            }
-          }
-          
-          return new Response(
-            JSON.stringify({
-              data: evData,
-              schema: inferElectricVehicleSchema(),
-              count: evData.length,
-              success: true,
-              source: "ev_population_data"
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        
-        // For "local" storage type, we need to use a different approach
-        // Generate sample data based on the file name
-        if (dataset.storage_type === 'local') {
-          console.log("Dataset is stored locally, generating sample data based on file name");
-          const sampleData = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 200);
-          
-          // Update schema if needed
-          if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
-            const schema = inferSchemaFromFilename(dataset.file_name);
-            console.log("Updating dataset with inferred schema");
+          if (storageError) {
+            console.error('Error downloading file:', storageError);
+          } else {
+            // Process CSV file
+            const text = await fileData.text();
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
             
-            const { error: updateError } = await supabase
-              .from('datasets')
-              .update({ column_schema: schema })
-              .eq('id', dataset_id);
-              
-            if (updateError) {
-              console.error('Error updating inferred schema:', updateError);
-            }
-          }
-          
-          return new Response(
-            JSON.stringify({
-              data: sampleData,
-              schema: dataset.column_schema || inferSchemaFromFilename(dataset.file_name),
-              count: sampleData.length,
-              success: true,
-              source: "generated_local"
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Download the dataset file from storage
-        console.log(`Attempting to download file from ${dataset.storage_type} bucket: ${dataset.storage_path}`);
-        let text = '';
-        let fileData = null;
-
-        const { data, error: fileError } = await supabase
-          .storage
-          .from(dataset.storage_type || 'datasets')
-          .download(dataset.storage_path);
-          
-        if (fileError) {
-          console.error('File download error:', fileError);
-          
-          // Return fallback data
-          const fallbackData = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100);
-          return new Response(
-            JSON.stringify({
-              data: fallbackData,
-              schema: dataset.column_schema || inferSchemaFromFilename(dataset.file_name),
-              count: fallbackData.length,
-              success: true,
-              source: "generated_fallback",
-              error: `File download error: ${fileError.message}`
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        
-        fileData = data;
-        if (!fileData) {
-          throw new Error("No file data returned from storage");
-        }
-        
-        text = await fileData.text();
-        console.log(`Successfully downloaded file, size: ${text.length} characters`);
-        
-        // Parse the file based on its type
-        let data = [];
-        
-        if (dataset.file_name.toLowerCase().endsWith('.csv')) {
-          console.log("Processing CSV file");
-          // Parse CSV - explicitly handle headers and data conversion
-          try {
-            const rows = text.split('\n');
-            // Get headers from first row
-            const headers = rows[0].split(',').map(h => h.trim());
+            const data = [];
+            const maxLines = Math.min(lines.length, limit + 1); // +1 because of headers
             
-            // Process remaining rows
-            for (let i = 1; i < rows.length; i++) {
-              if (!rows[i].trim()) continue;
+            for (let i = 1; i < maxLines; i++) {
+              if (!lines[i].trim()) continue;
               
-              // Split by comma, but handle quoted values correctly
-              const values = parseCSVLine(rows[i]);
-              if (values.length !== headers.length) {
-                console.warn(`Row ${i} has ${values.length} columns but headers has ${headers.length}`);
-                continue;
-              }
-              
+              const values = lines[i].split(',');
               const row: Record<string, any> = {};
-              headers.forEach((header, idx) => {
-                const value = values[idx] || '';
+              
+              headers.forEach((header, index) => {
+                let value = values[index]?.trim() || '';
                 
-                // Try to convert to appropriate type
-                if (value === '' || value === 'null' || value === 'undefined') {
-                  row[header] = null;
-                } else if (!isNaN(Number(value))) {
-                  row[header] = Number(value);
-                } else if (value.toLowerCase() === 'true') {
-                  row[header] = true;
-                } else if (value.toLowerCase() === 'false') {
-                  row[header] = false;
+                // Try to convert numeric values
+                if (!isNaN(+value) && value !== '') {
+                  row[header] = +value;
                 } else {
                   row[header] = value;
                 }
               });
               
               data.push(row);
-              
-              // Limit to first 100 rows for preview
-              if (data.length >= 100) break;
             }
-          } catch (csvError) {
-            console.error('CSV parsing error:', csvError);
-            // Fall back to simpler parsing
-            try {
-              const parsedData = csvParse(text, { 
-                skipFirstRow: false, 
-                columns: true 
-              });
-              
-              data = parsedData.slice(0, 100); // Limit to first 100 rows
-            } catch (fallbackError) {
-              console.error('Fallback CSV parsing also failed:', fallbackError);
-              // Generate fallback data
-              data = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100);
+            
+            // Update dataset with row count if not set
+            if (!dataset.row_count || dataset.row_count === 0) {
+              await supabase
+                .from('datasets')
+                .update({ row_count: lines.length - 1 })
+                .eq('id', dataset_id);
             }
+            
+            return new Response(
+              JSON.stringify({
+                data,
+                schema: dataset.column_schema || inferSchema(data[0] || {}),
+                count: data.length,
+                success: true
+              }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
           }
-        } else if (dataset.file_name.toLowerCase().endsWith('.json')) {
-          console.log("Processing JSON file");
-          // Parse JSON
+        }
+        
+        // If we couldn't get the file, try to check if we have a preview file
+        if (dataset.preview_key) {
           try {
-            const parsedData = JSON.parse(text);
-            data = Array.isArray(parsedData) ? parsedData.slice(0, 100) : [parsedData];
-          } catch (jsonError) {
-            console.error('JSON parsing error:', jsonError);
-            // Generate fallback data
-            data = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100);
-          }
-        } else {
-          console.log("Unsupported file format, generating fallback data");
-          data = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 100);
-        }
-        
-        // Extract column schema if not already available
-        if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
-          console.log("Extracting schema from data");
-          // Extract column schema if not already available
-          if (!dataset.column_schema || Object.keys(dataset.column_schema).length === 0) {
-            const sampleRow = data[0] || {};
-            const schema: Record<string, string> = {};
-            
-            for (const [key, value] of Object.entries(sampleRow)) {
-              if (typeof value === 'number') {
-                schema[key] = 'number';
-              } else if (typeof value === 'boolean') {
-                schema[key] = 'boolean';
-              } else if (typeof value === 'string') {
-                if (!isNaN(Date.parse(value)) && String(value).match(/^\d{4}-\d{2}-\d{2}/)) {
-                  schema[key] = 'date';
-                } else {
-                  schema[key] = 'string';
-                }
-              } else if (value === null) {
-                schema[key] = 'unknown';
-              } else {
-                schema[key] = 'object';
-              }
-            }
-            
-            // Update the dataset with the inferred schema
-            const { error: updateError } = await supabase
-              .from('datasets')
-              .update({ column_schema: schema })
-              .eq('id', dataset_id);
+            const { data: previewData, error: previewError } = await supabase
+              .storage
+              .from('previews')
+              .download(dataset.preview_key);
               
-            if (updateError) {
-              console.error('Error updating schema:', updateError);
-            } else {
-              console.log('Successfully updated column schema:', schema);
-              dataset.column_schema = schema;
+            if (!previewError && previewData) {
+              const previewContent = await previewData.text();
+              const parsedData = JSON.parse(previewContent);
+              
+              return new Response(
+                JSON.stringify({
+                  data: parsedData,
+                  schema: dataset.column_schema || inferSchema(parsedData[0] || {}),
+                  count: parsedData.length,
+                  success: true,
+                  source: 'preview_cache'
+                }),
+                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
             }
+          } catch (previewErr) {
+            console.warn('Error loading preview file:', previewErr);
           }
         }
         
-        console.log(`Returning ${data.length} rows of data`);
-        // Return preview data and schema
+        // Generate sample data as a last resort
+        console.log("Generating sample data based on filename or schema");
+        const sampleData = generateSampleData(dataset.file_name, dataset.column_schema);
+        
         return new Response(
           JSON.stringify({
-            data: data,
-            schema: dataset.column_schema || inferSchema(data[0] || {}),
-            count: data.length,
-            success: true
+            data: sampleData,
+            schema: dataset.column_schema || inferSchema(sampleData[0] || {}),
+            count: sampleData.length,
+            success: true,
+            synthetic: true
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } catch (error) {
-        console.error('Error processing file:', error);
-        
-        // Return fallback data even on error
-        const fallbackData = generateFallbackDataFromFilename(dataset.file_name, dataset.name, 50);
+        console.error('Error processing dataset:', error);
         return new Response(
-          JSON.stringify({
-            data: fallbackData,
-            schema: dataset.column_schema || inferSchemaFromFilename(dataset.file_name),
-            count: 50,
-            success: true,
-            source: "fallback",
-            error: `Error processing file: ${error.message}`
+          JSON.stringify({ 
+            error: `Failed to process dataset: ${error.message || 'Unknown error'}`,
+            success: false 
           }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
         );
       }
     }
@@ -358,161 +215,14 @@ serve(async (req) => {
       JSON.stringify({ error: "Invalid action specified", success: false }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
     );
-    
   } catch (error) {
     console.error("Error in data-processor function:", error);
-    
     return new Response(
-      JSON.stringify({ 
-        error: error.message || "Unknown error occurred",
-        success: false
-      }),
+      JSON.stringify({ error: error.message || "Unknown error", success: false }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });
-
-// Generate Electric Vehicle Population Data
-function generateElectricVehicleData(count = 50) {
-  const data = [];
-  
-  const vins = [
-    "5YJSA3E14JF",
-    "5YJ3E1EB7L",
-    "7SAYGAEE7N",
-    "1N4AZ1CV0L",
-    "1G1FZ6S03L",
-    "WAU2AAFC3L"
-  ];
-  
-  const makes = ["TESLA", "NISSAN", "CHEVROLET", "FORD", "BMW", "KIA", "AUDI"];
-  const models = [
-    "MODEL Y", "MODEL 3", "MODEL X", "MODEL S", "LEAF", 
-    "BOLT", "MUSTANG MACH E", "I3", "EV6", "E-TRON"
-  ];
-  const years = [2018, 2019, 2020, 2021, 2022, 2023, 2024];
-  const states = ["WA", "CA", "OR", "NY", "TX", "FL", "IL"];
-  const cities = [
-    "SEATTLE", "BELLEVUE", "PORTLAND", "SAN FRANCISCO", 
-    "LOS ANGELES", "NEW YORK", "AUSTIN", "CHICAGO"
-  ];
-  const counties = [
-    "KING", "PIERCE", "SNOHOMISH", "MULTNOMAH", "ORANGE", 
-    "LOS ANGELES", "TRAVIS", "COOK"
-  ];
-  
-  // EV types
-  const evTypes = ["Battery Electric Vehicle (BEV)", "Plug-in Hybrid Electric Vehicle (PHEV)"];
-  
-  // CAFV Eligibility
-  const cafvEligibility = [
-    "Clean Alternative Fuel Vehicle Eligible", 
-    "Not eligible due to low battery range",
-    "Eligibility unknown"
-  ];
-  
-  // Electric Range
-  const electricRanges = [150, 220, 305, 270, 420, 180, 250, 375, 310];
-  
-  // Base MSRP
-  const basePrices = [35000, 40000, 55000, 80000, 45000, 60000, 70000, 42000];
-  
-  // Electric utilities
-  const electricUtilities = [
-    "SEATTLE CITY LIGHT", 
-    "PUGET SOUND ENERGY", 
-    "PACIFIC POWER", 
-    "PORTLAND GENERAL ELECTRIC",
-    "SOUTHERN CALIFORNIA EDISON",
-    "PACIFIC GAS & ELECTRIC"
-  ];
-  
-  for (let i = 0; i < count; i++) {
-    const make = makes[i % makes.length];
-    const model = models[i % models.length];
-    const year = years[i % years.length];
-    const vinBase = vins[i % vins.length];
-    const vinEnd = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
-    
-    // Create the data row
-    data.push({
-      VIN: `${vinBase}${vinEnd}`,
-      County: counties[i % counties.length],
-      City: cities[i % cities.length],
-      State: states[i % states.length],
-      "Postal Code": `9${i % 10}${i % 10}${Math.floor(i/10) % 10}${Math.floor(i/100) % 10}`,
-      "Model Year": year,
-      Make: make,
-      Model: model,
-      "Electric Vehicle Type": evTypes[i % evTypes.length],
-      "Clean Alternative Fuel Vehicle (CAFV) Eligibility": cafvEligibility[i % cafvEligibility.length],
-      "Electric Range": electricRanges[i % electricRanges.length],
-      "Base MSRP": basePrices[i % basePrices.length],
-      "Legislative District": (i % 49) + 1,
-      "DOL Vehicle ID": `${i + 100000}`,
-      "Vehicle Location": `POINT (${-122 - (Math.random() * 2).toFixed(6)} ${47 + (Math.random() * 2).toFixed(6)})`,
-      "Electric Utility": electricUtilities[i % electricUtilities.length],
-      "2020 Census Tract": `53033${(i % 100).toString().padStart(4, '0')}`,
-    });
-  }
-  
-  return data;
-}
-
-// Helper function to infer schema for Electric Vehicle dataset
-function inferElectricVehicleSchema() {
-  return {
-    "VIN": "string",
-    "County": "string",
-    "City": "string",
-    "State": "string",
-    "Postal Code": "string",
-    "Model Year": "number",
-    "Make": "string",
-    "Model": "string",
-    "Electric Vehicle Type": "string",
-    "Clean Alternative Fuel Vehicle (CAFV) Eligibility": "string",
-    "Electric Range": "number",
-    "Base MSRP": "number",
-    "Legislative District": "number",
-    "DOL Vehicle ID": "string",
-    "Vehicle Location": "string",
-    "Electric Utility": "string",
-    "2020 Census Tract": "string"
-  };
-}
-
-// Helper function to parse CSV line with quotes properly
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let inQuotes = false;
-  let currentValue = '';
-  
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    
-    if (char === '"') {
-      if (i + 1 < line.length && line[i + 1] === '"') {
-        // Double quotes inside quotes - escape
-        currentValue += '"';
-        i++;
-      } else {
-        // Toggle quote state
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      // End of field
-      result.push(currentValue.trim());
-      currentValue = '';
-    } else {
-      currentValue += char;
-    }
-  }
-  
-  // Add the last value
-  result.push(currentValue.trim());
-  return result;
-}
 
 // Helper function to infer schema from data
 function inferSchema(sample: Record<string, any>) {
@@ -524,6 +234,7 @@ function inferSchema(sample: Record<string, any>) {
     } else if (typeof value === 'boolean') {
       schema[key] = 'boolean';
     } else if (typeof value === 'string') {
+      // Try to detect dates in ISO format
       if (!isNaN(Date.parse(value)) && String(value).match(/^\d{4}-\d{2}-\d{2}/)) {
         schema[key] = 'date';
       } else {
@@ -539,186 +250,85 @@ function inferSchema(sample: Record<string, any>) {
   return schema;
 }
 
-// Helper function to infer schema from filename
-function inferSchemaFromFilename(filename: string): Record<string, string> {
-  const schema: Record<string, string> = {};
-  const lowerFilename = filename.toLowerCase();
-  
-  if (lowerFilename.includes('vehicle') || lowerFilename.includes('car') || lowerFilename.includes('electric')) {
-    // Vehicle dataset schema
-    schema.id = 'number';
-    schema.make = 'string';
-    schema.model = 'string';
-    schema.year = 'number';
-    schema.price = 'number';
-    schema.color = 'string';
-    schema.electric = 'boolean';
-    schema.mileage = 'number';
-  } else if (lowerFilename.includes('sales') || lowerFilename.includes('revenue')) {
-    // Sales dataset schema
-    schema.id = 'number';
-    schema.product = 'string';
-    schema.category = 'string';
-    schema.date = 'date';
-    schema.quantity = 'number';
-    schema.price = 'number';
-    schema.revenue = 'number';
-    schema.region = 'string';
-  } else {
-    // Generic dataset schema
-    schema.id = 'number';
-    schema.name = 'string';
-    schema.value = 'number';
-    schema.category = 'string';
-    schema.date = 'date';
-    schema.active = 'boolean';
-  }
-  
-  return schema;
-}
-
-// Helper function to generate realistic fallback data based on filename
-function generateFallbackDataFromFilename(filename: string, datasetName: string, count: number = 50): any[] {
-  const lowerFilename = filename.toLowerCase();
+// Generate sample data based on file name and schema
+function generateSampleData(fileName: string, schema?: Record<string, string> | null, count: number = 100) {
+  const lowerFileName = fileName.toLowerCase();
   const data = [];
   
-  if (lowerFilename.includes('vehicle') || lowerFilename.includes('car') || lowerFilename.includes('electric')) {
-    // Vehicle dataset with EV focus if filename suggests it
-    const isElectric = lowerFilename.includes('electric');
-    
-    for (let i = 0; i < count; i++) {
-      const makeModel = isElectric ? 
-        [
-          { make: 'Tesla', model: ['Model 3', 'Model Y', 'Model S', 'Model X', 'Cybertruck'][i % 5] },
-          { make: 'Rivian', model: ['R1T', 'R1S'][i % 2] },
-          { make: 'Ford', model: ['Mustang Mach-E', 'F-150 Lightning'][i % 2] },
-          { make: 'Chevrolet', model: ['Bolt EV', 'Bolt EUV'][i % 2] },
-          { make: 'Nissan', model: ['Leaf', 'Ariya'][i % 2] },
-          { make: 'Hyundai', model: ['Ioniq 5', 'Kona Electric'][i % 2] },
-          { make: 'Kia', model: ['EV6', 'Niro EV'][i % 2] }
-        ][i % 7] : 
-        [
-          { make: 'Toyota', model: ['Corolla', 'Camry', 'RAV4', 'Highlander', 'Tacoma'][i % 5] },
-          { make: 'Honda', model: ['Civic', 'Accord', 'CR-V', 'Pilot'][i % 4] },
-          { make: 'Ford', model: ['F-150', 'Escape', 'Explorer', 'Mustang'][i % 4] },
-          { make: 'Chevrolet', model: ['Silverado', 'Equinox', 'Malibu'][i % 3] },
-          { make: 'Nissan', model: ['Altima', 'Rogue', 'Sentra'][i % 3] }
-        ][i % 5];
-      
-      const year = 2015 + (i % 9);
-      const electricVehicle = isElectric ? true : [true, false, false, false, false][i % 5];
-      
-      data.push({
-        id: i + 1,
-        make: makeModel.make,
-        model: makeModel.model,
-        year: year,
-        price: Math.floor(20000 + Math.random() * 80000),
-        color: ['Black', 'White', 'Red', 'Blue', 'Silver', 'Gray', 'Green'][i % 7],
-        electric: electricVehicle,
-        mileage: Math.floor(Math.random() * 100000),
-        fuel_type: electricVehicle ? 'Electric' : ['Gasoline', 'Diesel', 'Hybrid'][i % 3],
-        transmission: ['Automatic', 'Manual', 'CVT'][i % 3],
-        state: ['WA', 'CA', 'OR', 'TX', 'NY', 'FL', 'IL', 'PA'][i % 8],
-        city: ['Seattle', 'Portland', 'San Francisco', 'Los Angeles', 'New York', 'Chicago'][i % 6]
-      });
-    }
-  } else if (lowerFilename.includes('sales') || lowerFilename.includes('revenue')) {
-    // Sales dataset
-    for (let i = 0; i < count; i++) {
-      const basePrice = 10 + Math.floor(Math.random() * 990);
-      const quantity = 1 + Math.floor(Math.random() * 50);
-      const discount = Math.random() > 0.7 ? Math.random() * 0.25 : 0;
-      const finalPrice = basePrice * (1 - discount);
-      const revenue = finalPrice * quantity;
-      
-      data.push({
-        id: i + 1,
-        product: `Product ${String.fromCharCode(65 + (i % 26))}${i % 10}`,
-        category: ['Electronics', 'Clothing', 'Food', 'Books', 'Home', 'Toys', 'Sports'][i % 7],
-        date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
-        quantity: quantity,
-        price: parseFloat(basePrice.toFixed(2)),
-        discount: parseFloat((discount * 100).toFixed(1)),
-        revenue: parseFloat(revenue.toFixed(2)),
-        profit: parseFloat((revenue * 0.3).toFixed(2)),
-        region: ['North', 'South', 'East', 'West', 'Central'][i % 5],
-        customer_age: 18 + Math.floor(Math.random() * 60),
-        payment_method: ['Credit Card', 'Cash', 'PayPal', 'Bank Transfer'][i % 4]
-      });
-    }
-  } else if (lowerFilename.includes('survey') || lowerFilename.includes('feedback')) {
-    // Survey dataset
+  // If this looks like an electric vehicle dataset
+  if (lowerFileName.includes('electric') || lowerFileName.includes('vehicle') || lowerFileName.includes('car')) {
     for (let i = 0; i < count; i++) {
       data.push({
-        id: i + 1,
-        question: `Survey Question ${i % 5 + 1}`,
-        response: ['Strongly Agree', 'Agree', 'Neutral', 'Disagree', 'Strongly Disagree'][i % 5],
-        score: 5 - (i % 5),
-        comment: `Sample comment for response ${i + 1}`,
-        age_group: ['18-24', '25-34', '35-44', '45-54', '55+'][i % 5],
-        gender: ['Male', 'Female', 'Non-binary', 'Prefer not to say'][i % 4],
-        location: ['Urban', 'Suburban', 'Rural'][i % 3],
-        date_submitted: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
-        time_spent: Math.floor(Math.random() * 300) // seconds
+        'VIN (1-10)': `SAMPLE${i}${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+        'County': ['King', 'Pierce', 'Snohomish', 'Thurston', 'Clark', 'Spokane', 'Whatcom', 'Kitsap', 'Benton', 'Yakima'][i % 10],
+        'City': ['Seattle', 'Bellevue', 'Tacoma', 'Olympia', 'Vancouver', 'Spokane', 'Bellingham', 'Bremerton', 'Kennewick', 'Yakima'][i % 10],
+        'State': ['WA', 'OR', 'CA', 'ID', 'NY', 'FL', 'TX', 'OH', 'PA', 'IL'][i % 10],
+        'Postal Code': 90000 + Math.floor(Math.random() * 10000),
+        'Model Year': 2014 + (i % 10),
+        'Make': ['Tesla', 'Nissan', 'Chevrolet', 'BMW', 'Ford', 'Hyundai', 'Toyota', 'Audi', 'Kia', 'Rivian'][i % 10], 
+        'Model': [
+          'Model 3', 'Model Y', 'Model S', 'Model X', 'Leaf', 'Bolt EV', 'i3', 
+          'Mustang Mach-E', 'Ioniq 5', 'Prius Prime', 'e-tron', 'EV6', 'R1T'
+        ][i % 13],
+        'Electric Vehicle Type': i % 3 === 0 ? 'Plug-in Hybrid Electric Vehicle (PHEV)' : 'Battery Electric Vehicle (BEV)',
+        'Clean Alternative Fuel Vehicle (CAFV) Eligibility': i % 5 === 0 ? 'Not eligible due to low battery range' : 'Clean Alternative Fuel Vehicle Eligible',
+        'Electric Range': 80 + Math.floor(Math.random() * 320),
+        'Base MSRP': 30000 + Math.floor(Math.random() * 70000),
+        'Legislative District': Math.floor(Math.random() * 49) + 1,
+        'DOL Vehicle ID': 100000 + i,
+        'Vehicle Location': `POINT (-122.${Math.floor(Math.random() * 1000)} 47.${Math.floor(Math.random() * 1000)})`,
+        'Electric Utility': ['Seattle City Light', 'Puget Sound Energy', 'Tacoma Power', 'Snohomish County PUD', 'Clark Public Utilities'][i % 5],
+        'Census Tract 2020': Math.floor(Math.random() * 10000)
       });
     }
-  } else {
-    // Generate generic fallback data based on the dataset name
-    const datasetLower = datasetName.toLowerCase();
     
-    // Default generic fields
-    let baseFields = {
-      id: (i: number) => i + 1,
-      name: (i: number) => `Item ${i + 1}`,
-      value: (i: number) => Math.floor(Math.random() * 1000),
-      category: (i: number) => ['A', 'B', 'C', 'D', 'E'][i % 5],
-      date: (i: number) => new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
-      active: (i: number) => i % 3 === 0
-    };
+    return data;
+  }
+  
+  // If schema is provided, use it to generate data
+  if (schema && Object.keys(schema).length > 0) {
+    const schemaKeys = Object.keys(schema);
     
-    // Add more specialized fields based on dataset name patterns
-    if (datasetLower.includes('customer') || datasetLower.includes('client')) {
-      baseFields = {
-        ...baseFields,
-        customer_id: (i: number) => `CUST-${1000 + i}`,
-        first_name: (i: number) => ['John', 'Jane', 'Robert', 'Mary', 'David', 'Lisa'][i % 6],
-        last_name: (i: number) => ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones'][i % 5],
-        email: (i: number) => `customer${i}@example.com`,
-        age: (i: number) => 18 + (i % 60),
-        subscription_type: (i: number) => ['Free', 'Basic', 'Premium', 'Enterprise'][i % 4],
-      };
-    } else if (datasetLower.includes('product') || datasetLower.includes('inventory')) {
-      baseFields = {
-        ...baseFields,
-        product_id: (i: number) => `PROD-${1000 + i}`,
-        product_name: (i: number) => `Product ${String.fromCharCode(65 + (i % 26))}${i % 10}`,
-        price: (i: number) => parseFloat((10 + Math.random() * 990).toFixed(2)),
-        stock: (i: number) => Math.floor(Math.random() * 1000),
-        manufacturer: (i: number) => ['Acme Corp', 'Globex', 'Initech', 'Umbrella Corp'][i % 4],
-      };
-    } else if (datasetLower.includes('transaction') || datasetLower.includes('payment')) {
-      baseFields = {
-        ...baseFields,
-        transaction_id: (i: number) => `TXN-${10000 + i}`,
-        amount: (i: number) => parseFloat((10 + Math.random() * 990).toFixed(2)),
-        status: (i: number) => ['Completed', 'Pending', 'Failed', 'Refunded'][i % 4],
-        customer_id: (i: number) => `CUST-${1000 + (i % 100)}`,
-        payment_method: (i: number) => ['Credit Card', 'PayPal', 'Bank Transfer', 'Cash'][i % 4],
-      };
-    }
-    
-    // Generate the data using our field definitions
     for (let i = 0; i < count; i++) {
       const row: Record<string, any> = {};
       
-      // Apply each field generator
-      for (const [key, generator] of Object.entries(baseFields)) {
-        row[key] = generator(i);
-      }
+      schemaKeys.forEach(key => {
+        const type = schema[key];
+        
+        switch (type) {
+          case 'number':
+            row[key] = Math.floor(Math.random() * 1000);
+            break;
+          case 'boolean':
+            row[key] = Math.random() > 0.5;
+            break;
+          case 'date':
+            const date = new Date();
+            date.setDate(date.getDate() - Math.floor(Math.random() * 365));
+            row[key] = date.toISOString().split('T')[0];
+            break;
+          case 'string':
+          default:
+            row[key] = `Sample ${key} ${i + 1}`;
+            break;
+        }
+      });
       
       data.push(row);
     }
+    
+    return data;
+  }
+  
+  // Default generic dataset
+  for (let i = 0; i < count; i++) {
+    data.push({
+      'id': i + 1,
+      'name': `Item ${i + 1}`,
+      'category': ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'][i % 5],
+      'value': Math.floor(Math.random() * 1000),
+      'date': new Date(2023, i % 12, (i % 28) + 1).toISOString().split('T')[0]
+    });
   }
   
   return data;

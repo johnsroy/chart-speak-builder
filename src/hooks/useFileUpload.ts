@@ -77,6 +77,11 @@ const initialState: State = {
 export const useFileUpload = (): UseFileUploadResult => {
   const [state, setState] = useState<State>(initialState);
   const navigate = useNavigate();
+  
+  // Define handleOverwriteCancel early to avoid reference issues
+  const handleOverwriteCancel = useCallback(() => {
+    setState(prevState => ({ ...prevState, showOverwriteConfirm: false }));
+  }, []);
 
   const updateSelectedFile = useCallback(async (file: File) => {
     setState(prevState => ({
@@ -430,10 +435,6 @@ export const useFileUpload = (): UseFileUploadResult => {
       }));
     }
   }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, navigate, handleOverwriteCancel]);
-
-  const handleOverwriteCancel = useCallback(() => {
-    setState(prevState => ({ ...prevState, showOverwriteConfirm: false }));
-  }, []);
 
   const verifyStorageBucket = async (): Promise<boolean> => {
     try {
