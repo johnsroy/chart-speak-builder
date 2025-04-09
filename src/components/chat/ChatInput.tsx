@@ -9,12 +9,14 @@ interface ChatInputProps {
   onSendMessage: (message: string) => Promise<void>;
   isLoading: boolean;
   recommendations: string[];
+  disabled?: boolean;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({ 
   onSendMessage, 
   isLoading,
-  recommendations 
+  recommendations,
+  disabled = false
 }) => {
   const [inputText, setInputText] = useState('');
 
@@ -39,12 +41,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
           onChange={e => setInputText(e.target.value)} 
           onKeyDown={handleKeyPress} 
           placeholder="Ask a question about your dataset..." 
-          disabled={isLoading} 
+          disabled={isLoading || disabled} 
           className="flex-1 bg-gray-950/60 border-purple-500/30 focus-visible:ring-purple-500 focus-visible:border-purple-500"
         />
         <Button 
           onClick={handleSendMessage} 
-          disabled={isLoading || !inputText.trim()} 
+          disabled={isLoading || disabled || !inputText.trim()} 
           className="bg-gradient-to-r from-purple-700 to-purple-600 hover:from-purple-600 hover:to-purple-500 hover:shadow-lg transition-all"
         >
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
