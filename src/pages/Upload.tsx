@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import UserDatasetLibrary from '@/components/upload/UserDatasetLibrary';
 import UploadTabContent from '@/components/upload/UploadTabContent';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -80,70 +80,76 @@ const Upload = () => {
 
   return (
     <div className="w-full h-full flex flex-col">
-      <h1 className="text-2xl font-bold mb-6">Data Explorer</h1>
+      <h1 className="text-2xl font-bold mb-6 text-gradient">Data Explorer</h1>
       
-      <Tabs defaultValue="upload" className="w-full flex-grow flex flex-col" onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="upload">Upload New Dataset</TabsTrigger>
-          <TabsTrigger value="library">My Dataset Library</TabsTrigger>
-        </TabsList>
-        
-        <div className="flex-grow w-full">
-          <TabsContent value="upload" className="h-full">
-            <Card className="h-full w-full">
-              <CardContent className="pt-6 h-full">
-                <UploadTabContent
-                  activeTab={activeTab}
-                  dragActive={dragActive}
-                  handleDrag={handleDrag}
-                  handleDrop={handleDrop}
-                  handleFileInput={handleFileInput}
-                  selectedFile={selectedFile}
-                  datasetName={datasetName}
-                  setDatasetName={setDatasetName}
-                  datasetDescription={datasetDescription}
-                  setDatasetDescription={setDatasetDescription}
-                  schemaPreview={schemaPreview}
-                  isUploading={isUploading}
-                  uploadProgress={uploadProgress}
-                  uploadError={uploadError}
-                  handleUpload={handleUploadAction}
-                  retryUpload={handleRetryAction}
-                  datasets={datasets}
-                  isLoading={isLoading}
-                  selectedDatasetId={selectedDatasetId}
-                  setSelectedDatasetId={setSelectedDatasetId}
-                  setActiveTab={setActiveTab}
-                  uploadedDatasetId={uploadedDatasetId}
-                  showVisualizeAfterUpload={showVisualizeAfterUpload}
-                  setShowVisualizeAfterUpload={setShowVisualizeAfterUpload}
-                  showRedirectDialog={showRedirectDialog}
-                  setShowRedirectDialog={setShowRedirectDialog}
-                  selectedStorage={selectedStorage}
-                  setSelectedStorage={setSelectedStorage}
-                  showOverwriteConfirm={showOverwriteConfirm}
-                  handleOverwriteConfirm={handleOverwriteConfirmAction}
-                  handleOverwriteCancel={handleOverwriteCancel}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
+      <div className="w-full h-[calc(100vh-12rem)] flex flex-col bg-black/20 backdrop-blur-md rounded-xl border border-purple-500/20 shadow-glow overflow-hidden">
+        <Tabs defaultValue="upload" className="w-full h-full flex flex-col" onValueChange={setActiveTab}>
+          <div className="p-4 bg-black/40 backdrop-blur-lg border-b border-purple-500/30">
+            <TabsList className="w-full bg-black/30 backdrop-blur-md border border-white/10">
+              <TabsTrigger 
+                value="upload" 
+                className="data-[state=active]:bg-purple-800/50 data-[state=active]:text-white hover:text-white"
+              >
+                Upload New Dataset
+              </TabsTrigger>
+              <TabsTrigger 
+                value="library" 
+                className="data-[state=active]:bg-purple-800/50 data-[state=active]:text-white hover:text-white"
+              >
+                My Dataset Library
+              </TabsTrigger>
+            </TabsList>
+          </div>
           
-          <TabsContent value="library" className="h-full">
-            <Card className="h-full w-full">
-              <CardContent className="pt-6 h-full">
-                <UserDatasetLibrary 
-                  datasets={datasets}
-                  isLoading={isLoading}
-                  selectedDatasetId={selectedDatasetId}
-                  setSelectedDatasetId={setSelectedDatasetId}
-                  onVisualizeClick={() => setActiveTab('visualize')}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </div>
-      </Tabs>
+          <div className="flex-grow flex w-full overflow-hidden">
+            <TabsContent value="upload" className="h-full w-full m-0 p-4 overflow-auto">
+              <UploadTabContent
+                activeTab={activeTab}
+                dragActive={dragActive}
+                handleDrag={handleDrag}
+                handleDrop={handleDrop}
+                handleFileInput={handleFileInput}
+                selectedFile={selectedFile}
+                datasetName={datasetName}
+                setDatasetName={setDatasetName}
+                datasetDescription={datasetDescription}
+                setDatasetDescription={setDatasetDescription}
+                schemaPreview={schemaPreview}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+                uploadError={uploadError}
+                handleUpload={handleUploadAction}
+                retryUpload={handleRetryAction}
+                datasets={datasets}
+                isLoading={isLoading}
+                selectedDatasetId={selectedDatasetId}
+                setSelectedDatasetId={setSelectedDatasetId}
+                setActiveTab={setActiveTab}
+                uploadedDatasetId={uploadedDatasetId}
+                showVisualizeAfterUpload={showVisualizeAfterUpload}
+                setShowVisualizeAfterUpload={setShowVisualizeAfterUpload}
+                showRedirectDialog={showRedirectDialog}
+                setShowRedirectDialog={setShowRedirectDialog}
+                selectedStorage={selectedStorage}
+                setSelectedStorage={setSelectedStorage}
+                showOverwriteConfirm={showOverwriteConfirm}
+                handleOverwriteConfirm={handleOverwriteConfirmAction}
+                handleOverwriteCancel={handleOverwriteCancel}
+              />
+            </TabsContent>
+            
+            <TabsContent value="library" className="h-full w-full m-0 p-4 overflow-auto">
+              <UserDatasetLibrary 
+                datasets={datasets}
+                isLoading={isLoading}
+                selectedDatasetId={selectedDatasetId}
+                setSelectedDatasetId={setSelectedDatasetId}
+                onVisualizeClick={() => setActiveTab('visualize')}
+              />
+            </TabsContent>
+          </div>
+        </Tabs>
+      </div>
     </div>
   );
 };
