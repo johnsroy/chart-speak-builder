@@ -503,7 +503,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         <div className="flex items-center gap-2">
           <ModelSelector 
             currentModel={currentModel} 
-            setCurrentModel={setCurrentModel} 
+            onModelChange={handleModelChange} 
           />
           <Button 
             variant="outline" 
@@ -529,7 +529,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         ) : (
           <ChatContainer 
             messages={messages}
-            isTyping={isLoading}
+            downloadVisualization={handleDownloadVisualization}
             datasetId={datasetId}
           />
         )}
@@ -574,8 +574,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         <ChatInput 
           onSendMessage={handleSendMessage}
           isLoading={isLoading}
-          defaultValue={defaultExampleQuery}
           recommendations={recommendations}
+          disabled={datasetLoadFailed && fullData.length === 0}
         />
       </div>
     </div>
