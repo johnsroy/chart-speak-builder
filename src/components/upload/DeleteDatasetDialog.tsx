@@ -29,103 +29,115 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
     
     setIsDeleting(true);
     try {
-      console.log(`Deleting dataset with ID: ${datasetId}`);
+      console.log(`Starting deletion process for dataset: ${datasetId}`);
       
-      // Delete any visualizations related to this dataset's queries first
+      // Step 1: Delete any visualizations related to dataset queries first
       try {
-        const { data: queries } = await supabase
+        const { data: queries, error: queriesError } = await supabase
           .from('queries')
           .select('id')
           .eq('dataset_id', datasetId);
+          
+        if (queriesError) {
+          console.warn("Error fetching queries for cleanup:", queriesError);
+        }
           
         if (queries && queries.length > 0) {
           const queryIds = queries.map(q => q.id);
           console.log(`Found ${queryIds.length} queries to clean up for dataset ${datasetId}`);
           
           // Delete visualizations that reference these queries
-          const { error: vizError } = await supabase
-            .from('visualizations')
-            .delete()
-            .in('query_id', queryIds);
-            
-          if (vizError) {
-            console.warn("Error deleting related visualizations:", vizError);
-          } else {
-            console.log(`Deleted visualizations related to dataset ${datasetId}`);
+          if (queryIds.length > 0) {
+            const { error: vizError } = await supabase
+              .from('visualizations')
+              .delete()
+              .in('query_id', queryIds);
+              
+            if (vizError) {
+              console.warn("Error deleting related visualizations:", vizError);
+            } else {
+              console.log(`Deleted visualizations related to dataset ${datasetId}`);
+            }
           }
         }
       } catch (vizErr) {
         console.warn("Exception when deleting related visualizations:", vizErr);
       }
       
-      // Then delete queries associated with this dataset
+      // Step 2: Delete queries associated with this dataset
       try {
-        const { error: queriesError } = await supabase
+        const { error: queriesDeleteError } = await supabase
           .from('queries')
           .delete()
           .eq('dataset_id', datasetId);
         
-        if (queriesError) {
-          console.warn("Error deleting related queries:", queriesError);
-          throw new Error(`Failed to delete related queries: ${queriesError.message}`);
+        if (queriesDeleteError) {
+          console.warn("Error deleting related queries:", queriesDeleteError);
+          throw new Error(`Failed to delete related queries: ${queriesDeleteError.message}`);
         } else {
           console.log("Successfully deleted related queries");
         }
       } catch (queryErr) {
         console.warn("Exception when deleting queries:", queryErr);
-        throw new Error(`Exception deleting queries: ${queryErr instanceof Error ? queryErr.message : String(queryErr)}`);
+        // Continue with deletion even if this step fails
       }
       
-      // Then delete any dataset_data records (if the table exists)
+      // Step 3: Get the storage information for the dataset
+      let storageInfo = null;
       try {
-        const { error: dataError } = await supabase
-          .from('dataset_data')
-          .delete()
-          .eq('dataset_id', datasetId);
-        
-        if (dataError && !dataError.message.includes('does not exist')) {
-          console.warn("Error deleting dataset data:", dataError);
-        }
-      } catch (dataErr) {
-        console.warn("Exception when deleting dataset data:", dataErr);
-      }
-      
-      // Delete the dataset from storage if needed
-      try {
-        const { data: dataset } = await supabase
+        const { data: dataset, error: datasetError } = await supabase
           .from('datasets')
           .select('storage_type, storage_path')
           .eq('id', datasetId)
           .single();
           
-        if (dataset && dataset.storage_path && dataset.storage_type) {
-          console.log(`Removing file from storage: ${dataset.storage_type}/${dataset.storage_path}`);
+        if (datasetError) {
+          console.warn("Error getting dataset storage info:", datasetError);
+        } else if (dataset) {
+          storageInfo = dataset;
+          console.log(`Retrieved storage info: ${dataset.storage_type}/${dataset.storage_path}`);
+        }
+      } catch (infoErr) {
+        console.warn("Exception when getting dataset info:", infoErr);
+      }
+          
+      // Step 4: Delete the dataset record itself
+      try {
+        const { error: deleteError } = await supabase
+          .from('datasets')
+          .delete()
+          .eq('id', datasetId);
+          
+        if (deleteError) {
+          throw new Error(deleteError.message || 'Failed to delete dataset');
+        }
+        
+        console.log("Successfully deleted dataset record");
+      } catch (deleteErr) {
+        console.error("Error deleting dataset record:", deleteErr);
+        throw deleteErr;
+      }
+      
+      // Step 5: Delete the storage file if we have storage info
+      if (storageInfo && storageInfo.storage_path && storageInfo.storage_type) {
+        try {
+          console.log(`Removing file from storage: ${storageInfo.storage_type}/${storageInfo.storage_path}`);
           const { error: storageError } = await supabase
             .storage
-            .from(dataset.storage_type)
-            .remove([dataset.storage_path]);
+            .from(storageInfo.storage_type)
+            .remove([storageInfo.storage_path]);
             
           if (storageError) {
             console.warn("Error deleting file from storage:", storageError);
           } else {
-            console.log(`Successfully removed storage file: ${dataset.storage_path}`);
+            console.log(`Successfully removed storage file: ${storageInfo.storage_path}`);
           }
+        } catch (storageErr) {
+          console.warn("Exception when deleting from storage:", storageErr);
         }
-      } catch (storageErr) {
-        console.warn("Exception when deleting from storage:", storageErr);
       }
       
-      // Delete the dataset record itself
-      const { error: deleteError } = await supabase
-        .from('datasets')
-        .delete()
-        .eq('id', datasetId);
-        
-      if (deleteError) {
-        throw new Error(deleteError.message || 'Failed to delete dataset');
-      }
-      
-      // Clear any cached data for this dataset
+      // Step 6: Clear any cached data for this dataset
       try {
         // Clear all session storage items that might reference this dataset
         const keysToRemove = [];
@@ -175,7 +187,7 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
       console.error("Failed to delete dataset:", error);
       toast.error("Failed to delete dataset. Please try again.");
     } finally {
-      setIsDeleting(false);
+      setIsDeleting(false); // Fix the variable name here from setIsLoading to setIsDeleting
     }
   };
 

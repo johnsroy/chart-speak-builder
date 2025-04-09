@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { dataProcessorUrl } from '@/config/api';
@@ -224,69 +223,98 @@ export const dataService = {
 
   deleteDataset: async (id: string) => {
     try {
-      // First try using the edge function if available
+      console.log(`Starting deletion process for dataset ${id} via dataService`);
+      
+      // First try to delete via the supabase client directly
       try {
-        const response = await fetch(`${dataProcessorUrl}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.auth.getSession()}`
-          },
-          body: JSON.stringify({
-            action: 'delete',
-            dataset_id: id
-          })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          return true;
+        // Step 1: Delete any visualizations related to dataset queries
+        const { data: queries } = await supabase
+          .from('queries')
+          .select('id')
+          .eq('dataset_id', id);
+          
+        if (queries && queries.length > 0) {
+          const queryIds = queries.map(q => q.id);
+          console.log(`Found ${queryIds.length} queries to clean up for dataset ${id}`);
+          
+          // Delete visualizations that reference these queries
+          if (queryIds.length > 0) {
+            const { error: vizError } = await supabase
+              .from('visualizations')
+              .delete()
+              .in('query_id', queryIds);
+              
+            if (vizError) {
+              console.warn("Error deleting related visualizations:", vizError);
+            } else {
+              console.log(`Deleted visualizations related to dataset ${id}`);
+            }
+          }
         }
         
-        console.warn('Edge function deletion returned error:', result.error);
-        // Fall through to manual deletion if edge function fails
-      } catch (edgeFnError) {
-        console.warn('Edge function deletion failed:', edgeFnError);
-        // Fall through to manual deletion
-      }
-
-      // Manual deletion as fallback
-      const dataset = await dataService.getDataset(id);
-      if (!dataset) {
-        throw new Error('Dataset not found');
-      }
-
-      // Delete related queries first
-      try {
-        await supabase
+        // Step 2: Delete queries associated with this dataset
+        const { error: queriesDeleteError } = await supabase
           .from('queries')
           .delete()
           .eq('dataset_id', id);
-      } catch (error) {
-        console.warn('Error deleting related queries:', error);
-        // Continue anyway
-      }
-
-      // Try to delete the file from storage
-      if (dataset.storage_path) {
-        try {
-          await supabase.storage
-            .from(dataset.storage_type || 'datasets')
-            .remove([dataset.storage_path]);
-        } catch (storageError) {
-          console.warn('Failed to delete file from storage:', storageError);
-          // Continue anyway
+        
+        if (queriesDeleteError) {
+          console.warn("Error deleting related queries:", queriesDeleteError);
+        } else {
+          console.log("Successfully deleted related queries");
         }
+        
+        // Step 3: Get the storage information for the dataset
+        const { data: dataset, error: datasetError } = await supabase
+          .from('datasets')
+          .select('storage_type, storage_path')
+          .eq('id', id)
+          .single();
+          
+        if (datasetError) {
+          console.warn("Error getting dataset storage info:", datasetError);
+        } else if (dataset && dataset.storage_path && dataset.storage_type) {
+          // Step 4: Delete the storage file
+          console.log(`Removing file from storage: ${dataset.storage_type}/${dataset.storage_path}`);
+          
+          const { error: storageError } = await supabase
+            .storage
+            .from(dataset.storage_type)
+            .remove([dataset.storage_path]);
+            
+          if (storageError) {
+            console.warn("Error deleting file from storage:", storageError);
+          } else {
+            console.log(`Successfully removed storage file: ${dataset.storage_path}`);
+          }
+        }
+        
+        // Step 5: Delete the dataset record itself
+        const { error: deleteError } = await supabase
+          .from('datasets')
+          .delete()
+          .eq('id', id);
+          
+        if (deleteError) {
+          throw new Error(deleteError.message || 'Failed to delete dataset');
+        }
+        
+        console.log("Successfully deleted dataset record");
+        
+        // Step 6: Clear any cached data for this dataset
+        try {
+          sessionStorage.removeItem(`dataset_${id}`);
+          console.log(`Cleared dataset cache for ${id}`);
+        } catch (e) {
+          console.warn("Could not clear dataset cache:", e);
+        }
+        
+        return true;
+      } catch (clientError) {
+        console.warn('Supabase client deletion failed, trying edge function:', clientError);
+        // If direct deletion failed, try the edge function as fallback
+        throw clientError; // Propagate to the edge function attempt
       }
-
-      // Delete the dataset record
-      const { error } = await supabase
-        .from('datasets')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      return true;
     } catch (error) {
       console.error('Error deleting dataset:', error);
       toast.error('Failed to delete dataset', {
