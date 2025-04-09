@@ -50,6 +50,146 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const [dataAnalysis, setDataAnalysis] = useState<Record<string, any>>({});
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const loadDatasetInfo = async () => {
+      try {
+        const dataset = await dataService.getDataset(datasetId);
+        setDatasetInfo(dataset);
+        
+        await loadDataset();
+      } catch (error) {
+        console.error("Error loading dataset info:", error);
+        setDatasetLoadFailed(true);
+        toast.error('Failed to load dataset information');
+      }
+    };
+    
+    loadDatasetInfo();
+  }, [datasetId]);
+  
+  const loadDataset = async () => {
+    if (!datasetId) return;
+    
+    setLoadingState({
+      isLoading: true,
+      message: 'Loading dataset content...'
+    });
+    
+    try {
+      console.log("Loading dataset for chat:", datasetId);
+      
+      // First attempt: Use datasetUtils with multiple fallback mechanisms
+      try {
+        const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
+          showToasts: false,
+          limitRows: 5000  // Increased row limit for better analysis
+        });
+        
+        if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
+          console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
+          setFullData(datasetRows);
+          
+          // Analyze the dataset to understand structure
+          const analysis = nlpService.analyzeDataset(datasetRows);
+          console.log("Dataset analysis:", analysis);
+          setDataAnalysis(analysis);
+          
+          // Generate recommendations if we have dataset info
+          if (datasetInfo) {
+            try {
+              const dynamicRecommendations = nlpService.getRecommendationsForDataset(datasetInfo, datasetRows);
+              setRecommendations(dynamicRecommendations);
+            } catch (recError) {
+              console.error("Error generating recommendations:", recError);
+              // Set default recommendations if custom ones fail
+              setRecommendations([
+                "Show the distribution of values",
+                "What insights can you find?",
+                "Summarize this dataset"
+              ]);
+            }
+          }
+          
+          toast.success(`Dataset loaded: ${datasetRows.length} rows available for analysis`);
+          setDatasetLoadFailed(false);
+          return;
+        }
+      } catch (primaryError) {
+        console.error("Primary data loading method failed:", primaryError);
+      }
+      
+      // Second attempt: Direct database query via queryService
+      try {
+        const directData = await queryService.loadDataset(datasetId);
+        if (directData && Array.isArray(directData) && directData.length > 0) {
+          console.log(`Successfully loaded ${directData.length} rows directly`);
+          setFullData(directData);
+          
+          const analysis = nlpService.analyzeDataset(directData);
+          setDataAnalysis(analysis);
+          
+          toast.success(`Dataset loaded: ${directData.length} rows available for analysis`);
+          setDatasetLoadFailed(false);
+          return;
+        }
+      } catch (directError) {
+        console.error("Direct database query failed:", directError);
+      }
+      
+      // Third attempt: Try to get dataset info and create appropriate sample data
+      if (datasetInfo) {
+        console.log("Generating appropriate sample data based on dataset info");
+        let sampleData = [];
+        
+        // Try to use column schema if available
+        if (datasetInfo.column_schema && Object.keys(datasetInfo.column_schema).length > 0) {
+          sampleData = generateSampleDataFromSchema(datasetInfo.column_schema, 100);
+        } else if (datasetInfo.file_name) {
+          sampleData = generateAppropriateDataFromFilename(datasetInfo.file_name, 100);
+        } else {
+          sampleData = generateGenericSampleData(100);
+        }
+        
+        setFullData(sampleData);
+        const analysis = nlpService.analyzeDataset(sampleData);
+        setDataAnalysis(analysis);
+        
+        toast.warning("Using sample data", {
+          description: "Couldn't load actual dataset. Using generated sample data for analysis."
+        });
+        
+        // Set basic recommendations
+        setRecommendations([
+          "What can you tell me about this data?",
+          "Show a summary of this dataset",
+          "What patterns do you see?",
+          "Create a visualization of the key metrics"
+        ]);
+        
+        setDatasetLoadFailed(true);
+      } else {
+        throw new Error("Failed to load dataset and couldn't generate fallback data");
+      }
+    } catch (error) {
+      console.error("Error loading dataset:", error);
+      setDatasetLoadFailed(true);
+      setRecommendations([
+        "What can you do with datasets?",
+        "How can I upload data?",
+        "Explain how this interface works"
+      ]);
+      
+      toast.error('Failed to load dataset', {
+        description: 'Please try refreshing the page or selecting a different dataset'
+      });
+    } finally {
+      setLoadingState({
+        isLoading: false,
+        message: ''
+      });
+    }
+  };
+
   const handleSendMessage = async (newMessage: string) => {
     if (!datasetId) {
       toast.error('Dataset ID is required');
@@ -232,200 +372,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     toast.info("Downloading visualization...");
   };
 
-  const loadDataset = async () => {
-    if (!datasetId) return;
-
-    setLoadingState({
-      isLoading: true,
-      message: 'Loading dataset...'
-    });
-    setDatasetLoadFailed(false);
-    
-    // Start with default recommendations
-    setRecommendations([
-      "Show me a summary of this data",
-      "What are the main trends?",
-      "Find interesting patterns",
-      "Compare key metrics",
-      "Show data distribution"
-    ]);
-
-    try {
-      // First, get the dataset information
-      const dataset = await dataService.getDataset(datasetId);
-      setDatasetInfo(dataset);
-      
-      if (dataset) {
-        console.log("Dataset info:", dataset);
-        
-        // Use enhanced datasetUtils to get the full dataset with multiple fallback strategies
-        const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
-          showToasts: false, // Don't show toasts during initial load
-          forceRefresh: true, // Force refresh to ensure we get fresh data
-          limitRows: 5000    // Increased limit for better analysis
-        });
-
-        if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
-          setFullData(datasetRows);
-          console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
-          
-          // Analyze the dataset to get better understanding of its structure
-          const analysis = nlpService.analyzeDataset(datasetRows);
-          setDataAnalysis(analysis);
-          console.log("Dataset analysis:", analysis);
-          
-          // Update message to include row count
-          setMessages([{
-            id: uuidv4(),
-            sender: 'ai',
-            content: `I'm analyzing the ${datasetName} dataset with ${datasetRows.length} rows. Ask me anything about it!`,
-            timestamp: new Date()
-          }]);
-          
-          // Generate smart, dynamic recommendations based on actual data structure
-          const dynamicRecommendations = nlpService.getRecommendationsForDataset(dataset, datasetRows);
-          setRecommendations(dynamicRecommendations);
-          console.log("Generated recommendations:", dynamicRecommendations);
-          
-          setLoadingState({
-            isLoading: false,
-            message: ''
-          });
-          
-          return;
-        }
-        
-        // If direct data loading failed, try alternate loading methods
-        console.log("Direct data loading failed, trying to use queryService");
-        const alternateData = await queryService.loadDataset(datasetId);
-        if (alternateData && alternateData.length > 0) {
-          setFullData(alternateData);
-          console.log(`Dataset loaded through queryService: ${alternateData.length} rows`);
-          
-          // Analyze this data too
-          const analysis = nlpService.analyzeDataset(alternateData);
-          setDataAnalysis(analysis);
-          
-          setMessages([{
-            id: uuidv4(),
-            sender: 'ai',
-            content: `I'm analyzing the ${datasetName} dataset with ${alternateData.length} rows. Ask me anything about it!`,
-            timestamp: new Date()
-          }]);
-          
-          // Generate dynamic recommendations
-          const dynamicRecommendations = nlpService.getRecommendationsForDataset(dataset, alternateData);
-          setRecommendations(dynamicRecommendations);
-          
-          setLoadingState({
-            isLoading: false,
-            message: ''
-          });
-          
-          return;
-        }
-      
-        // If all methods failed, generate sample data based on schema or filename
-        if (dataset.column_schema && Object.keys(dataset.column_schema).length > 0) {
-          console.log("Generating sample data based on schema");
-          const schemaSamples = generateSampleDataFromSchema(dataset.column_schema, 1000);
-          setFullData(schemaSamples);
-          
-          // Analyze the generated data
-          const analysis = nlpService.analyzeDataset(schemaSamples);
-          setDataAnalysis(analysis);
-          
-          // Generate recommendations based on schema and generated data
-          const schemaRecommendations = nlpService.getRecommendationsForDataset(dataset, schemaSamples);
-          setRecommendations(schemaRecommendations);
-          
-          setMessages([{
-            id: uuidv4(),
-            sender: 'ai',
-            content: `I'm analyzing the ${datasetName} dataset with sample data. Ask me anything about it!`,
-            timestamp: new Date()
-          }]);
-          
-          toast.warning("Using generated sample data", {
-            description: "The actual dataset could not be loaded"
-          });
-        } else {
-          // No schema available, generate based on filename
-          console.log("Generating appropriate sample data based on filename:", dataset.file_name);
-          const filenameSamples = generateAppropriateDataFromFilename(dataset.file_name || '');
-          setFullData(filenameSamples);
-          
-          // Analyze this generated data
-          const analysis = nlpService.analyzeDataset(filenameSamples);
-          setDataAnalysis(analysis);
-          
-          // Generate recommendations based on filename and generated data
-          const filenameRecommendations = nlpService.getRecommendationsForDataset(dataset, filenameSamples);
-          setRecommendations(filenameRecommendations);
-          
-          toast.warning("Using generated sample data", {
-            description: "The actual dataset could not be loaded"
-          });
-        }
-      } else {
-        throw new Error("Dataset not found");
-      }
-      
-      setLoadingState({
-        isLoading: false,
-        message: ''
-      });
-
-    } catch (error) {
-      console.error('Error loading dataset:', error);
-      setLoadingState({
-        isLoading: false,
-        message: ''
-      });
-      setDatasetLoadFailed(true);
-      
-      // Set a minimal sample dataset for the chat to use
-      const sampleData = generateGenericSampleData(100);
-      setFullData(sampleData);
-      
-      // Still try to generate some recommendations from the generic data
-      const analysis = nlpService.analyzeDataset(sampleData);
-      setDataAnalysis(analysis);
-      const genericRecommendations = [
-        "Show me a summary of this data",
-        "What patterns can you find?",
-        "Compare the main values",
-        "Show the distribution of categories",
-        "Identify any outliers"
-      ];
-      setRecommendations(genericRecommendations);
-      
-      setMessages([{
-        id: uuidv4(),
-        sender: 'ai',
-        content: `I couldn't load the actual dataset, so I'm using sample data. Ask me anything, but be aware that responses will be based on generated data, not your actual dataset.`,
-        timestamp: new Date()
-      }]);
-      
-      toast.error('Could not load dataset', {
-        description: 'Using sample data instead'
-      });
-    }
-  };
-
-  useEffect(() => {
-    loadDataset();
-    
-    // Update dataset name in welcome message if it changes
-    setMessages(prev => [{
-      id: uuidv4(),
-      sender: 'ai',
-      content: `I'm analyzing the ${datasetName} dataset. Ask me anything about it!`,
-      timestamp: new Date()
-    }, ...prev.slice(1)]);
-    
-  }, [datasetId, datasetName]);
-
   const handleModelChange = (model: AIModelType) => {
     setCurrentModel(model);
   };
@@ -434,182 +380,197 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     loadDataset();
   };
   
-  function generateSampleDataFromSchema(schema: Record<string, string>, count: number) {
-    const sampleData = [];
-    const columns = Object.keys(schema);
+  const handleRefresh = async () => {
+    setMessages([{
+      id: uuidv4(),
+      sender: 'ai',
+      content: `Reloading dataset analysis for ${datasetName}...`,
+      timestamp: new Date()
+    }]);
+    setFullData([]);
+    await loadDataset();
+  };
+
+  const generateSampleDataFromSchema = (schema: Record<string, string>, count: number = 100) => {
+    console.log("Generating sample data from schema:", schema);
+    const data = [];
+    const fields = Object.keys(schema);
     
     for (let i = 0; i < count; i++) {
       const row: Record<string, any> = {};
       
-      columns.forEach(column => {
-        const type = schema[column];
+      fields.forEach(field => {
+        const type = schema[field];
         
         switch (type) {
           case 'number':
-            row[column] = Math.floor(Math.random() * 1000);
+            row[field] = Math.floor(Math.random() * 1000);
             break;
           case 'boolean':
-            row[column] = Math.random() > 0.5;
+            row[field] = Math.random() > 0.5;
             break;
           case 'date':
             const date = new Date();
             date.setDate(date.getDate() - Math.floor(Math.random() * 365));
-            row[column] = date.toISOString().split('T')[0];
+            row[field] = date.toISOString().split('T')[0];
             break;
           case 'string':
           default:
-            row[column] = `Sample ${column} ${i + 1}`;
+            row[field] = `Sample ${field} ${i + 1}`;
             break;
         }
       });
       
-      sampleData.push(row);
+      data.push(row);
     }
     
-    return sampleData;
-  }
+    return data;
+  };
   
-  function generateAppropriateDataFromFilename(filename: string, count: number = 1000) {
-    const lowerFilename = filename.toLowerCase();
+  const generateAppropriateDataFromFilename = (fileName: string, count: number = 100) => {
+    console.log("Generating appropriate sample data based on filename:", fileName);
+    const lowerFileName = fileName.toLowerCase();
+    const data = [];
     
-    // Generate electric vehicle data if filename suggests it
-    if (lowerFilename.includes('electric') || lowerFilename.includes('vehicle') || lowerFilename.includes('ev')) {
-      return generateElectricVehicleData(count);
+    if (lowerFileName.includes('vehicle') || lowerFileName.includes('car') || lowerFileName.includes('electric')) {
+      for (let i = 0; i < count; i++) {
+        data.push({
+          'VIN (1-10)': `SAMPLE${i}${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+          'County': ['King', 'Pierce', 'Snohomish', 'Thurston', 'Clark', 'Spokane', 'Whatcom'][i % 7],
+          'City': ['Seattle', 'Tacoma', 'Spokane', 'Bellevue', 'Olympia', 'Vancouver', 'Bellingham'][i % 7],
+          'State': ['WA', 'OR', 'CA', 'ID', 'NY', 'FL', 'TX'][i % 7],
+          'Postal Code': 90000 + Math.floor(Math.random() * 10000),
+          'Model Year': 2014 + (i % 10),
+          'Make': ['Tesla', 'Toyota', 'Ford', 'GM', 'Hyundai', 'Kia', 'Honda'][i % 7],
+          'Model': ['Model 3', 'Leaf', 'F-150', 'Bolt', 'Ioniq', 'Kona', 'Prius'][i % 7],
+          'Electric Vehicle Type': ['BEV', 'PHEV', 'FCEV', 'HEV'][i % 4],
+          'Electric Range': 80 + Math.floor(Math.random() * 320),
+          'Base MSRP': 30000 + Math.floor(Math.random() * 70000),
+          'Legislative District': Math.floor(Math.random() * 49) + 1,
+          'DOL Vehicle ID': 100000 + i
+        });
+      }
+    } else if (lowerFileName.includes('sales') || lowerFileName.includes('revenue')) {
+      for (let i = 0; i < count; i++) {
+        data.push({
+          'id': i + 1,
+          'product': `Product ${i % 10 + 1}`,
+          'category': ['Electronics', 'Clothing', 'Food', 'Books', 'Home'][i % 5],
+          'date': new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
+          'quantity': Math.floor(1 + Math.random() * 50),
+          'price': Math.floor(10 + Math.random() * 990),
+          'revenue': Math.floor(100 + Math.random() * 9900),
+          'region': ['North', 'South', 'East', 'West', 'Central'][i % 5]
+        });
+      }
+    } else {
+      return generateGenericSampleData(count);
     }
     
-    // Generate sales data if filename suggests it
-    if (lowerFilename.includes('sales') || lowerFilename.includes('revenue')) {
-      return generateSalesData(count);
+    return data;
+  };
+  
+  const generateGenericSampleData = (count: number = 100) => {
+    const data = [];
+    for (let i = 0; i < count; i++) {
+      data.push({
+        'id': i + 1,
+        'name': `Item ${i + 1}`,
+        'value': Math.floor(Math.random() * 1000),
+        'category': ['A', 'B', 'C', 'D', 'E'][i % 5],
+        'date': new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
+        'active': i % 3 === 0
+      });
     }
-    
-    // Default to generic sample data
-    return generateGenericSampleData(count);
-  }
-  
-  function generateElectricVehicleData(count: number) {
-    const makes = ['Tesla', 'Nissan', 'Chevrolet', 'Ford', 'BMW', 'Audi', 'Hyundai', 'Kia', 'Volkswagen', 'Toyota'];
-    const models = {
-      'Tesla': ['Model S', 'Model 3', 'Model X', 'Model Y', 'Cybertruck'],
-      'Nissan': ['Leaf', 'Ariya'],
-      'Chevrolet': ['Bolt EV', 'Bolt EUV', 'Silverado EV'],
-      'Ford': ['Mustang Mach-E', 'F-150 Lightning', 'E-Transit'],
-      'BMW': ['i3', 'i4', 'iX'],
-      'Audi': ['e-tron', 'Q4 e-tron', 'e-tron GT'],
-      'Hyundai': ['Kona Electric', 'Ioniq 5', 'Ioniq 6'],
-      'Kia': ['Niro EV', 'EV6', 'EV9'],
-      'Volkswagen': ['ID.4', 'ID. Buzz'],
-      'Toyota': ['bZ4X', 'Prius Prime']
-    };
-    const years = [2018, 2019, 2020, 2021, 2022, 2023, 2024];
-    const vehicleTypes = ['BEV', 'PHEV', 'FCEV'];
-    const states = ['CA', 'WA', 'NY', 'FL', 'TX', 'MA', 'NJ', 'CO', 'OR', 'IL'];
-    
-    return Array.from({ length: count }, (_, i) => {
-      const make = makes[Math.floor(Math.random() * makes.length)];
-      const modelOptions = models[make as keyof typeof models] || models['Tesla'];
-      const model = modelOptions[Math.floor(Math.random() * modelOptions.length)];
-      const vehicleType = vehicleTypes[Math.floor(Math.random() * vehicleTypes.length)];
-      const year = years[Math.floor(Math.random() * years.length)];
-      const range = Math.floor(Math.random() * 300) + 100; // 100-400 miles
-      const msrp = Math.floor(Math.random() * 70000) + 30000; // $30k-$100k
-      const state = states[Math.floor(Math.random() * states.length)];
-      
-      return {
-        VIN: `VIN${i}${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-        Make: make,
-        Model: model,
-        'Model Year': year,
-        'Vehicle Type': vehicleType,
-        'Electric Range': range,
-        MSRP: msrp,
-        State: state,
-        City: `City ${Math.floor(i / 10) + 1}`,
-        'Postal Code': Math.floor(Math.random() * 90000) + 10000,
-        'Clean Alternative Fuel': 'Yes',
-        'Registration Date': `${Math.floor(Math.random() * 12) + 1}/${Math.floor(Math.random() * 28) + 1}/${year}`
-      };
-    });
-  }
-  
-  function generateSalesData(count: number) {
-    const products = ['Widget A', 'Widget B', 'Service C', 'Product D', 'Solution E'];
-    const regions = ['North', 'South', 'East', 'West', 'Central'];
-    const channels = ['Online', 'Retail', 'Direct', 'Partner'];
-    
-    return Array.from({ length: count }, (_, i) => {
-      const date = new Date(2023, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
-      const product = products[Math.floor(Math.random() * products.length)];
-      const region = regions[Math.floor(Math.random() * regions.length)];
-      const channel = channels[Math.floor(Math.random() * channels.length)];
-      const quantity = Math.floor(Math.random() * 100) + 1;
-      const unitPrice = Math.floor(Math.random() * 500) + 10;
-      const revenue = quantity * unitPrice;
-      
-      return {
-        OrderID: `ORD-${10000 + i}`,
-        Date: date.toISOString().split('T')[0],
-        Product: product,
-        Region: region,
-        Channel: channel,
-        Quantity: quantity,
-        UnitPrice: unitPrice,
-        Revenue: revenue,
-        CustomerID: `CUST-${Math.floor(Math.random() * 1000) + 1}`
-      };
-    });
-  }
-  
-  function generateGenericSampleData(rows: number) {
-    return Array.from({ length: rows }, (_, i) => ({
-      id: i + 1,
-      name: `Item ${i + 1}`,
-      value: Math.floor(Math.random() * 1000),
-      category: ['A', 'B', 'C', 'D', 'E'][i % 5],
-      date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
-      active: i % 3 === 0
-    }));
-  }
+    return data;
+  };
 
   return (
-    <div className={`flex flex-col ${hasFullHeightLayout ? 'h-full' : ''}`}>
-      {loadingState.isLoading ? (
-        <Card className="flex items-center justify-center p-6 glass-card h-48 mb-4">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-purple-500" />
-            <p className="text-gray-300">{loadingState.message || 'Loading dataset...'}</p>
-          </div>
-        </Card>
-      ) : datasetLoadFailed ? (
-        <Card className="flex flex-col items-center justify-center p-6 glass-card mb-4">
-          <AlertTriangle className="h-8 w-8 text-amber-500 mb-2" />
-          <h3 className="text-lg font-medium mb-1">Failed to load dataset</h3>
-          <p className="text-gray-300 text-center mb-4">Using sample data for analysis</p>
+    <div className={`flex flex-col w-full ${hasFullHeightLayout ? 'h-full' : 'h-[600px]'} rounded-xl overflow-hidden glass-card`}>
+      <div className="p-4 border-b border-gray-700/30 flex justify-between items-center">
+        <div>
+          <h2 className="text-lg font-medium">{datasetName} Chat</h2>
+          <p className="text-sm text-gray-400">
+            Ask questions about your data to get insights
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ModelSelector 
+            currentModel={currentModel} 
+            setCurrentModel={setCurrentModel} 
+          />
           <Button 
             variant="outline" 
-            className="border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20"
-            onClick={handleRetryLoading}
             size="sm"
+            className="h-8"
+            onClick={handleRefresh}
           >
-            <RefreshCw className="h-4 w-4 mr-1" /> Retry
+            <RefreshCw className="h-3.5 w-3.5 mr-1" />
+            Refresh
           </Button>
-        </Card>
-      ) : null}
-
-      <div className="flex flex-col space-y-4 flex-1">
-        <div className="flex items-center justify-between">
-          <ModelSelector currentModel={currentModel} onModelChange={handleModelChange} />
         </div>
-        
-        <div className="flex-1 flex flex-col min-h-[500px]">
-          <ChatContainer messages={messages} downloadVisualization={handleDownloadVisualization} />
-          <div className="mt-4">
-            <ChatInput 
-              onSendMessage={handleSendMessage} 
-              isLoading={isLoading} 
-              recommendations={recommendations}
-            />
+      </div>
+      
+      <div className="flex-grow overflow-auto bg-gradient-to-b from-gray-900/30 to-gray-900/50">
+        {loadingState.isLoading ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-4">
+            <Loader2 className="h-8 w-8 animate-spin text-purple-400 mb-4" />
+            <h3 className="font-medium text-gray-200">{loadingState.message || 'Loading data...'}</h3>
+            <p className="text-sm text-gray-400 max-w-md mt-1">
+              Preparing your dataset for analysis
+            </p>
           </div>
-        </div>
+        ) : (
+          <ChatContainer 
+            messages={messages}
+            isTyping={isLoading}
+            datasetId={datasetId}
+          />
+        )}
+      </div>
+      
+      <div className="p-4 border-t border-gray-700/30">
+        {datasetLoadFailed ? (
+          <div className="mb-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0" />
+            <div>
+              <p className="text-sm text-yellow-200">
+                Using sample data for analysis. Actual dataset could not be loaded.
+              </p>
+              <Button 
+                variant="link" 
+                size="sm" 
+                className="h-auto p-0 text-yellow-400"
+                onClick={handleRefresh}
+              >
+                Try again
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        
+        {recommendations.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {recommendations.slice(0, 5).map((rec, idx) => (
+              <Button
+                key={idx}
+                variant="outline"
+                size="sm"
+                className="bg-purple-900/20 hover:bg-purple-900/40 text-purple-300 border-purple-700/30"
+                onClick={() => setQuery(rec)}
+              >
+                {rec}
+              </Button>
+            ))}
+          </div>
+        )}
+        
+        <ChatInput 
+          onSendMessage={handleSendMessage}
+          isLoading={isLoading}
+          placeholder="Ask a question about your data..."
+          defaultValue={exampleQuery}
+        />
       </div>
     </div>
   );

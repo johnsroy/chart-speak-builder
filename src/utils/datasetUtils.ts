@@ -89,24 +89,28 @@ export const datasetUtils = {
       
       // Try loading with queryService (handles storage, DB and more)
       console.log("Trying queryService.loadDataset method");
-      loadedData = await queryService.loadDataset(datasetId);
-      
-      if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
-        console.log(`Successfully loaded ${loadedData.length} rows using queryService.loadDataset`);
+      try {
+        loadedData = await queryService.loadDataset(datasetId);
         
-        // Cache result in session storage
-        try {
-          sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(loadedData.slice(0, 1000)));
-          console.log("Dataset cached in session storage");
-        } catch (e) {
-          console.warn("Could not cache dataset:", e);
+        if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
+          console.log(`Successfully loaded ${loadedData.length} rows using queryService.loadDataset`);
+          
+          // Cache result in session storage
+          try {
+            sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(loadedData.slice(0, 1000)));
+            console.log("Dataset cached in session storage");
+          } catch (e) {
+            console.warn("Could not cache dataset:", e);
+          }
+          
+          if (showToasts) {
+            toast.success(`Dataset loaded: ${loadedData.length} rows`);
+          }
+          
+          return loadedData;
         }
-        
-        if (showToasts) {
-          toast.success(`Dataset loaded: ${loadedData.length} rows`);
-        }
-        
-        return loadedData;
+      } catch (queryServiceError) {
+        console.warn("Error with queryService.loadDataset:", queryServiceError);
       }
       
       // Try direct storage access for CSV files - improved to handle file paths better
@@ -114,54 +118,53 @@ export const datasetUtils = {
         try {
           console.log(`Trying direct storage access from ${dataset.storage_type}/${dataset.storage_path}`);
           
-          const { data: fileData, error: storageError } = await supabase.storage
-            .from(dataset.storage_type)
-            .download(dataset.storage_path);
+          // Try with specific error handling for storage issues
+          try {
+            const { data: fileData, error: storageError } = await supabase.storage
+              .from(dataset.storage_type)
+              .download(dataset.storage_path);
+              
+            if (storageError) {
+              console.error("Storage access error:", storageError);
+            } else if (fileData) {
+              // Process the file data
+              const text = await fileData.text();
+              return processCSVText(text, limitRows);
+            }
+          } catch (storageError) {
+            console.error("Error with direct storage access:", storageError);
             
-          if (storageError) {
-            console.error("Storage access error:", storageError);
-          } else if (fileData) {
-            const text = await fileData.text();
-            const rows = text.split('\n');
-            
-            if (rows.length > 1) {
-              const headers = rows[0].split(',').map(h => h.trim());
-              const parsedData = [];
-              
-              // Process up to limitRows rows
-              const maxRows = Math.min(rows.length, limitRows + 1); // +1 for header
-              
-              for (let i = 1; i < maxRows; i++) {
-                if (!rows[i].trim()) continue;
-                
-                const values = rows[i].split(',');
-                const row: Record<string, any> = {};
-                
-                headers.forEach((header, idx) => {
-                  if (header) {
-                    const value = values[idx]?.trim() || '';
-                    // Try to convert numerical values
-                    row[header] = !isNaN(Number(value)) ? Number(value) : value;
-                  }
-                });
-                
-                parsedData.push(row);
-              }
-              
-              console.log(`Successfully parsed ${parsedData.length} rows from direct storage access`);
-              
-              // Cache the result for future use
+            // Fallback for local/test environments - handle test buckets differently
+            if (dataset.storage_type === 'local' || dataset.storage_type === 'test') {
+              // For local development, try an alternative approach with fetch
               try {
-                sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsedData.slice(0, 1000)));
-              } catch (e) {
-                console.warn("Could not cache dataset:", e);
+                console.log("Trying alternative fetch for local storage");
+                const fileUrl = dataset.storage_url || `${window.location.origin}/data/${dataset.file_name}`;
+                const response = await fetch(fileUrl);
+                if (response.ok) {
+                  const text = await response.text();
+                  const parsedData = processCSVText(text, limitRows);
+                  
+                  if (parsedData.length > 0) {
+                    console.log(`Successfully parsed ${parsedData.length} rows from direct fetch`);
+                    
+                    // Cache the result for future use
+                    try {
+                      sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsedData.slice(0, 1000)));
+                    } catch (e) {
+                      console.warn("Could not cache dataset:", e);
+                    }
+                    
+                    if (showToasts) {
+                      toast.success(`Dataset loaded: ${parsedData.length} rows`);
+                    }
+                    
+                    return parsedData;
+                  }
+                }
+              } catch (fetchError) {
+                console.warn("Failed to fetch local file:", fetchError);
               }
-              
-              if (showToasts) {
-                toast.success(`Dataset loaded: ${parsedData.length} rows`);
-              }
-              
-              return parsedData;
             }
           }
         } catch (directAccessError) {
@@ -171,20 +174,23 @@ export const datasetUtils = {
       
       // If the above fails, try dataService.previewDataset as fallback
       console.log("Trying dataService.previewDataset as fallback");
-      loadedData = await dataService.previewDataset(datasetId);
-      
-      if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
-        console.log(`dataService.previewDataset returned ${loadedData.length} rows`);
+      try {
+        loadedData = await dataService.previewDataset(datasetId);
         
-        if (showToasts) {
-          toast.success(`Dataset preview loaded: ${loadedData.length} rows`);
+        if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
+          console.log(`dataService.previewDataset returned ${loadedData.length} rows`);
+          
+          if (showToasts) {
+            toast.success(`Dataset preview loaded: ${loadedData.length} rows`);
+          }
+          
+          return loadedData;
         }
-        
-        return loadedData;
+      } catch (previewError) {
+        console.error("Error with dataService.previewDataset:", previewError);
       }
       
-      // Last resort - file might not actually exist or be accessible
-      // Use dataset info to generate appropriate sample data - only if not prevented
+      // Last resort - use dataset info to generate appropriate sample data - only if not prevented
       if (!preventSampleFallback && dataset) {
         console.log("All data fetching methods failed, generating sample data");
         
@@ -229,6 +235,44 @@ export const datasetUtils = {
     }
   }
 };
+
+/**
+ * Process CSV text into data objects
+ */
+function processCSVText(text: string, limitRows: number = 10000) {
+  if (!text) return [];
+  
+  const rows = text.split('\n');
+  
+  if (rows.length < 2) {
+    return [];
+  }
+  
+  const headers = rows[0].split(',').map(h => h.trim());
+  const parsedData = [];
+  
+  // Process up to limitRows rows
+  const maxRows = Math.min(rows.length, limitRows + 1); // +1 for header
+  
+  for (let i = 1; i < maxRows; i++) {
+    if (!rows[i].trim()) continue;
+    
+    const values = rows[i].split(',');
+    const row: Record<string, any> = {};
+    
+    headers.forEach((header, idx) => {
+      if (header) {
+        const value = values[idx]?.trim() || '';
+        // Try to convert numerical values
+        row[header] = !isNaN(Number(value)) ? Number(value) : value;
+      }
+    });
+    
+    parsedData.push(row);
+  }
+  
+  return parsedData;
+}
 
 /**
  * Generate sample data based on schema
@@ -298,9 +342,7 @@ function generateDatasetSample(fileName: string, schema?: Record<string, string>
         'Base MSRP': 30000 + Math.floor(Math.random() * 70000),
         'Legislative District': Math.floor(Math.random() * 49) + 1,
         'DOL Vehicle ID': 100000 + i,
-        'Vehicle Location': `POINT (-122.${Math.floor(Math.random() * 1000)} 47.${Math.floor(Math.random() * 1000)})`,
-        'Electric Utility': ['Seattle City Light', 'Puget Sound Energy', 'Tacoma Power', 'Snohomish County PUD', 'Clark Public Utilities'][i % 5],
-        'Census Tract 2020': Math.floor(Math.random() * 10000)
+        'Vehicle Location': `POINT (-122.${Math.floor(Math.random() * 1000)} 47.${Math.floor(Math.random() * 1000)})`
       });
     }
     

@@ -265,224 +265,90 @@ export const nlpService = {
     }
   },
   
-  // Enhanced method to generate recommendations based on dataset
-  getRecommendationsForDataset: (dataset: any, sampleData: any[] = []): string[] => {
-    const recommendations: string[] = [];
-    
-    if (!dataset && (!sampleData || sampleData.length === 0)) {
-      return [
-        "Show me a summary of the data",
-        "What are the main trends?",
-        "Compare the key metrics",
-        "What insights can you find?",
-        "Show the distribution of values"
-      ];
-    }
-    
-    // Use actual data to infer schema if available
-    let inferredSchema = {};
-    let columns: string[] = [];
-    let dateColumns: string[] = [];
-    let numericColumns: string[] = [];
-    let categoryColumns: string[] = [];
-    let nameColumns: string[] = [];
-    let locationColumns: string[] = [];
-    
-    // Try to extract schema from dataset object first
-    if (dataset?.column_schema) {
-      inferredSchema = dataset.column_schema;
-      columns = Object.keys(inferredSchema);
-    }
-    
-    // If we have sample data, analyze it to enhance our understanding
-    if (sampleData && sampleData.length > 0) {
-      const sample = sampleData[0];
-      
-      // If we couldn't get columns from schema, get them from sample data
-      if (columns.length === 0) {
-        columns = Object.keys(sample);
+  /**
+   * Generate dataset-specific query recommendations
+   */
+  getRecommendationsForDataset: (dataset, dataRows) => {
+    try {
+      if (!dataset || !dataRows || !Array.isArray(dataRows) || dataRows.length === 0) {
+        // Return fallback recommendations if dataset or data is invalid
+        return [
+          "Show the distribution of values in this dataset",
+          "What are the trends in this dataset?",
+          "Summarize this dataset for me",
+          "What insights can you provide from this data?",
+          "Create a visualization of the key metrics"
+        ];
       }
       
-      // Analyze actual data patterns for better column categorization
+      // Default recommendations
+      const defaultRecommendations = [
+        "Show the distribution of values",
+        "What are the most common categories?",
+        "Find correlations between columns",
+        "Summarize this dataset"
+      ];
+      
+      // Get column names for recommendations
+      const columns = Object.keys(dataRows[0] || {});
+      const recommendations = [];
+      
+      // Check if it's a vehicle-related dataset
+      const isVehicleDataset = dataset.file_name && 
+        typeof dataset.file_name === 'string' && 
+        (dataset.file_name.toLowerCase().includes('vehicle') || 
+         dataset.file_name.toLowerCase().includes('car') || 
+         dataset.file_name.toLowerCase().includes('auto'));
+         
+      // Check if it's a sales dataset
+      const isSalesDataset = dataset.file_name && 
+        typeof dataset.file_name === 'string' && 
+        (dataset.file_name.toLowerCase().includes('sales') || 
+         dataset.file_name.toLowerCase().includes('revenue'));
+      
+      // Add specific recommendations based on dataset type
+      if (isVehicleDataset) {
+        recommendations.push(
+          "Show the distribution of vehicle makes",
+          "Which vehicle model is most common?",
+          "Compare electric vs. non-electric vehicles",
+          "What's the average price by vehicle type?"
+        );
+      } else if (isSalesDataset) {
+        recommendations.push(
+          "Show sales trends over time",
+          "Which product has the highest revenue?",
+          "Compare sales by region",
+          "What's our best selling product?"
+        );
+      }
+      
+      // Add column-specific recommendations
       columns.forEach(column => {
-        const columnLower = column.toLowerCase();
-        const values = sampleData.map(row => row[column]).filter(v => v !== null && v !== undefined);
-        
-        // Detect date columns
-        if (
-          columnLower.includes('date') || 
-          columnLower.includes('time') || 
-          columnLower.includes('year') ||
-          columnLower.includes('month') ||
-          (values.length > 0 && typeof values[0] === 'string' && 
-           values[0].match(/^\d{4}-\d{2}-\d{2}/) || 
-           values[0].match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/))
-        ) {
-          dateColumns.push(column);
+        const lowerColumn = column.toLowerCase();
+        if (lowerColumn.includes('price') || lowerColumn.includes('cost') || lowerColumn.includes('revenue')) {
+          recommendations.push(`What's the average ${column}?`, `Show ${column} distribution`);
         }
-        
-        // Detect numeric columns
-        if (
-          (inferredSchema[column] === 'number') || 
-          columnLower.includes('amount') || 
-          columnLower.includes('price') ||
-          columnLower.includes('cost') ||
-          columnLower.includes('value') ||
-          columnLower.includes('total') ||
-          columnLower.includes('count') ||
-          columnLower.includes('qty') ||
-          columnLower.includes('rate') ||
-          columnLower.includes('score') ||
-          (values.length > 0 && typeof values[0] === 'number')
-        ) {
-          numericColumns.push(column);
+        else if (lowerColumn.includes('date') || lowerColumn.includes('year')) {
+          recommendations.push(`Show trends over ${column}`);
         }
-        
-        // Detect category columns
-        if (
-          columnLower.includes('category') || 
-          columnLower.includes('type') ||
-          columnLower.includes('status') ||
-          columnLower.includes('segment') ||
-          columnLower.includes('group') ||
-          columnLower.includes('class') ||
-          columnLower.includes('department')
-        ) {
-          categoryColumns.push(column);
-        }
-        
-        // Detect name/entity columns
-        if (
-          columnLower.includes('name') || 
-          columnLower.includes('product') ||
-          columnLower.includes('item') ||
-          columnLower.includes('brand') ||
-          columnLower.includes('company') ||
-          columnLower.includes('title')
-        ) {
-          nameColumns.push(column);
-        }
-        
-        // Detect location columns
-        if (
-          columnLower.includes('region') ||
-          columnLower.includes('country') ||
-          columnLower.includes('state') ||
-          columnLower.includes('city') ||
-          columnLower.includes('location') ||
-          columnLower.includes('address') ||
-          columnLower.includes('postal') ||
-          columnLower.includes('zip')
-        ) {
-          locationColumns.push(column);
+        else if (lowerColumn.includes('type') || lowerColumn.includes('category')) {
+          recommendations.push(`Show distribution by ${column}`);
         }
       });
-    }
-    
-    // Generate recommendations based on file content and detected columns
-    const fileName = dataset?.file_name?.toLowerCase() || '';
-    const datasetName = dataset?.name || 'dataset';
-    
-    // Add general recommendations that work for most datasets
-    recommendations.push("Show me a summary of this data");
-    
-    // Add date-based recommendations if date columns exist
-    if (dateColumns.length > 0 && numericColumns.length > 0) {
-      const dateCol = dateColumns[0];
-      const numCol = numericColumns[0];
-      recommendations.push(`Show ${numCol} trends over time`);
-      recommendations.push(`How has ${numCol} changed over time?`);
       
-      // Add more complex time-based analysis if multiple metrics exist
-      if (numericColumns.length > 1) {
-        recommendations.push(`Compare ${numericColumns[0]} and ${numericColumns[1]} over time`);
-      }
-    }
-    
-    // Add category-based recommendations
-    if (categoryColumns.length > 0 && numericColumns.length > 0) {
-      const catCol = categoryColumns[0];
-      const numCol = numericColumns[0];
-      recommendations.push(`Compare ${numCol} by ${catCol}`);
-      recommendations.push(`What's the distribution of ${catCol}?`);
-    } else if (locationColumns.length > 0 && numericColumns.length > 0) {
-      // Geographic analysis if we have location data
-      const locCol = locationColumns[0];
-      const numCol = numericColumns[0];
-      recommendations.push(`Compare ${numCol} by ${locCol}`);
-      recommendations.push(`Show the top ${locCol} by ${numCol}`);
-    }
-    
-    // Add relationship recommendations if multiple numeric columns
-    if (numericColumns.length > 1) {
-      recommendations.push(`What's the relationship between ${numericColumns[0]} and ${numericColumns[1]}?`);
-    }
-    
-    // Add entity-specific recommendations if we have name columns
-    if (nameColumns.length > 0 && numericColumns.length > 0) {
-      const nameCol = nameColumns[0];
-      const numCol = numericColumns[0];
-      recommendations.push(`Show me the top ${nameCol} by ${numCol}`);
-      recommendations.push(`Which ${nameCol} has the highest ${numCol}?`);
-    }
-    
-    // Add dataset-type specific recommendations based on filename
-    if (fileName.includes('sales')) {
-      recommendations.push("What are the top selling products?");
-      recommendations.push("Show monthly sales trends");
-      recommendations.push("Which product category performs best?");
-    } else if (fileName.includes('customer')) {
-      recommendations.push("Show customer distribution by region");
-      recommendations.push("What's the average customer spending?");
-      recommendations.push("Identify customer segments by behavior");
-    } else if (fileName.includes('finance') || fileName.includes('financial')) {
-      recommendations.push("Show income vs. expenses");
-      recommendations.push("What's the profit margin trend?");
-      recommendations.push("Analyze quarterly revenue growth");
-    } else if (fileName.includes('survey') || fileName.includes('feedback')) {
-      recommendations.push("What's the response distribution?");
-      recommendations.push("Show satisfaction ratings");
-      recommendations.push("Compare feedback across categories");
-    } else if (fileName.includes('inventory') || fileName.includes('stock')) {
-      recommendations.push("Which products have low stock?");
-      recommendations.push("Show inventory turnover rate");
-      recommendations.push("Identify seasonal inventory patterns");
-    } else if (fileName.includes('employee') || fileName.includes('hr')) {
-      recommendations.push("Show employee distribution by department");
-      recommendations.push("Compare performance across teams");
-      recommendations.push("Analyze retention trends");
-    }
-    
-    // For specific column patterns, add specialized recommendations
-    if (columns.some(col => col.toLowerCase().includes('score') || col.toLowerCase().includes('rating'))) {
-      recommendations.push("What factors influence the ratings?");
-      recommendations.push("Show the distribution of scores");
-    }
-    
-    if (columns.some(col => col.toLowerCase().includes('age'))) {
-      recommendations.push("Analyze data by age groups");
-    }
-    
-    // Ensure we have enough recommendations
-    while (recommendations.length < 5) {
-      const genericRecommendations = [
-        "Find patterns in the data",
-        "Identify outliers",
-        "Show key trends",
-        "Compare important metrics",
-        "Create a summary dashboard",
-        "What insights can you find?",
-        "Visualize the main dimensions"
+      // Return a mix of specific and default recommendations
+      return [...recommendations, ...defaultRecommendations].slice(0, 7);
+    } catch (error) {
+      console.error("Error generating recommendations:", error);
+      return [
+        "Analyze this dataset",
+        "Show key insights",
+        "Create a summary visualization",
+        "What patterns can you find?",
+        "Show distribution of values"
       ];
-      
-      // Add a random generic recommendation that's not already included
-      const newRec = genericRecommendations.find(rec => !recommendations.includes(rec));
-      if (newRec) recommendations.push(newRec);
-      else break; // Avoid infinite loop if we run out
     }
-    
-    // Return a set of unique recommendations (up to 5)
-    return [...new Set(recommendations)].slice(0, 5);
   },
   
   // Calculate percentage change
@@ -501,21 +367,21 @@ export const nlpService = {
   },
   
   // Helper function to analyze dataset and extract key information
-  analyzeDataset: (data: any[]): Record<string, any> => {
-    if (!data || data.length === 0) {
+  analyzeDataset: (dataRows) => {
+    if (!dataRows || dataRows.length === 0) {
       return {};
     }
     
     const analysis: Record<string, any> = {
-      rowCount: data.length,
+      rowCount: dataRows.length,
       columns: []
     };
     
-    const sample = data[0];
+    const sample = dataRows[0];
     const columns = Object.keys(sample);
     
     columns.forEach(column => {
-      const values = data.map(row => row[column]).filter(v => v !== null && v !== undefined);
+      const values = dataRows.map(row => row[column]).filter(v => v !== null && v !== undefined);
       const uniqueValues = [...new Set(values)];
       
       const columnInfo: any = {
@@ -542,7 +408,7 @@ export const nlpService = {
         )
       )) {
         columnInfo.type = 'date';
-      } else if (uniqueValues.length <= Math.min(10, data.length * 0.2)) {
+      } else if (uniqueValues.length <= Math.min(10, dataRows.length * 0.2)) {
         columnInfo.type = 'category';
         columnInfo.categories = uniqueValues.slice(0, 10);
       } else {
