@@ -4,9 +4,8 @@ import {
   BarChart,
   LineChart,
   PieChart,
-  ScatterPlot,
+  CircleDot, // Replace ScatterPlot with CircleDot
   ArrowUpDown,
-  CircleDot,
   CircleDashed,
   Layers,
   TableIcon,

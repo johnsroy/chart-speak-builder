@@ -1,340 +1,486 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
-import { 
-  BrainCircuit, 
-  Database, 
-  Loader2, 
-  Search, 
-  ChevronRight, 
-  ArrowRight,
-  UploadCloud,
-  MessageSquare,
-  BarChart,
-  PieChart,
-  LineChart,
-  RefreshCw,
-  Zap
-} from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import ChartVisualization from '@/components/ChartVisualization';
 import { dataService } from '@/services/dataService';
+import { queryService } from '@/services/queryService';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { Loader2, ChevronLeft, Database, BarChart, LineChart, PieChart, Table as TableIcon, Download, Share2, BrainCircuit, MessageSquare, Home, RefreshCcw } from 'lucide-react';
+import { toast } from "sonner";
 import AIQueryPanel from '@/components/AIQueryPanel';
 import EnhancedVisualization from '@/components/EnhancedVisualization';
-import { nlpService } from '@/services/nlpService';
 import { QueryResult } from '@/services/types/queryTypes';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
+import DatasetChatInterface from '@/components/DatasetChatInterface';
+import DataTable from '@/components/DataTable';
+import { formatByteSize } from '@/utils/storageUtils';
+import { supabase } from '@/lib/supabase';
+import { datasetUtils } from '@/utils/datasetUtils';
+import ChartTypeSelector from '@/components/visualization/ChartTypeSelector';
+import { ChartType } from '@/utils/chartSuggestionUtils';
 
-const AnalyzePage = () => {
-  const { datasetId } = useParams<{ datasetId: string }>();
-  const [datasets, setDatasets] = useState<any[]>([]);
-  const [uniqueDatasets, setUniqueDatasets] = useState<any[]>([]);
-  const [selectedDataset, setSelectedDataset] = useState<any>(null);
+const Visualize = () => {
+  const { datasetId } = useParams<{ datasetId: string; }>();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const viewFromUrl = queryParams.get('view');
+  
+  const [dataset, setDataset] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [queryText, setQueryText] = useState('');
-  const [isQuerying, setIsQuerying] = useState(false);
-  const [recommendations, setRecommendations] = useState<string[]>([]);
-  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<'chat' | 'explore'>(
+    viewFromUrl === 'chat' ? 'chat' : 'explore'
+  );
+  const [exampleQuery, setExampleQuery] = useState('');
+  const [dataPreview, setDataPreview] = useState<any[] | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [activeChartType, setActiveChartType] = useState<ChartType>(
+    viewFromUrl === 'bar' ? 'bar' : 
+    viewFromUrl === 'line' ? 'line' : 
+    viewFromUrl === 'pie' ? 'pie' :
+    viewFromUrl === 'scatter' ? 'scatter' :
+    viewFromUrl === 'area' ? 'area' :
+    viewFromUrl === 'column' ? 'column' :
+    viewFromUrl === 'donut' ? 'donut' :
+    viewFromUrl === 'stacked' ? 'stacked' :
+    'table'
+  );
+  const [loadAttempts, setLoadAttempts] = useState(0);
+  const maxRetries = 5;
+  const [chartHeight, setChartHeight] = useState(500);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
+  // Detect container size and adjust chart height
   useEffect(() => {
-    const fetchDatasets = async () => {
+    if (chartContainerRef.current) {
+      const updateChartSize = () => {
+        const containerWidth = chartContainerRef.current?.clientWidth || 0;
+        const calculatedHeight = Math.max(500, Math.min(800, containerWidth * 0.6));
+        setChartHeight(calculatedHeight);
+      };
+      
+      updateChartSize();
+      window.addEventListener('resize', updateChartSize);
+      
+      return () => {
+        window.removeEventListener('resize', updateChartSize);
+      };
+    }
+  }, [activeTab, activeChartType]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    
+    if (activeTab !== 'explore') {
+      params.set('view', activeTab);
+    } else if (activeChartType !== 'table') {
+      params.set('view', activeChartType);
+    } else {
+      params.set('view', 'table');
+    }
+    
+    const newUrl = `${location.pathname}?${params.toString()}`;
+      
+    window.history.replaceState({}, '', newUrl);
+  }, [activeTab, activeChartType, location.pathname]);
+
+  useEffect(() => {
+    if (viewFromUrl === 'table') {
+      setActiveChartType('table');
+      setActiveTab('explore');
+    } else if (['bar', 'line', 'pie', 'scatter', 'area', 'column', 'donut', 'stacked'].includes(viewFromUrl as string)) {
+      setActiveChartType(viewFromUrl as ChartType);
+      setActiveTab('explore');
+    } else if (viewFromUrl === 'chat') {
+      setActiveTab('chat');
+    }
+  }, [viewFromUrl]);
+
+  useEffect(() => {
+    const loadDataset = async () => {
+      if (!datasetId) {
+        toast.error("No dataset ID provided");
+        navigate('/dashboard');
+        return;
+      }
+      
       setIsLoading(true);
+      setError(null);
+      
       try {
-        const result = await dataService.getDatasets();
-        const datasetsArray = Array.isArray(result) ? result : [];
-        setDatasets(datasetsArray);
+        console.log(`Loading dataset with ID: ${datasetId}, attempt ${loadAttempts + 1}`);
+        const datasetData = await dataService.getDataset(datasetId);
         
-        const uniqueData = getUniqueDatasetsByFilename(datasetsArray);
-        setUniqueDatasets(uniqueData);
-        
-        if (datasetId && uniqueData.length > 0) {
-          const dataset = uniqueData.find(d => d.id === datasetId);
-          if (dataset) {
-            setSelectedDataset(dataset);
-            const recs = nlpService.getRecommendationsForDataset(dataset);
-            setRecommendations(recs);
-          }
+        if (!datasetData) {
+          throw new Error("Dataset not found");
         }
+        
+        console.log("Dataset loaded:", datasetData);
+        setDataset(datasetData);
+        
+        loadDataPreview(datasetId);
       } catch (error) {
-        console.error('Error fetching datasets:', error);
-        toast({
-          title: "Error loading datasets",
-          description: "Could not load your datasets. Please try again later.",
-          variant: "destructive",
-        });
+        console.error('Error loading dataset:', error);
+        setError(error instanceof Error ? error.message : "Failed to load dataset");
+        
+        if (loadAttempts < maxRetries) {
+          console.log(`Retrying dataset load, attempt ${loadAttempts + 1} of ${maxRetries}`);
+          setLoadAttempts(prev => prev + 1);
+          
+          setTimeout(() => {
+            loadDataset();
+          }, 1000 * (loadAttempts + 1));
+          return;
+        }
+        
+        toast.error("Failed to load dataset");
       } finally {
         setIsLoading(false);
       }
     };
-
-    fetchDatasets();
-  }, [datasetId, toast]);
-
-  const handleDatasetSelect = (dataset: any) => {
-    setSelectedDataset(dataset);
-    setQueryResult(null);
-    const recs = nlpService.getRecommendationsForDataset(dataset);
-    setRecommendations(recs);
-    navigate(`/analyze/${dataset.id}`);
+    
+    if (datasetId && loadAttempts < maxRetries) {
+      loadDataset();
+    }
+  }, [datasetId, navigate, loadAttempts]);
+  
+  const loadDataPreview = async (datasetId: string) => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    
+    try {
+      console.log("Loading full dataset using enhanced datasetUtils");
+      
+      const fullData = await datasetUtils.loadDatasetContent(datasetId, {
+        showToasts: true,
+        limitRows: 10000
+      });
+      
+      if (fullData && Array.isArray(fullData) && fullData.length > 0) {
+        console.log(`Successfully loaded ${fullData.length} rows using datasetUtils`);
+        setDataPreview(fullData);
+        
+        if (fullData.length < 100) {
+          toast.warning(`Limited dataset: Only ${fullData.length} rows available`, {
+            description: "This may be a sample or preview dataset"
+          });
+        } else {
+          toast.success(`Dataset loaded: ${fullData.length} rows`, {
+            description: "Full dataset available for analysis"
+          });
+        }
+      } else {
+        throw new Error("No data returned from datasetUtils");
+      }
+    } catch (error) {
+      console.error('Error loading data preview:', error);
+      setPreviewError('Failed to load data preview');
+      toast.error("Failed to load dataset data", {
+        description: "Using generated sample data instead"
+      });
+      
+      if (dataset) {
+        console.log("Generating fallback data from schema");
+        const sampleData = generateFallbackDataFromFilename(dataset?.file_name || '');
+        setDataPreview(sampleData);
+      }
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+  
+  const generateFallbackDataFromFilename = (filename: string) => {
+    console.log("Generating fallback data based on filename:", filename);
+    const lowerFilename = filename.toLowerCase();
+    let sampleData = [];
+    const rows = 50;
+    
+    if (lowerFilename.includes('vehicle') || lowerFilename.includes('car') || lowerFilename.includes('auto')) {
+      sampleData = Array.from({ length: rows }, (_, i) => ({
+        id: i + 1,
+        make: ['Toyota', 'Honda', 'Ford', 'Tesla', 'BMW', 'Mercedes', 'Audi'][i % 7],
+        model: ['Model 3', 'Corolla', 'F-150', 'Civic', 'X5', 'E-Class'][i % 6],
+        year: 2015 + (i % 8),
+        price: Math.floor(20000 + Math.random() * 50000),
+        color: ['Black', 'White', 'Red', 'Blue', 'Silver', 'Gray'][i % 6],
+        electric: [true, false, false, false, true][i % 5],
+        mileage: Math.floor(Math.random() * 100000)
+      }));
+    } else if (lowerFilename.includes('sales') || lowerFilename.includes('revenue')) {
+      sampleData = Array.from({ length: rows }, (_, i) => ({
+        id: i + 1,
+        product: `Product ${i % 10 + 1}`,
+        category: ['Electronics', 'Clothing', 'Food', 'Books', 'Home'][i % 5],
+        date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
+        quantity: Math.floor(1 + Math.random() * 50),
+        price: Math.floor(10 + Math.random() * 990),
+        revenue: Math.floor(100 + Math.random() * 9900),
+        region: ['North', 'South', 'East', 'West', 'Central'][i % 5]
+      }));
+    } else if (lowerFilename.includes('survey') || lowerFilename.includes('feedback')) {
+      sampleData = Array.from({ length: rows }, (_, i) => ({
+        id: i + 1,
+        question: `Survey Question ${i % 5 + 1}`,
+        response: ['Strongly Agree', 'Agree', 'Neutral', 'Disagree', 'Strongly Disagree'][i % 5],
+        age_group: ['18-24', '25-34', '35-44', '45-54', '55+'][i % 5],
+        gender: ['Male', 'Female', 'Non-binary', 'Prefer not to say'][i % 4],
+        date_submitted: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0]
+      }));
+    } else {
+      sampleData = Array.from({ length: rows }, (_, i) => ({
+        id: i + 1,
+        name: `Item ${i + 1}`,
+        value: Math.floor(Math.random() * 1000),
+        category: ['A', 'B', 'C', 'D', 'E'][i % 5],
+        date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
+        active: i % 3 === 0
+      }));
+    }
+    
+    console.log("Generated generic fallback data:", sampleData.length, "rows");
+    return sampleData;
   };
 
-  const handleQuerySubmit = async () => {
-    if (!selectedDataset || !queryText.trim()) return;
+  const handleQueryResult = (result: QueryResult) => {
+    setQueryResult(result);
+  };
 
-    setIsQuerying(true);
-    try {
-      const result = await nlpService.processQuery(queryText, selectedDataset.id, "default");
-      setQueryResult(result);
-    } catch (error) {
-      console.error('Error processing query:', error);
-      toast({
-        title: "Query Error",
-        description: error instanceof Error ? error.message : "An error occurred processing your query",
-        variant: "destructive",
-      });
-    } finally {
-      setIsQuerying(false);
+  const handleDownload = () => {
+    if (dataPreview && dataPreview.length > 0) {
+      try {
+        const headers = Object.keys(dataPreview[0]);
+        const csvContent = [
+          headers.join(','),
+          ...dataPreview.map(row => headers.map(header => JSON.stringify(row[header] || '')).join(','))
+        ].join('\n');
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${dataset?.name || 'dataset'}.csv`);
+        document.body.appendChild(link);
+        
+        link.click();
+        link.parentNode?.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        toast.success("Dataset downloaded successfully");
+      } catch (error) {
+        console.error("Download error:", error);
+        toast.error("Failed to download dataset");
+      }
+    } else {
+      toast.error("No data available to download");
     }
   };
 
-  const handleRecommendationClick = (recommendation: string) => {
-    setQueryText(recommendation);
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success("Visualization link copied to clipboard");
   };
 
-  const handleTryAnotherQuery = () => {
-    setQueryResult(null);
+  const setQuery = (query: string) => {
+    setExampleQuery(query);
+    toast.info(`Selected example query: "${query}"`);
+  };
+  
+  const handleRetry = () => {
+    setError(null);
+    setLoadAttempts(0);
   };
 
-  const renderChartIcon = () => {
-    if (!queryResult) return <BarChart className="h-16 w-16 mx-auto mb-4 text-purple-400" />;
-    
-    const chartType = queryResult.chartType || queryResult.chart_type;
-    
-    switch (chartType) {
-      case 'pie':
-        return <PieChart className="h-16 w-16 mx-auto mb-4 text-purple-400" />;
-      case 'line':
-        return <LineChart className="h-16 w-16 mx-auto mb-4 text-purple-400" />;
-      default:
-        return <BarChart className="h-16 w-16 mx-auto mb-4 text-purple-400" />;
+  const handleRefreshData = async () => {
+    if (datasetId) {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      
+      try {
+        console.log("Manually refreshing data preview");
+        
+        const data = await datasetUtils.loadDatasetContent(datasetId, {
+          showToasts: true,
+          forceRefresh: true
+        });
+        
+        if (data && Array.isArray(data) && data.length > 0) {
+          setDataPreview(data);
+          toast.success(`Data refreshed: ${data.length} rows loaded`);
+        } else {
+          throw new Error('No data returned during refresh');
+        }
+      } catch (error) {
+        console.error('Error refreshing data:', error);
+        toast.error('Failed to refresh data');
+        setPreviewError('Failed to refresh data preview');
+      } finally {
+        setPreviewLoading(false);
+      }
     }
   };
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 text-gradient">AI-Powered Analysis</h1>
-        <p className="text-gray-300 max-w-3xl">
-          Ask questions about your data in natural language and get instant insights and visualizations
-        </p>
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center items-center py-16">
-          <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
-        </div>
-      ) : uniqueDatasets.length === 0 ? (
-        <Card className="glass-card p-8 text-center">
-          <Database className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-          <CardTitle className="text-xl mb-2">No Datasets Found</CardTitle>
-          <p className="text-gray-400 mb-6">
-            You need to upload a dataset before you can analyze it.
-          </p>
-          <Button onClick={() => navigate('/upload')} className="purple-gradient">
-            <UploadCloud className="mr-2 h-4 w-4" />
-            Upload Dataset
+    <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
+      <div className="container mx-auto py-8">
+        <div className="flex items-center gap-4 mb-6">
+          <Button 
+            variant="ghost" 
+            className="flex items-center text-gray-300 hover:text-white" 
+            onClick={() => navigate('/dashboard')}
+          >
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
           </Button>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-1">
-            <Card className="glass-card">
-              <CardHeader>
-                <CardTitle className="text-lg">Your Datasets</CardTitle>
-                <CardDescription>Select a dataset to analyze</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                {uniqueDatasets.map(dataset => (
-                  <Button
-                    key={dataset.id}
-                    variant="ghost"
-                    className={`w-full justify-start text-left h-auto py-3 ${selectedDataset?.id === dataset.id ? 'bg-purple-900/50 border-l-4 border-purple-500' : 'hover:bg-gray-800/50'}`}
-                    onClick={() => handleDatasetSelect(dataset)}
-                  >
-                    <div className="flex items-center">
-                      <Database className="h-4 w-4 mr-2 flex-shrink-0" />
-                      <div className="overflow-hidden">
-                        <div className="font-medium truncate">{dataset.name}</div>
-                        <div className="text-xs text-gray-400 truncate">{dataset.file_name}</div>
-                      </div>
-                    </div>
-                  </Button>
-                ))}
+          
+          <Button 
+            variant="ghost" 
+            className="flex items-center text-gray-300 hover:text-white" 
+            asChild
+          >
+            <Link to="/upload">
+              <Home className="mr-2 h-4 w-4" />
+              Home
+            </Link>
+          </Button>
+        </div>
+        
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
+          </div>
+        ) : error ? (
+          <div className="glass-card p-12 text-center">
+            <Database className="h-16 w-16 mx-auto mb-4 text-red-400" />
+            <h2 className="text-2xl font-medium mb-2">Dataset Error</h2>
+            <p className="text-red-300 mb-6">{error}</p>
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <Button 
+                onClick={handleRetry}
+                variant="outline"
+                className="bg-red-900/20 hover:bg-red-900/30 text-white border-red-500/40"
+              >
+                Retry Loading
+              </Button>
+              <Button onClick={() => navigate('/dashboard')}>
+                Return to Dashboard
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => navigate('/upload')}
+              >
+                Upload New Dataset
+              </Button>
+            </div>
+          </div>
+        ) : dataset ? (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gradient">{dataset.name}</h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-gray-300">{dataset.file_name}</p>
+                  <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/40">
+                    {formatByteSize(dataset.file_size)}
+                  </Badge>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 mt-4 md:mt-0">
                 <Button 
                   variant="outline" 
-                  onClick={() => navigate('/upload')}
-                  className="w-full mt-4 border-purple-500/30 hover:bg-purple-500/20"
+                  size="sm" 
+                  onClick={handleRefreshData} 
+                  className="flex items-center gap-2"
+                  disabled={previewLoading}
                 >
-                  <UploadCloud className="h-4 w-4 mr-2" />
-                  Upload New Dataset
+                  {previewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                  Refresh Data
                 </Button>
-              </CardContent>
-            </Card>
-          </div>
-          
-          <div className="lg:col-span-3">
-            {selectedDataset ? (
-              <>
-                <Card className="glass-card mb-6">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BrainCircuit className="h-5 w-5 text-purple-400" />
-                      Ask a Question About "{selectedDataset.name}"
-                    </CardTitle>
-                    <CardDescription>
-                      Use natural language to query your data and generate insights
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex gap-2 mb-4">
-                      <Input
-                        value={queryText}
-                        onChange={e => setQueryText(e.target.value)}
-                        placeholder="e.g., Show me total sales by region as a bar chart"
-                        className="bg-black/30 border-purple-500/30 focus:border-purple-500"
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleQuerySubmit();
-                        }}
-                      />
-                      <Button 
-                        onClick={handleQuerySubmit}
-                        disabled={isQuerying || !queryText.trim()}
-                        className="purple-gradient"
-                      >
-                        {isQuerying ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : (
-                          <Search className="h-4 w-4 mr-2" />
-                        )}
-                        Analyze
-                      </Button>
-                    </div>
-                    
-                    <div className="mt-2">
-                      <p className="text-sm text-gray-400 mb-2">Suggested questions:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {recommendations.map((rec, idx) => (
-                          <Badge 
-                            key={idx}
-                            variant="outline" 
-                            className="cursor-pointer bg-purple-900/20 hover:bg-purple-900/40 transition-colors"
-                            onClick={() => handleRecommendationClick(rec)}
-                          >
-                            {rec}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {isQuerying ? (
-                  <div className="flex flex-col justify-center items-center py-12 glass-card p-6 rounded-xl">
-                    <div className="relative">
-                      <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
-                      <div className="absolute -top-2 -right-2">
-                        <div className="animate-ping bg-green-500 rounded-full h-3 w-3"></div>
-                      </div>
-                    </div>
-                    <p className="text-gray-300 mt-4 font-medium">Analyzing your data...</p>
-                    <p className="text-gray-400 text-sm mt-2">Generating insights using AI</p>
-                  </div>
-                ) : queryResult ? (
-                  <div className="space-y-6 animate-fadeIn">
-                    <Card className="glass-card overflow-hidden border-purple-500/20">
-                      <CardHeader className="bg-purple-900/20">
-                        <CardTitle className="flex items-center text-xl">
-                          <Zap className="h-5 w-5 mr-2 text-purple-400" />
-                          Analysis Result 
-                          <Badge variant="outline" className="ml-3 bg-purple-900/50 border-purple-500/50">
-                            {queryResult.chartType || queryResult.chart_type || 'Visualization'}
-                          </Badge>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="pt-6">
-                        <EnhancedVisualization 
-                          result={queryResult} 
-                          height={400} 
-                          showTitle={false}
-                          className="bg-transparent border-0 shadow-none"
-                        />
-                      </CardContent>
-                      <CardFooter className="flex justify-between border-t border-gray-800 pt-4">
-                        <Button 
-                          variant="outline" 
-                          onClick={handleTryAnotherQuery}
-                          className="border-purple-500/30 hover:bg-purple-500/20"
-                        >
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          Try Another Query
-                        </Button>
-                        <Button
-                          onClick={() => navigate(`/visualize/${selectedDataset.id}?query=${encodeURIComponent(queryText)}`)}
-                          className="bg-purple-700 hover:bg-purple-600"
-                        >
-                          Advanced Visualization <ChevronRight className="ml-1 h-4 w-4" />
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  </div>
+                <Button variant="outline" size="sm" onClick={handleDownload} className="flex items-center gap-2 bg-violet-900 hover:bg-violet-800">
+                  <Download className="h-4 w-4" />
+                  Download
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleShare} className="flex items-center gap-2 bg-violet-800 hover:bg-violet-700">
+                  <Share2 className="h-4 w-4" />
+                  Share
+                </Button>
+              </div>
+            </div>
+            
+            <Tabs 
+              defaultValue={activeTab} 
+              value={activeTab}
+              onValueChange={value => setActiveTab(value as 'chat' | 'explore')} 
+              className="space-y-4"
+            >
+              <TabsList className="grid grid-cols-2 w-full max-w-md mx-auto">
+                <TabsTrigger value="chat" className="flex items-center justify-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Talk to me
+                </TabsTrigger>
+                <TabsTrigger value="explore" className="flex items-center justify-center gap-2">
+                  <BarChart className="h-4 w-4" />
+                  Explore
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="chat" className="space-y-6">
+                <DatasetChatInterface datasetId={datasetId!} datasetName={dataset.name} />
+              </TabsContent>
+              
+              <TabsContent value="explore">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-semibold">Choose Visualization Type</h2>
+                  <ChartTypeSelector 
+                    selectedChartType={activeChartType} 
+                    onChartTypeChange={setActiveChartType}
+                    availableChartTypes={['bar', 'line', 'pie', 'scatter', 'area', 'column', 'donut', 'stacked', 'table']} 
+                  />
+                </div>
+                
+                {activeChartType === 'table' ? (
+                  <DataTable 
+                    datasetId={datasetId}
+                    dataset={dataset}
+                    data={dataPreview} 
+                    loading={previewLoading} 
+                    error={previewError} 
+                    title={`${dataset.name} - Data Preview`}
+                    onRefresh={handleRefreshData}
+                  />
                 ) : (
-                  <div className="glass-card p-8 text-center rounded-xl">
-                    {renderChartIcon()}
-                    <h3 className="text-xl font-medium mb-2">AI-Powered Data Analysis</h3>
-                    <p className="text-gray-300 mb-6 max-w-lg mx-auto">
-                      Ask questions about your data in natural language and GenBI will generate visualizations and insights automatically.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
-                      <div className="glass-container p-4 rounded-lg hover:bg-purple-900/20 transition-colors cursor-pointer"
-                          onClick={() => setQueryText("Show me sales trends over time")}>
-                        <MessageSquare className="h-5 w-5 mb-2 text-purple-400" />
-                        <p className="text-sm">"Show me sales trends over time"</p>
-                      </div>
-                      <div className="glass-container p-4 rounded-lg hover:bg-purple-900/20 transition-colors cursor-pointer"
-                          onClick={() => setQueryText("Compare revenue by region as a bar chart")}>
-                        <BarChart className="h-5 w-5 mb-2 text-purple-400" />
-                        <p className="text-sm">"Compare revenue by region as a bar chart"</p>
-                      </div>
-                      <div className="glass-container p-4 rounded-lg hover:bg-purple-900/20 transition-colors cursor-pointer"
-                          onClick={() => setQueryText("What are the main factors affecting customer satisfaction?")}>
-                        <BrainCircuit className="h-5 w-5 mb-2 text-purple-400" />
-                        <p className="text-sm">"What are the main factors affecting customer satisfaction?"</p>
-                      </div>
-                    </div>
+                  <div 
+                    ref={chartContainerRef}
+                    className="glass-card p-6 rounded-xl overflow-hidden"
+                    style={{
+                      minHeight: '500px',
+                      height: `${chartHeight}px`
+                    }}
+                  >
+                    <ChartVisualization 
+                      datasetId={datasetId!} 
+                      chartType={activeChartType}
+                      data={dataPreview}
+                      useDirectAccess={true}
+                      heightClass={`h-[${chartHeight - 40}px]`}
+                      className="w-full h-full"
+                    />
                   </div>
                 )}
-              </>
-            ) : (
-              <Card className="glass-card p-8 text-center">
-                <Database className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-                <CardTitle className="text-xl mb-2">Select a Dataset</CardTitle>
-                <p className="text-gray-400 mb-6">
-                  Choose a dataset from the sidebar to start analyzing it with AI
-                </p>
-                <div className="flex justify-center">
-                  <ArrowRight className="h-8 w-8 text-gray-500 animate-pulse" />
-                </div>
-              </Card>
-            )}
+              </TabsContent>
+            </Tabs>
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   );
 };
 
-export default AnalyzePage;
+export default Visualize;

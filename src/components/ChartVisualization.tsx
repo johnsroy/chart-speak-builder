@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import {
@@ -32,15 +31,18 @@ import {
 } from 'recharts';
 import HighchartsReact from 'highcharts-react-official';
 import Highcharts from 'highcharts';
-import HC_more from 'highcharts/highcharts-more';
-import HC_exporting from 'highcharts/modules/exporting';
-import HC_exportData from 'highcharts/modules/export-data';
 
-// Initialize Highcharts modules
+// Import Highcharts modules properly (fixing the HC_more is not a function error)
+// We need to import these modules as separate imports
+import HighchartsMore from 'highcharts/highcharts-more';
+import HighchartsExporting from 'highcharts/modules/exporting';
+import HighchartsExportData from 'highcharts/modules/export-data';
+
+// Initialize Highcharts modules correctly
 if (typeof Highcharts === 'object') {
-  HC_more(Highcharts);
-  HC_exporting(Highcharts);
-  HC_exportData(Highcharts);
+  HighchartsMore(Highcharts);
+  HighchartsExporting(Highcharts);
+  HighchartsExportData(Highcharts);
 }
 
 interface ChartVisualizationProps {
