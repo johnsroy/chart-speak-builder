@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Message, VisualizationType } from './chat/types';
-import { ChartVisualization } from './ChartVisualization';
+import ChartVisualization from './ChartVisualization';
 import { cn } from '@/lib/utils';
 import { Card } from './ui/card';
 import { Separator } from './ui/separator';
@@ -51,6 +51,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => {
                     chartType={message.visualizationType as any}
                     data={message.result.data || []}
                     className="w-full h-full"
+                    datasetId={message.result.dataset_id || ""}
                   />
                 </div>
               </div>

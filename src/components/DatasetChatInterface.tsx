@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent } from "@/components/ui/card";
-import { ChatBubble } from './ChatBubble';
+import { ChatBubble } from '@/components/ChatBubble';
 import { dataService } from '@/services/dataService';
 import { Message, AIModelType, VisualizationType } from './chat/types';
 import { useAuth } from '@/hooks/useAuth';
