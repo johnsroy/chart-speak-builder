@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -8,6 +9,7 @@ import ChatContainer from './chat/ChatContainer';
 import ModelSelector from './chat/ModelSelector';
 import ChatInput from './chat/ChatInput';
 import { AIModelType, Message } from './chat/types';
+import { QueryResult } from '@/services/types/queryTypes';
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatUtils } from './chat/ChatUtils';
@@ -18,7 +20,7 @@ import { nlpService } from '@/services/nlpService';
 interface DatasetChatInterfaceProps {
   datasetId: string;
   datasetName?: string;
-  onVisualizationChange?: (vizData: AIQueryResponse) => void;
+  onVisualizationChange?: (vizData: QueryResult) => void;
   hasFullHeightLayout?: boolean;
 }
 
