@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -49,27 +50,45 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
         console.warn("Exception when getting dataset info:", infoErr);
       }
       
-      // Step 2: Use the force_delete_queries SQL function to clean up related data
+      // Step 2: Call the Edge Function to delete related queries and visualizations
       try {
-        console.log("Using SQL function to delete related queries and visualizations...");
-        const { error: rpcError } = await supabase.rpc('force_delete_queries', {
-          dataset_id_param: datasetId
+        console.log("Calling Edge Function to delete related queries and visualizations...");
+        const { data, error } = await supabase.functions.invoke('force-delete-queries', {
+          body: { dataset_id: datasetId }
         });
         
-        if (rpcError) {
-          console.warn("SQL function call failed:", rpcError);
-          throw new Error(`RPC error: ${rpcError.message}`);
+        if (error) {
+          console.warn("Edge function call failed:", error);
+          throw new Error(`Edge function error: ${error.message}`);
         }
         
-        console.log("Successfully executed force_delete_queries function");
+        console.log("Edge function response:", data);
         
         // Wait to ensure database processes deletion
         await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (fnError) {
-        console.error("Error executing SQL function:", fnError);
-        toast.error("Error deleting related data. Please try again.");
-        setIsDeleting(false);
-        return;
+        console.error("Error calling Edge Function:", fnError);
+        
+        // Fallback: Try using the SQL function
+        try {
+          console.log("Using SQL function as fallback...");
+          const { error: rpcError } = await supabase.rpc('force_delete_queries', {
+            dataset_id_param: datasetId
+          });
+          
+          if (rpcError) {
+            console.warn("SQL function call failed:", rpcError);
+            throw new Error(`RPC error: ${rpcError.message}`);
+          }
+          
+          console.log("Successfully executed force_delete_queries function");
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (sqlError) {
+          console.error("Error executing SQL function:", sqlError);
+          toast.error("Error deleting related data. Please try again.");
+          setIsDeleting(false);
+          return;
+        }
       }
       
       // Step 3: Verify all queries are deleted before proceeding
