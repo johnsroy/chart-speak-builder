@@ -92,7 +92,9 @@ const AnalyzePage = () => {
 
     setIsQuerying(true);
     try {
-      const result = await nlpService.processQuery(queryText, selectedDataset.id);
+      // Fix the processQuery call by adding the required 'model' parameter
+      // The function expects 3-4 parameters: query, datasetId, model, and optionally data
+      const result = await nlpService.processQuery(queryText, selectedDataset.id, 'basic');
       setQueryResult(result);
     } catch (error) {
       console.error('Error processing query:', error);
