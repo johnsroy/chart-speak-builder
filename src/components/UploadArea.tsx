@@ -34,6 +34,7 @@ const UploadArea = () => {
     showVisualizeAfterUpload,
     showRedirectDialog,
     showOverwriteConfirm,
+    overwriteInProgress,
     setDatasetName,
     setDatasetDescription,
     setShowVisualizeAfterUpload,
@@ -280,6 +281,7 @@ const UploadArea = () => {
         showOverwriteConfirm={showOverwriteConfirm}
         handleOverwriteConfirm={handleOverwriteConfirmClick}
         handleOverwriteCancel={handleOverwriteCancel}
+        overwriteInProgress={overwriteInProgress}
       />
 
       <StorageConnectionDialog

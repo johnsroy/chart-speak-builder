@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { TabsContent } from '@/components/ui/tabs';
 import FileUploadArea from './FileUploadArea';
@@ -47,6 +46,7 @@ interface UploadTabContentProps {
   showOverwriteConfirm: boolean;
   handleOverwriteConfirm: () => void;
   handleOverwriteCancel: () => void;
+  overwriteInProgress?: boolean;
 }
 
 const UploadTabContent: React.FC<UploadTabContentProps> = ({
@@ -80,7 +80,8 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
   setSelectedStorage,
   showOverwriteConfirm,
   handleOverwriteConfirm,
-  handleOverwriteCancel
+  handleOverwriteCancel,
+  overwriteInProgress = false
 }) => {
   return (
     <div className="glass-container p-6 rounded-lg">
@@ -106,6 +107,7 @@ const UploadTabContent: React.FC<UploadTabContentProps> = ({
             showOverwriteConfirm={showOverwriteConfirm}
             handleOverwriteConfirm={handleOverwriteConfirm}
             handleOverwriteCancel={handleOverwriteCancel}
+            overwriteInProgress={overwriteInProgress}
           />
           
           {selectedFile && (

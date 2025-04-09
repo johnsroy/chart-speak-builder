@@ -92,12 +92,6 @@ export const useFileUpload = () => {
       
       const existingWithSameName = datasets.find(d => d.file_name === file.name);
       if (existingWithSameName) {
-        toast({
-          title: "File already exists",
-          description: "A file with the same name already exists. You can upload it with a new name or overwrite the existing file.",
-          variant: "warning"
-        });
-        
         // Show overwrite confirmation immediately
         setDatasetToOverwrite(existingWithSameName.id);
         setShowOverwriteConfirm(true);
@@ -119,11 +113,6 @@ export const useFileUpload = () => {
       }
       
       previewSchemaInference(file);
-      
-      toast({
-        title: "File received",
-        description: `Selected: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`
-      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
@@ -339,23 +328,23 @@ export const useFileUpload = () => {
         // Show redirect dialog
         setShowRedirectDialog(true);
         
-        // Show success toast
-        sonnerToast.success("Upload complete!", {
-          description: "Your dataset was successfully uploaded.",
-          action: {
-            label: "View Dataset",
-            onClick: () => window.location.href = `/visualize/${dataset.id}?view=table`,
-          },
-        });
+        // Show success toast - only if not overwriting
+        if (!overwriteInProgress) {
+          sonnerToast.success("Upload complete!", {
+            description: "Your dataset was successfully uploaded.",
+            action: {
+              label: "View Dataset",
+              onClick: () => window.location.href = `/visualize/${dataset.id}?view=table`,
+            },
+          });
+        }
         
         // Dispatch events
-        console.log("Dispatching dataset-upload-success event with dataset ID:", dataset.id);
         const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
           detail: { datasetId: dataset.id }
         });
         window.dispatchEvent(uploadSuccessEvent);
         
-        console.log("Dispatching upload:success event with dataset ID:", dataset.id);
         const uploadEvent = new CustomEvent('upload:success', {
           detail: { datasetId: dataset.id }
         });
@@ -368,11 +357,13 @@ export const useFileUpload = () => {
         setUploadError(error instanceof Error ? error.message : "Failed to upload dataset");
         setOverwriteInProgress(false);
         
-        toast({
-          title: "Upload issue",
-          description: error instanceof Error ? error.message : "Failed to upload dataset",
-          variant: "destructive"
-        });
+        if (!overwriteInProgress) {
+          toast({
+            title: "Upload issue",
+            description: error instanceof Error ? error.message : "Failed to upload dataset",
+            variant: "destructive"
+          });
+        }
       } finally {
         clearInterval(progressInterval);
         setIsUploading(false);
@@ -392,7 +383,7 @@ export const useFileUpload = () => {
   };
 
   /**
-   * Handles overwriting an existing file with improved reliability
+   * Handles overwriting an existing file with improved reliability and reduced notifications
    */
   const handleOverwriteConfirm = async (isAuthenticated: boolean, userId: string) => {
     if (!selectedFile) {
@@ -407,48 +398,42 @@ export const useFileUpload = () => {
 
     setShowOverwriteConfirm(false);
     setOverwriteInProgress(true);
+    setUploadProgress(5); // Start with slight progress indication
     
     if (datasetToOverwrite) {
       try {
         // Use system account for overwrite
-        const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984'; // Known valid user ID from auth logs
+        const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984'; 
         
-        // Try a series of progressive approaches to delete the dataset
+        // Show a single toast for the overwrite process
+        const toastId = sonnerToast.loading("Processing file replacement...", {
+          id: "overwrite-process",
+          duration: 10000, // Long duration to ensure it stays visible
+        });
+        
         try {
           console.log("Attempting to delete dataset:", datasetToOverwrite);
           
           // First approach: Try standard deletion
           await dataService.deleteDataset(datasetToOverwrite);
-          sonnerToast("Previous version deleted", {
-            description: "Previous version of the file has been deleted"
-          });
+          setUploadProgress(30);
         } catch (deleteError) {
           console.error('Error deleting existing dataset:', deleteError);
           
-          // Try to delete all related visualizations first
+          // Try fallback approaches without showing additional notifications
           try {
             console.log("Attempting to delete related visualizations");
             await supabase
               .from('visualizations')
               .delete()
               .eq('query_id', datasetToOverwrite);
-          } catch (visDeleteError) {
-            console.warn("Error deleting related visualizations:", visDeleteError);
-          }
-          
-          // Try to delete all related queries first
-          try {
+              
             console.log("Attempting to delete related queries");
             await supabase
               .from('queries')
               .delete()
               .eq('dataset_id', datasetToOverwrite);
-          } catch (queryDeleteError) {
-            console.warn("Error deleting related queries:", queryDeleteError);
-          }
-          
-          // Second approach: Try direct deletion of dataset record
-          try {
+              
             console.log("Attempting direct dataset deletion as fallback");
             const { error } = await supabase
               .from('datasets')
@@ -457,25 +442,18 @@ export const useFileUpload = () => {
               
             if (error) {
               console.error("Direct deletion failed:", error);
-              throw error;
-            } else {
-              sonnerToast("Previous version removed", {
-                description: "Previous dataset record has been removed"
-              });
             }
-          } catch (directDeleteError) {
-            console.error("Direct deletion also failed:", directDeleteError);
             
-            // If all deletion approaches fail, allow overwriting anyway
-            console.log("Proceeding with upload despite deletion failure");
-            sonnerToast.warning("Proceeding with upload", {
-              description: "Creating new version of the dataset"
-            });
+            setUploadProgress(30);
+          } catch (cascadeDeleteError) {
+            console.error("Cascade deletion failed:", cascadeDeleteError);
+            setUploadProgress(20); // Lower progress since deletion had issues
           }
         }
         
         // Wait a moment to ensure deletion completes
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        setUploadProgress(40);
         
         // Verify that we still have the selected file before proceeding
         if (!selectedFile) {
@@ -483,39 +461,80 @@ export const useFileUpload = () => {
         }
         
         // Now upload the new dataset
-        await handleUpload(isAuthenticated, systemUserId);
+        try {
+          // Upload without showing additional notifications
+          const dataset = await performUpload(
+            selectedFile,
+            datasetName,
+            datasetDescription || undefined,
+            systemUserId,
+            (progress) => {
+              // Scale progress from 40-95% for upload phase
+              setUploadProgress(40 + (progress * 0.55));
+            }
+          );
+          
+          // Update toast to success
+          sonnerToast.success("File replaced successfully", {
+            id: toastId,
+            description: "Your dataset was successfully updated.",
+            action: {
+              label: "View Dataset",
+              onClick: () => window.location.href = `/visualize/${dataset.id}?view=table`,
+            },
+          });
+          
+          // Update state with upload results
+          setUploadedDatasetId(dataset.id);
+          setShowVisualizeAfterUpload(true);
+          
+          // Store dataset ID in session storage for immediate access
+          sessionStorage.setItem('last_uploaded_dataset', dataset.id);
+          
+          // Reset form
+          setSelectedFile(null);
+          setDatasetName('');
+          setDatasetDescription('');
+          setSchemaPreview(null);
+          
+          // Dispatch events
+          const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
+            detail: { datasetId: dataset.id }
+          });
+          window.dispatchEvent(uploadSuccessEvent);
+          
+          const uploadEvent = new CustomEvent('upload:success', {
+            detail: { datasetId: dataset.id }
+          });
+          window.dispatchEvent(uploadEvent);
+          
+          setUploadProgress(100);
+          
+          // Reset overwrite state at the end of successful operation
+          setTimeout(() => {
+            setOverwriteInProgress(false);
+            setDatasetToOverwrite(null);
+          }, 500);
+          
+        } catch (uploadError) {
+          console.error("Upload phase failed:", uploadError);
+          sonnerToast.error("Replacement failed", {
+            id: toastId,
+            description: "There was an error uploading the new file.",
+          });
+          throw uploadError;
+        }
+        
       } catch (error) {
         console.error('Error during overwrite operation:', error);
         
-        toast({
-          title: "Overwrite failed",
-          description: error instanceof Error ? error.message : "Failed to replace dataset. Proceeding with upload as a new file.",
-          variant: "warning"
+        // Show single error notification
+        sonnerToast.error("File replacement failed", {
+          id: "overwrite-process", 
+          description: "Could not replace the existing file. Please try again."
         });
         
-        // Proceed with upload anyway but as a new file with a timestamp suffix
-        if (selectedFile && datasetName) {
-          const timestamp = Date.now();
-          const newName = `${datasetName}_${timestamp}`;
-          setDatasetName(newName);
-          
-          try {
-            // Use system account for upload
-            const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
-            
-            // Wait a moment before attempting new upload
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            await handleUpload(isAuthenticated, systemUserId);
-          } catch (uploadError) {
-            console.error("Fallback upload also failed:", uploadError);
-            toast({
-              title: "Upload failed",
-              description: "Could not upload file. Please try again.",
-              variant: "destructive"
-            });
-          }
-        }
-        
+        setUploadProgress(0);
         setOverwriteInProgress(false);
         setDatasetToOverwrite(null);
       }
@@ -537,6 +556,15 @@ export const useFileUpload = () => {
    * Retries a failed upload with improved reliability
    */
   const retryUpload = (isAuthenticated: boolean, userId: string) => {
+    if (!selectedFile) {
+      toast({
+        title: "No file selected",
+        description: "Please select a file before retrying",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setUploadError(null);
     setOverwriteInProgress(false);
     
@@ -572,6 +600,7 @@ export const useFileUpload = () => {
     handleOverwriteConfirm,
     handleOverwriteCancel,
     verifyStorageBucket: verifyStorageBuckets,
-    createStorageBucketIfNeeded: setupStorageBuckets
+    createStorageBucketIfNeeded: setupStorageBuckets,
+    overwriteInProgress,
   };
 };

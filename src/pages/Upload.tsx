@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import UserDatasetLibrary from '@/components/upload/UserDatasetLibrary';
 import UploadTabContent from '@/components/upload/UploadTabContent';
@@ -13,7 +12,6 @@ const Upload = () => {
   const [selectedStorage, setSelectedStorage] = useState<string | null>(null);
   const [bucketStatus, setBucketStatus] = useState<'checking' | 'ready' | 'error'>('checking');
   
-  // Get file upload functionality
   const {
     dragActive,
     selectedFile,
@@ -27,6 +25,7 @@ const Upload = () => {
     showVisualizeAfterUpload,
     showRedirectDialog,
     showOverwriteConfirm,
+    overwriteInProgress,
     setDatasetName,
     setDatasetDescription,
     setShowVisualizeAfterUpload,
@@ -42,7 +41,6 @@ const Upload = () => {
     createStorageBucketIfNeeded
   } = useFileUpload();
 
-  // Get dataset library functionality
   const {
     datasets,
     selectedDatasetId,
@@ -51,7 +49,6 @@ const Upload = () => {
     loadDatasets
   } = useDatasets();
 
-  // Check and create storage buckets if needed
   useEffect(() => {
     const checkAndCreateBuckets = async () => {
       try {
@@ -66,7 +63,6 @@ const Upload = () => {
             setBucketStatus('ready');
           } else {
             console.warn("Storage initialization failed but continuing");
-            // We'll continue anyway, as the backend handles fallback mechanisms
             setBucketStatus('ready');
           }
         } else {
@@ -75,7 +71,6 @@ const Upload = () => {
         }
       } catch (error) {
         console.error("Error checking storage buckets:", error);
-        // Continue anyway with storage error state
         setBucketStatus('error');
       }
     };
@@ -83,7 +78,6 @@ const Upload = () => {
     checkAndCreateBuckets();
   }, []);
 
-  // Function to handle the upload action
   const handleUploadAction = async () => {
     try {
       if (!selectedFile) {
@@ -99,7 +93,6 @@ const Upload = () => {
         });
       }
 
-      // Use system account ID for upload
       const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
       await handleUpload(true, systemUserId);
       loadDatasets();
@@ -111,7 +104,6 @@ const Upload = () => {
     }
   };
 
-  // Function to handle retry
   const handleRetryAction = () => {
     try {
       if (!selectedFile) {
@@ -121,7 +113,6 @@ const Upload = () => {
         return;
       }
 
-      // Use system account ID for upload
       const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
       retryUpload(true, systemUserId);
     } catch (error) {
@@ -132,7 +123,6 @@ const Upload = () => {
     }
   };
 
-  // Function to handle overwrite confirmation
   const handleOverwriteConfirmAction = () => {
     try {
       if (!selectedFile) {
@@ -143,7 +133,6 @@ const Upload = () => {
         return;
       }
 
-      // Use system account ID for upload
       const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
       handleOverwriteConfirm(true, systemUserId);
     } catch (error) {
@@ -211,6 +200,7 @@ const Upload = () => {
                 showOverwriteConfirm={showOverwriteConfirm}
                 handleOverwriteConfirm={handleOverwriteConfirmAction}
                 handleOverwriteCancel={handleOverwriteCancel}
+                overwriteInProgress={overwriteInProgress}
               />
             </TabsContent>
             

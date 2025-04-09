@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { Upload, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Upload, AlertTriangle, AlertCircle, Loader2, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { 
@@ -34,6 +34,7 @@ interface FileUploadAreaProps {
   showOverwriteConfirm?: boolean;
   handleOverwriteConfirm?: () => void;
   handleOverwriteCancel?: () => void;
+  overwriteInProgress?: boolean;
 }
 
 const FileUploadArea: React.FC<FileUploadAreaProps> = ({
@@ -55,7 +56,8 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   uploadedDatasetId,
   showOverwriteConfirm = false,
   handleOverwriteConfirm = () => {},
-  handleOverwriteCancel = () => {}
+  handleOverwriteCancel = () => {},
+  overwriteInProgress = false
 }) => {
   // Dispatch custom event when upload is successful
   useEffect(() => {
@@ -69,17 +71,20 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
     }
   }, [uploadedDatasetId]);
 
+  // Determine if any operation is in progress that should disable UI
+  const operationInProgress = isUploading || overwriteInProgress;
+
   return (
     <div className="glass-card p-6">
       <h2 className="text-xl font-medium mb-4 text-left">Upload File</h2>
       
       <div 
-        className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center h-64 transition-colors cursor-pointer ${dragActive ? 'border-primary bg-primary/5' : 'border-gray-300'}`} 
-        onDragEnter={handleDrag} 
-        onDragLeave={handleDrag} 
-        onDragOver={handleDrag} 
-        onDrop={handleDrop} 
-        onClick={() => document.getElementById('fileInput')?.click()}
+        className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center h-64 transition-colors ${operationInProgress ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'} ${dragActive ? 'border-primary bg-primary/5' : 'border-gray-300'}`} 
+        onDragEnter={operationInProgress ? undefined : handleDrag} 
+        onDragLeave={operationInProgress ? undefined : handleDrag} 
+        onDragOver={operationInProgress ? undefined : handleDrag} 
+        onDrop={operationInProgress ? undefined : handleDrop} 
+        onClick={() => !operationInProgress && document.getElementById('fileInput')?.click()}
       >
         <div className="p-4 bg-secondary rounded-full mb-4">
           <Upload className="h-6 w-6 text-primary" />
@@ -94,19 +99,19 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
           className="hidden" 
           onChange={handleFileInput} 
           accept=".csv,.xlsx,.xls,.json" 
-          disabled={isUploading}
+          disabled={operationInProgress}
         />
         <Button 
           size="sm" 
           variant="outline" 
           className="font-bold bg-violet-900 hover:bg-violet-800"
-          disabled={isUploading}
+          disabled={operationInProgress}
         >
           <Upload className="h-4 w-4 mr-2" /> Browse Files
         </Button>
       </div>
       
-      {uploadError && (
+      {uploadError && !operationInProgress && (
         <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-md p-4">
           <h3 className="flex items-center text-red-400 font-medium">
             <AlertTriangle className="h-4 w-4 mr-2" /> 
@@ -118,7 +123,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
               variant="outline" 
               size="sm" 
               onClick={retryUpload}
-              disabled={isUploading}
+              disabled={operationInProgress}
             >
               Try Again
             </Button>
@@ -136,7 +141,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
               onChange={e => setDatasetName(e.target.value)} 
               className="w-full px-3 py-2 rounded-md border bg-black/70 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" 
               placeholder="Enter dataset name" 
-              disabled={isUploading}
+              disabled={operationInProgress}
             />
           </div>
           
@@ -148,7 +153,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
               className="w-full px-3 py-2 rounded-md border bg-black/70 backdrop-blur-sm border-white/20 focus:outline-none focus:ring-2 focus:ring-primary" 
               placeholder="Enter dataset description" 
               rows={3}
-              disabled={isUploading}
+              disabled={operationInProgress}
             />
           </div>
           
@@ -176,10 +181,12 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
             </div>
           )}
           
-          {isUploading && (
+          {operationInProgress && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
-                <span>Uploading...</span>
+                <span>
+                  {overwriteInProgress ? 'Processing overwrite...' : 'Uploading...'}
+                </span>
                 <span>{uploadProgress}%</span>
               </div>
               <Progress value={uploadProgress} className="h-1" />
@@ -188,15 +195,22 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
           
           <Button 
             onClick={handleUpload} 
-            disabled={isUploading || !datasetName.trim()} 
+            disabled={operationInProgress || !datasetName.trim()} 
             className="w-full purple-gradient"
           >
-            {isUploading ? 'Uploading...' : 'Upload Dataset'}
+            {operationInProgress ? (
+              <span className="flex items-center">
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {overwriteInProgress ? 'Processing Overwrite...' : 'Uploading...'}
+              </span>
+            ) : (
+              'Upload Dataset'
+            )}
           </Button>
         </div>
       )}
 
-      <AlertDialog open={showOverwriteConfirm} onOpenChange={() => {}} >
+      <AlertDialog open={showOverwriteConfirm} onOpenChange={() => {}}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -221,6 +235,18 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      
+      {overwriteInProgress && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center z-50 animate-fadeIn">
+          <div className="glass-card max-w-md w-full p-8 rounded-lg flex flex-col items-center">
+            <Loader2 className="h-12 w-12 text-purple-400 animate-spin mb-4" />
+            <h3 className="text-xl font-bold mb-2">Processing File Overwrite</h3>
+            <p className="text-center mb-6">Please wait while we process your file replacement...</p>
+            <Progress value={uploadProgress} className="h-2 w-full" />
+            <p className="text-sm text-white/70 mt-2">{uploadProgress}% complete</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
