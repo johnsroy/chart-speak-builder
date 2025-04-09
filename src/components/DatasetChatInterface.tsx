@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -94,7 +93,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           // Fetch dataset info to generate sample data
           const dataset = await dataService.getDataset(datasetId);
           if (dataset && dataset.file_name) {
-            const sampleData = generateSampleDataFromFilename(dataset.file_name, 1000);
+            const sampleData = generateAppropriateDataFromFilename(dataset.file_name, 1000);
             setFullData(sampleData);
             toast.info("Using generated sample data for analysis");
           } else {
@@ -186,7 +185,6 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     }
   };
 
-  // Mock function to handle visualization download - we'll add proper implementation later
   const handleDownloadVisualization = () => {
     toast.info("Downloading visualization...");
   };
@@ -363,21 +361,21 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     return sampleData;
   };
   
-  const generateAppropriateDataFromFilename = (filename: string) => {
+  const generateAppropriateDataFromFilename = (filename: string, count: number = 1000) => {
     const lowerFilename = filename.toLowerCase();
     
     // Generate electric vehicle data if filename suggests it
     if (lowerFilename.includes('electric') || lowerFilename.includes('vehicle') || lowerFilename.includes('ev')) {
-      return generateElectricVehicleData(1000);
+      return generateElectricVehicleData(count);
     }
     
     // Generate sales data if filename suggests it
     if (lowerFilename.includes('sales') || lowerFilename.includes('revenue')) {
-      return generateSalesData(1000);
+      return generateSalesData(count);
     }
     
     // Default to generic sample data
-    return generateGenericSampleData(1000);
+    return generateGenericSampleData(count);
   };
   
   const generateElectricVehicleData = (count: number) => {
