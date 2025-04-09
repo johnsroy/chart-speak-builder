@@ -210,12 +210,9 @@ export const calculateAccurateStorageStats = (datasets: Dataset[]): StorageStats
  */
 export const formatByteSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
-  
-  const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
 };
 
 /**
@@ -223,36 +220,44 @@ export const formatByteSize = (bytes: number): string => {
  * @param datasets Array of all datasets
  * @returns Array of unique datasets (latest version of each file)
  */
-export const getUniqueDatasetsByFilename = (datasets: Dataset[]): Dataset[] => {
-  const fileMap = new Map<string, Dataset>();
+export const getUniqueDatasetsByFilename = (datasets: any[]): any[] => {
+  if (!datasets || !Array.isArray(datasets) || datasets.length === 0) {
+    return [];
+  }
   
-  if (!Array.isArray(datasets)) return [];
+  // Create a Map with file_name as the key and the latest dataset as the value
+  const uniqueDatasets = new Map();
   
-  datasets.forEach(dataset => {
-    if (!dataset || !dataset.file_name) return;
-    
-    const existing = fileMap.get(dataset.file_name);
-    
-    // Keep the dataset with the most recent updated_at timestamp
-    if (!existing || new Date(dataset.updated_at || '') > new Date(existing.updated_at || '')) {
-      fileMap.set(dataset.file_name, dataset);
-    }
+  // Sort datasets by date (newest first) before processing
+  const sortedDatasets = [...datasets].sort((a, b) => {
+    const dateA = new Date(a.updated_at || a.created_at || 0).getTime();
+    const dateB = new Date(b.updated_at || b.created_at || 0).getTime();
+    return dateB - dateA; // newest first
   });
   
-  return Array.from(fileMap.values());
+  // For each dataset, only keep the latest one with the same file_name
+  for (const dataset of sortedDatasets) {
+    if (dataset && dataset.file_name && !uniqueDatasets.has(dataset.file_name)) {
+      uniqueDatasets.set(dataset.file_name, dataset);
+    }
+  }
+  
+  // Convert Map values back to an array
+  return Array.from(uniqueDatasets.values());
 };
 
 /**
  * Calls the storage-manager edge function
  * @param action The action to call
+ * @param options Additional options for the request
  * @returns Promise resolving to the function result
  */
-export const callStorageManager = async (action: string): Promise<any> => {
+export const callStorageManager = async (action: string, options: any = {}) => {
   try {
     console.log(`Calling storage manager: ${action}`);
     
     // Prepare the request body with proper JSON
-    const body = { action };
+    const body = { action, ...options };
     
     // Make the request to the edge function with proper headers
     const { data, error } = await supabase.functions.invoke('storage-manager', {

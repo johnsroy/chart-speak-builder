@@ -7,6 +7,7 @@ import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
 
 export const useDatasets = () => {
   const [datasets, setDatasets] = useState<any[]>([]);
+  const [uniqueDatasets, setUniqueDatasets] = useState<any[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -19,17 +20,19 @@ export const useDatasets = () => {
     try {
       // Get all datasets
       const data = await dataService.getDatasets();
-      setDatasets(data);
-
+      
       // Get unique datasets (latest version of each file)
-      const uniqueDatasets = getUniqueDatasetsByFilename(data);
+      const filtered = getUniqueDatasetsByFilename(data);
+      
+      setDatasets(data);
+      setUniqueDatasets(filtered);
 
       // Select the first dataset by default if available and none is selected
-      if (uniqueDatasets.length > 0 && !selectedDatasetId) {
-        setSelectedDatasetId(uniqueDatasets[0].id);
-      } else if (selectedDatasetId && !uniqueDatasets.find(d => d.id === selectedDatasetId)) {
+      if (filtered.length > 0 && !selectedDatasetId) {
+        setSelectedDatasetId(filtered[0].id);
+      } else if (selectedDatasetId && !filtered.find(d => d.id === selectedDatasetId)) {
         // If the currently selected dataset was deleted, select the first one
-        setSelectedDatasetId(uniqueDatasets.length > 0 ? uniqueDatasets[0].id : null);
+        setSelectedDatasetId(filtered.length > 0 ? filtered[0].id : null);
       }
     } catch (error) {
       console.error('Error loading datasets:', error);
@@ -64,6 +67,10 @@ export const useDatasets = () => {
         prevDatasets.filter(dataset => dataset.id !== event.detail?.datasetId)
       );
       
+      setUniqueDatasets(prevDatasets => 
+        prevDatasets.filter(dataset => dataset.id !== event.detail?.datasetId)
+      );
+      
       // Also reload datasets to ensure we have the latest data
       // This ensures the state is fully consistent with the backend
       loadDatasets();
@@ -93,7 +100,8 @@ export const useDatasets = () => {
   }, [selectedDatasetId, loadDatasets]);
 
   return {
-    datasets,
+    datasets: uniqueDatasets, // Return only unique datasets by default
+    allDatasets: datasets, // Keep all datasets accessible if needed
     selectedDatasetId,
     setSelectedDatasetId,
     isLoading,

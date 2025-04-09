@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { Database, Loader2, BarChart2, Eye, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Database, Loader2, BarChart2, Eye, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { dataService } from '@/services/dataService';
 import { useNavigate } from 'react-router-dom';
 import { Dataset } from '@/services/types/datasetTypes';
+import { toast } from 'sonner';
+import DeleteDatasetDialog from '@/components/upload/DeleteDatasetDialog';
 
 interface UserDatasetLibraryProps {
   datasets: Dataset[];
@@ -23,14 +25,11 @@ const UserDatasetLibrary: React.FC<UserDatasetLibraryProps> = ({
   setSelectedDatasetId,
   onVisualizeClick
 }) => {
-  const { toast } = useToast();
+  const { toast: uiToast } = useToast();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
-
-  const loadDatasets = async () => {
-    // This function is kept for compatibility but we're now using props
-    // Current implementation is managed by the parent component
-  };
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
 
   const handleViewDataset = (datasetId: string) => {
     if (onVisualizeClick) {
@@ -41,25 +40,23 @@ const UserDatasetLibrary: React.FC<UserDatasetLibraryProps> = ({
     }
   };
 
-  const handleDeleteDataset = async (datasetId: string) => {
-    try {
-      await dataService.deleteDataset(datasetId);
-      toast({
-        title: 'Success',
-        description: 'Dataset deleted successfully',
-      });
-      
-      // Dispatch event to refresh datasets in parent components
-      const deleteEvent = new CustomEvent('dataset-deleted');
-      window.dispatchEvent(deleteEvent);
-    } catch (err) {
-      console.error('Failed to delete dataset:', err);
-      toast({
-        title: 'Error',
-        description: 'Failed to delete dataset',
-        variant: 'destructive',
-      });
-    }
+  const handleDeleteClick = (dataset: Dataset) => {
+    setDatasetToDelete({
+      id: dataset.id,
+      name: dataset.name || dataset.file_name
+    });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDatasetDeleted = () => {
+    // Dispatch an event to refresh datasets in parent components
+    const deleteEvent = new CustomEvent('dataset-deleted', {
+      detail: { datasetId: datasetToDelete?.id }
+    });
+    window.dispatchEvent(deleteEvent);
+    
+    // Clear the delete dialog state
+    setDatasetToDelete(null);
   };
 
   if (isLoading) {
@@ -76,7 +73,7 @@ const UserDatasetLibrary: React.FC<UserDatasetLibraryProps> = ({
         <Database className="h-12 w-12 mx-auto mb-4 text-gray-400" />
         <h3 className="text-lg font-medium mb-2">Error Loading Datasets</h3>
         <p className="text-gray-400 mb-4">{error}</p>
-        <Button onClick={loadDatasets}>Try Again</Button>
+        <Button onClick={() => window.location.reload()}>Try Again</Button>
       </div>
     );
   }
@@ -122,14 +119,20 @@ const UserDatasetLibrary: React.FC<UserDatasetLibraryProps> = ({
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => handleDeleteDataset(dataset.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteClick(dataset);
+                }}
                 className="text-red-400 border-red-400/30 hover:bg-red-900/20"
               >
                 <Trash2 className="h-4 w-4 mr-1" /> Delete
               </Button>
               <Button 
                 size="sm" 
-                onClick={() => handleViewDataset(dataset.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleViewDataset(dataset.id);
+                }}
               >
                 <Eye className="h-4 w-4 mr-1" /> View
               </Button>
@@ -137,6 +140,14 @@ const UserDatasetLibrary: React.FC<UserDatasetLibraryProps> = ({
           </Card>
         ))}
       </div>
+      
+      <DeleteDatasetDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        datasetId={datasetToDelete?.id || null}
+        datasetName={datasetToDelete?.name}
+        onDeleted={handleDatasetDeleted}
+      />
     </div>
   );
 };

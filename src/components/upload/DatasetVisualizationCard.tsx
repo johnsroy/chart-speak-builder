@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import ChartVisualization from '@/components/ChartVisualization';
@@ -50,22 +51,22 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [suitableChartTypes, setSuitableChartTypes] = useState<ChartType[]>([
-    'bar', 'line', 'pie', 'column', 'area', 'scatter', 'bubble', 'donut', 'stacked', 'polar', 
-    'gauge', 'heatmap', 'treemap', 'waterfall', 'funnel', 'sankey'
+    'bar', 'line', 'pie', 'column', 'area', 'scatter', 'bubble', 'donut', 'stacked'
   ]);
 
   const effectiveDatasetId = datasetId || externalSelectedId || internalSelectedId;
   const isMultiDataset = Boolean(datasets && datasets.length > 0);
   const isLoading = externalLoading || false;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if ((activeView === 'table' || activeView === 'chart') && effectiveDatasetId && !dataPreview) {
       loadDataPreview(effectiveDatasetId);
     }
   }, [activeView, effectiveDatasetId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isMultiDataset && datasets && datasets.length > 0 && !effectiveDatasetId) {
       const firstId = datasets[0].id;
       if (externalSetSelectedId) {
@@ -81,8 +82,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
       const suggestedTypes = getSuitableChartTypes(dataPreview);
       
       const extendedTypes: ChartType[] = [
-        'bar', 'line', 'pie', 'column', 'area', 'scatter', 'bubble', 'donut', 
-        'stacked', 'polar', 'gauge', 'heatmap', 'treemap', 'waterfall', 'funnel', 'sankey'
+        'bar', 'line', 'pie', 'column', 'area', 'scatter', 'bubble', 'donut', 'stacked'
       ];
       
       setSuitableChartTypes(extendedTypes);
@@ -96,37 +96,60 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   const loadDataPreview = async (datasetId: string) => {
     setPreviewLoading(true);
     setPreviewError(null);
+    setLoadAttempt(prev => prev + 1);
     
     try {
       console.log("Loading dataset preview for ID:", datasetId);
       
-      const loadedData = await datasetUtils.loadDatasetContent(datasetId, {
-        showToasts: false,
-        limitRows: 5000
-      });
+      // First attempt: Use datasetUtils which has better caching
+      try {
+        const loadedData = await datasetUtils.loadDatasetContent(datasetId, {
+          showToasts: false,
+          limitRows: 5000
+        });
+        
+        if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
+          console.log(`Successfully loaded ${loadedData.length} rows using datasetUtils`);
+          setDataPreview(loadedData);
+          setPreviewLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.warn("Failed to load with datasetUtils, falling back to dataService:", error);
+      }
       
-      if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
-        console.log(`Successfully loaded ${loadedData.length} rows using datasetUtils`);
-        setDataPreview(loadedData);
+      // Second attempt: Use standard dataService
+      const data = await dataService.previewDataset(datasetId);
+      
+      if (data && Array.isArray(data) && data.length > 0) {
+        console.log(`Loaded ${data.length} rows with dataService.previewDataset`);
+        setDataPreview(data);
+        setPreviewLoading(false);
         return;
       }
       
-      const data = await dataService.previewDataset(datasetId);
-      
-      if (!data || !Array.isArray(data) || data.length === 0) {
-        throw new Error('No preview data available');
+      // If we get here, try to generate sample data based on the dataset info
+      const dataset = await dataService.getDataset(datasetId);
+      if (dataset?.file_name && dataset?.column_schema) {
+        const sampleData = generateSampleData(dataset.column_schema, 100);
+        setDataPreview(sampleData);
+        console.log("Generated sample data based on schema:", sampleData.length, "rows");
+        toast.info("Using generated sample data for visualization", {
+          description: "The actual dataset could not be loaded"
+        });
+      } else {
+        throw new Error('Could not load dataset or generate sample data');
       }
-      
-      console.log(`Loaded ${data.length} rows with dataService.previewDataset`);
-      setDataPreview(data);
     } catch (error) {
       console.error('Error loading data preview:', error);
-      setPreviewError('Failed to load data preview');
+      setPreviewError('Failed to load data preview. Please try again.');
       
+      // Try one more fallback option if we have schema
       try {
         const dataset = await dataService.getDataset(datasetId);
         if (dataset?.file_name) {
-          const sampleData = generateSampleData(dataset.file_name, 100);
+          toast.warning("Using generated data for visualization");
+          const sampleData = generateSampleDataFromFilename(dataset.file_name, 100);
           setDataPreview(sampleData);
           setPreviewError(null);
         }
@@ -138,35 +161,73 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     }
   };
 
-  const generateSampleData = (filename: string, count: number): any[] => {
+  const generateSampleDataFromFilename = (filename: string, count: number): any[] => {
     const lowerName = filename.toLowerCase();
     const data = [];
     
     for (let i = 0; i < count; i++) {
-      if (lowerName.includes('sales')) {
+      if (lowerName.includes('vehicle') || lowerName.includes('car')) {
         data.push({
           id: i + 1,
-          product: `Product ${i % 10 + 1}`,
-          quantity: Math.floor(Math.random() * 100),
-          price: Math.floor(Math.random() * 1000),
-          date: new Date(2024, i % 12, i % 28 + 1).toISOString().split('T')[0]
-        });
-      } else if (lowerName.includes('customer')) {
-        data.push({
-          id: i + 1,
-          name: `Customer ${i + 1}`,
-          email: `customer${i}@example.com`,
-          country: ['USA', 'Canada', 'UK', 'Australia'][i % 4],
-          purchases: Math.floor(Math.random() * 50)
+          make: ['Tesla', 'Nissan', 'Chevrolet', 'Ford', 'BMW'][i % 5],
+          model: ['Model S', 'Leaf', 'Bolt', 'Mach-E', 'i3'][i % 5],
+          year: 2020 + (i % 5),
+          price: 30000 + (i % 10) * 5000,
+          type: ['BEV', 'PHEV'][i % 2],
+          range: 200 + (i % 10) * 30
         });
       } else {
         data.push({
           id: i + 1,
           name: `Item ${i + 1}`,
           value: Math.floor(Math.random() * 1000),
-          category: ['A', 'B', 'C'][i % 3]
+          category: ['A', 'B', 'C'][i % 3],
+          date: new Date(2023, i % 12, (i % 28) + 1).toISOString().split('T')[0]
         });
       }
+    }
+    
+    return data;
+  };
+
+  const generateSampleData = (schema: Record<string, string>, count: number): any[] => {
+    const data = [];
+    const fields = Object.keys(schema);
+    
+    for (let i = 0; i < count; i++) {
+      const row: Record<string, any> = {};
+      
+      fields.forEach(field => {
+        const type = schema[field];
+        
+        switch (type) {
+          case 'number':
+            row[field] = Math.floor(Math.random() * 1000);
+            break;
+          case 'boolean':
+            row[field] = Math.random() > 0.5;
+            break;
+          case 'date':
+            const date = new Date(2023, i % 12, (i % 28) + 1);
+            row[field] = date.toISOString().split('T')[0];
+            break;
+          default:
+            // string or other type
+            if (field.toLowerCase().includes('name')) {
+              row[field] = `Name ${i + 1}`;
+            } else if (field.toLowerCase().includes('email')) {
+              row[field] = `user${i}@example.com`;
+            } else if (field.toLowerCase().includes('city')) {
+              row[field] = ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix'][i % 5];
+            } else if (field.toLowerCase().includes('country')) {
+              row[field] = ['USA', 'Canada', 'UK', 'Germany', 'Japan'][i % 5];
+            } else {
+              row[field] = `Value ${i + 1}`;
+            }
+        }
+      });
+      
+      data.push(row);
     }
     
     return data;
@@ -197,6 +258,13 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     setDataPreview(null);
   };
 
+  const handleRefreshData = () => {
+    if (effectiveDatasetId) {
+      setDataPreview(null);
+      loadDataPreview(effectiveDatasetId);
+    }
+  };
+
   const getChartIcon = (chartType: ChartType) => {
     switch (chartType) {
       case 'bar': return <BarChart className="h-4 w-4 mr-2" />;
@@ -207,9 +275,6 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
       case 'column': return <BarChart className="h-4 w-4 mr-2" />;
       case 'donut': return <CircleDashed className="h-4 w-4 mr-2" />;
       case 'stacked': return <Layers className="h-4 w-4 mr-2" />;
-      case 'polar': return <PieChart className="h-4 w-4 mr-2" />;
-      case 'gauge': return <CircleDot className="h-4 w-4 mr-2" />;
-      case 'heatmap': return <TableIcon className="h-4 w-4 mr-2" />;
       case 'table': return <TableIcon className="h-4 w-4 mr-2" />;
       default: return <BarChart className="h-4 w-4 mr-2" />;
     }
@@ -261,57 +326,89 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
                 </TabsTrigger>
               </TabsList>
               
-              {activeView === 'chart' && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="ml-4 flex items-center gap-2 bg-white/10">
-                      {getChartIcon(selectedChartType)}
-                      {getChartTypeName(selectedChartType)}
-                      <ChevronDown className="h-4 w-4 ml-1" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="w-56 p-2 bg-gray-900/90 backdrop-blur-md border border-purple-500/30 max-h-[60vh] overflow-y-auto"
-                  >
-                    {suitableChartTypes.map((chartType) => (
-                      <DropdownMenuItem
-                        key={chartType}
-                        onClick={() => setSelectedChartType(chartType)} 
-                        className={`flex items-center hover:bg-purple-500/20 ${
-                          chartType === selectedChartType ? 'bg-purple-500/30' : ''
-                        }`}
-                      >
-                        {getChartIcon(chartType)}
-                        {getChartTypeName(chartType)}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefreshData}
+                  className="bg-white/10"
+                >
+                  Refresh Data
+                </Button>
+              
+                {activeView === 'chart' && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="flex items-center gap-2 bg-white/10">
+                        {getChartIcon(selectedChartType)}
+                        {getChartTypeName(selectedChartType)}
+                        <ChevronDown className="h-4 w-4 ml-1" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="w-56 p-2 bg-gray-900/90 backdrop-blur-md border border-purple-500/30 max-h-[60vh] overflow-y-auto"
+                    >
+                      {suitableChartTypes.map((chartType) => (
+                        <DropdownMenuItem
+                          key={chartType}
+                          onClick={() => setSelectedChartType(chartType)} 
+                          className={`flex items-center hover:bg-purple-500/20 ${
+                            chartType === selectedChartType ? 'bg-purple-500/30' : ''
+                          }`}
+                        >
+                          {getChartIcon(chartType)}
+                          {getChartTypeName(chartType)}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             </div>
             
             <TabsContent value="chart" className="min-h-[500px]">
-              {effectiveDatasetId && (
+              {previewLoading ? (
+                <div className="flex justify-center items-center h-[400px]">
+                  <div className="animate-spin h-8 w-8 border-t-2 border-primary rounded-full" />
+                </div>
+              ) : previewError ? (
+                <div className="flex flex-col justify-center items-center h-[400px] text-center">
+                  <p className="text-red-400 mb-4">{previewError}</p>
+                  <Button onClick={() => loadDataPreview(effectiveDatasetId || '')}>
+                    Try Again
+                  </Button>
+                </div>
+              ) : effectiveDatasetId && dataPreview ? (
                 <ChartVisualization 
                   datasetId={effectiveDatasetId} 
                   chartType={selectedChartType}
                   data={dataPreview}
                   heightClass="h-[500px]"
                 />
+              ) : (
+                <div className="flex justify-center items-center h-[400px]">
+                  <p>Select a dataset to visualize</p>
+                </div>
               )}
             </TabsContent>
             
             <TabsContent value="table">
               <div className="mb-4">
-                <DataTable 
-                  datasetId={effectiveDatasetId}
-                  data={dataPreview} 
-                  loading={previewLoading} 
-                  error={previewError}
-                  title="Data Preview"
-                  pageSize={5}
-                />
+                {previewLoading ? (
+                  <div className="flex justify-center items-center h-[400px]">
+                    <div className="animate-spin h-8 w-8 border-t-2 border-primary rounded-full" />
+                  </div>
+                ) : (
+                  <DataTable 
+                    datasetId={effectiveDatasetId}
+                    data={dataPreview} 
+                    loading={previewLoading} 
+                    error={previewError}
+                    title="Data Preview"
+                    pageSize={5}
+                  />
+                )}
               </div>
             </TabsContent>
           </Tabs>

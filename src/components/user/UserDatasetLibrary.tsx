@@ -35,7 +35,7 @@ const UserDatasetLibrary = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // Load unique datasets (no duplicates)
+      // Load unique datasets only (no duplicates)
       const userDatasets = await dataService.getUniqueDatasets();
       setDatasets(userDatasets);
       
@@ -71,6 +71,10 @@ const UserDatasetLibrary = () => {
     } finally {
       setIsRefreshing(false);
     }
+  };
+
+  const handleViewClick = (datasetId: string) => {
+    navigate(`/visualize/${datasetId}`);
   };
 
   if (isLoading) {
@@ -134,7 +138,7 @@ const UserDatasetLibrary = () => {
           </div>
         ) : (
           datasets.map((dataset) => (
-            <Card key={dataset.id} className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden" onClick={() => navigate(`/visualize/${dataset.id}`)}>
+            <Card key={dataset.id} className="hover:shadow-lg transition-shadow overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="truncate text-base" title={dataset.name}>
                   {dataset.name}
@@ -156,10 +160,7 @@ const UserDatasetLibrary = () => {
                   <Button 
                     variant="outline"
                     size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(dataset);
-                    }}
+                    onClick={() => handleDeleteClick(dataset)}
                     className="text-red-500 hover:text-red-700 hover:bg-red-100/10"
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
@@ -167,13 +168,10 @@ const UserDatasetLibrary = () => {
                   </Button>
                   <Button 
                     size="sm" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/visualize/${dataset.id}`);
-                    }}
+                    onClick={() => handleViewClick(dataset.id)}
                   >
                     <PieChart className="h-4 w-4 mr-1" />
-                    Visualize
+                    View
                   </Button>
                 </div>
               </CardContent>
