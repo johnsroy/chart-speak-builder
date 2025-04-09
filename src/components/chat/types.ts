@@ -42,6 +42,8 @@ export interface AIQueryResponse {
   x_axis?: string;
   y_axis?: string;
   model_used?: string;
+  query_id?: string;
+  dataset_id?: string; // Added this property to fix the error
 }
 
 export interface DataAnalysisResult {
