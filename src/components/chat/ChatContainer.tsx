@@ -10,9 +10,10 @@ import { useAuth } from '@/hooks/useAuth';
 interface ChatContainerProps {
   messages: Message[];
   downloadVisualization: (result: QueryResult) => void;
+  datasetId?: string; // Add the datasetId prop as optional
 }
 
-const ChatContainer: React.FC<ChatContainerProps> = ({ messages, downloadVisualization }) => {
+const ChatContainer: React.FC<ChatContainerProps> = ({ messages, downloadVisualization, datasetId }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { canUseAIFeatures } = useAuth();
 
