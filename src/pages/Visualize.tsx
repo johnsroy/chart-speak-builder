@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
@@ -58,7 +57,6 @@ const Visualize = () => {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  // Detect container size and adjust chart height
   useEffect(() => {
     if (chartContainerRef.current) {
       const updateChartSize = () => {
@@ -433,7 +431,10 @@ const Visualize = () => {
               </TabsList>
               
               <TabsContent value="chat" className="space-y-6">
-                <DatasetChatInterface datasetId={datasetId!} datasetName={dataset.name} />
+                <DatasetChatInterface 
+                  datasetId={datasetId!} 
+                  datasetName={dataset.name} 
+                />
               </TabsContent>
               
               <TabsContent value="explore">

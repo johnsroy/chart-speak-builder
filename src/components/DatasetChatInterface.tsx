@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,20 +9,24 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from "sonner";
 import { useTheme } from "@/components/ThemeProvider";
 import { Settings } from 'lucide-react';
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { generateAIQuery } from '@/utils/aiUtils';
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { generateAIQuery, generateDatasetSuggestions } from '@/utils/aiUtils';
 import ModelSelector from './chat/ModelSelector';
 import ChatInput from './chat/ChatInput';
 import { QueryResult } from '@/services/types/queryTypes';
 
-interface DatasetChatInterfaceProps {
+export interface DatasetChatInterfaceProps {
   datasetId?: string;
+  datasetName?: string;
 }
 
-const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({ datasetId: propDatasetId }) => {
+const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({ 
+  datasetId: propDatasetId,
+  datasetName 
+}) => {
   const { datasetId: routeDatasetId } = useParams<{ datasetId: string }>();
   const datasetId = propDatasetId || routeDatasetId;
   const [messages, setMessages] = useState<Message[]>([]);
@@ -42,13 +47,24 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({ datasetId: 
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
-    if (datasetId) {
-      setSuggestions([
-        `What are the key trends in this dataset?`,
-        `Give me a summary of the data.`,
-        `What are the top 5 insights?`
-      ]);
-    }
+    const loadSuggestions = async () => {
+      if (datasetId) {
+        try {
+          // Generate customized suggestions based on dataset content
+          const customSuggestions = await generateDatasetSuggestions(datasetId);
+          setSuggestions(customSuggestions);
+        } catch (error) {
+          console.error("Error loading suggestions:", error);
+          setSuggestions([
+            `What are the key trends in this dataset?`,
+            `Give me a summary of the data.`,
+            `What are the top 5 insights?`
+          ]);
+        }
+      }
+    };
+    
+    loadSuggestions();
   }, [datasetId]);
 
   const handleSuggestionSelect = async (query: string) => {
@@ -116,7 +132,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({ datasetId: 
         <div className="flex flex-col h-full">
           {/* Chat Header */}
           <div className="flex items-center justify-between p-4 border-bottom border-gray-800 bg-black/20 backdrop-blur-sm">
-            <h2 className="text-lg font-semibold text-white">Data Chat</h2>
+            <h2 className="text-lg font-semibold text-white">
+              {datasetName ? `${datasetName} - Chat` : 'Data Chat'}
+            </h2>
             
             {/* Model Selector */}
             <ModelSelector 
