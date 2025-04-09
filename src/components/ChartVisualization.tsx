@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import {
@@ -33,16 +32,16 @@ import {
 import HighchartsReact from 'highcharts-react-official';
 import Highcharts from 'highcharts';
 
-// Import Highcharts modules properly for browser environment
-import HighchartsMore from 'highcharts/highcharts-more';
-import HighchartsExporting from 'highcharts/modules/exporting';
-import HighchartsExportData from 'highcharts/modules/export-data';
+// Import Highcharts modules
+import HighchartsMoreModule from 'highcharts/highcharts-more';
+import HighchartsExportingModule from 'highcharts/modules/exporting';
+import HighchartsExportDataModule from 'highcharts/modules/export-data';
 
-// Initialize Highcharts modules
-if (typeof window !== 'undefined') {
-  HighchartsMore(Highcharts);
-  HighchartsExporting(Highcharts);
-  HighchartsExportData(Highcharts);
+// Initialize Highcharts modules conditionally
+if (typeof window !== 'undefined' && typeof Highcharts === 'object') {
+  HighchartsMoreModule(Highcharts);
+  HighchartsExportingModule(Highcharts);
+  HighchartsExportDataModule(Highcharts);
 }
 
 interface ChartVisualizationProps {
