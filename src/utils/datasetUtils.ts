@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Dataset } from '@/services/types/datasetTypes';
@@ -22,7 +21,7 @@ export const datasetUtils = {
       forceRefresh?: boolean;
     } = {}
   ): Promise<any[] | null> {
-    const { limitRows = 10000, showToasts = false, forceRefresh = false } = options;
+    const { limitRows = 0, showToasts = false, forceRefresh = false } = options;
     let data: any[] | null = null;
 
     // Skip cache if force refresh is requested
@@ -32,7 +31,7 @@ export const datasetUtils = {
         const cachedData = window.__datasetCache?.[datasetId];
         if (cachedData && Array.isArray(cachedData) && cachedData.length > 0) {
           console.log(`Using memory-cached dataset (${cachedData.length} rows)`);
-          return limitRows ? cachedData.slice(0, limitRows) : cachedData;
+          return limitRows && limitRows > 0 ? cachedData.slice(0, limitRows) : cachedData;
         }
       } catch (error) {
         console.warn("Error accessing memory cache:", error);
@@ -53,7 +52,7 @@ export const datasetUtils = {
             }
             window.__datasetCache[datasetId] = parsedCache;
             
-            return limitRows ? parsedCache.slice(0, limitRows) : parsedCache;
+            return limitRows && limitRows > 0 ? parsedCache.slice(0, limitRows) : parsedCache;
           }
         }
       } catch (cacheErr) {
@@ -76,20 +75,43 @@ export const datasetUtils = {
         console.error("Error getting dataset info:", datasetError);
       } else {
         dataset = datasetInfo;
+        console.log("Retrieved dataset info:", dataset);
       }
     } catch (error) {
       console.error("Error fetching dataset info:", error);
     }
 
-    // Now try multiple methods to get the actual data
+    // Check for preview_key first in the dataset
+    if (dataset?.preview_key) {
+      try {
+        console.log("Found preview_key in dataset, attempting to load from session storage");
+        const previewData = sessionStorage.getItem(dataset.preview_key);
+        
+        if (previewData) {
+          const parsedData = JSON.parse(previewData);
+          if (Array.isArray(parsedData) && parsedData.length > 0) {
+            console.log(`Successfully loaded ${parsedData.length} rows from preview key`);
+            data = parsedData;
+            
+            // Save to caches
+            cacheDataset(datasetId, data);
+            return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
+          }
+        }
+      } catch (previewError) {
+        console.warn("Error loading data from preview_key:", previewError);
+      }
+    }
+
     // Method 1: Try loading from dataset_data table if it exists
     try {
       console.log("Attempting to fetch data from dataset_data table");
       const { data: tableData, error: tableError } = await supabase
         .from('dataset_data')
-        .select('*')
+        .select('row_data')
         .eq('dataset_id', datasetId)
-        .limit(limitRows);
+        .order('row_number', { ascending: true })
+        .limit(limitRows > 0 ? limitRows : 1000000);
 
       if (tableError) {
         if (!tableError.message.includes("does not exist")) {
@@ -97,11 +119,11 @@ export const datasetUtils = {
         }
       } else if (tableData && Array.isArray(tableData) && tableData.length > 0) {
         console.log(`Successfully loaded ${tableData.length} rows from dataset_data table`);
-        data = tableData;
+        data = tableData.map(item => item.row_data);
         
         // Save to caches
         cacheDataset(datasetId, data);
-        return data;
+        return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
       }
     } catch (error) {
       console.warn("Error with dataset_data approach:", error);
@@ -146,7 +168,7 @@ export const datasetUtils = {
                   
                   // Save to caches
                   cacheDataset(datasetId, data);
-                  return limitRows ? data.slice(0, limitRows) : data;
+                  return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
                 }
               }
             } else {
@@ -164,6 +186,7 @@ export const datasetUtils = {
             const parsed = Papa.parse(text, {
               header: true,
               skipEmptyLines: true,
+              dynamicTyping: true,
             });
             
             if (parsed.data && Array.isArray(parsed.data) && parsed.data.length > 0) {
@@ -172,7 +195,7 @@ export const datasetUtils = {
               
               // Save to caches
               cacheDataset(datasetId, data);
-              return limitRows ? data.slice(0, limitRows) : data;
+              return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
             }
           } else {
             // Try to parse as JSON
@@ -184,7 +207,7 @@ export const datasetUtils = {
                 
                 // Save to caches
                 cacheDataset(datasetId, data);
-                return limitRows ? data.slice(0, limitRows) : data;
+                return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
               }
             } catch (jsonError) {
               console.warn("File is not valid JSON, trying other parsing methods");
@@ -208,7 +231,7 @@ export const datasetUtils = {
           
           // Save to caches
           cacheDataset(datasetId, data);
-          return limitRows ? data.slice(0, limitRows) : data;
+          return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
         }
       }
     } catch (serviceErr) {
@@ -224,14 +247,14 @@ export const datasetUtils = {
         if (previewData && Array.isArray(previewData) && previewData.length > 0) {
           console.log(`dataService.previewDataset returned ${previewData.length} rows`);
           
-          if (showToasts) {
-            toast.warning("Using preview data only - limited to first 100 rows", {
+          if (showToasts && previewData.length < 1000) {
+            toast.warning(`Using preview data only - ${previewData.length} rows available`, {
               description: "The full dataset could not be accessed"
             });
           }
           
           data = previewData;
-          return data;
+          return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
         }
       }
     } catch (previewErr) {
@@ -247,8 +270,8 @@ export const datasetUtils = {
       }
       
       console.log("Generating sample data based on schema");
-      data = generateSampleDataFromSchema(dataset, 100);
-      return data;
+      data = generateSampleDataFromSchema(dataset, 1000);
+      return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
     }
 
     // All methods failed

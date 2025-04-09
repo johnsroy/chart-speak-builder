@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -108,7 +107,7 @@ export const useFileUpload = () => {
       if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
         try {
           const fileContent = await file.text();
-          const previewData = await parseCSV(fileContent, 100);
+          const previewData = await parseCSV(fileContent, 1000);
           
           // Store preview data in session storage
           const previewKey = `upload_preview_${Date.now()}`;
@@ -155,7 +154,7 @@ export const useFileUpload = () => {
   };
 
   /**
-   * Initiates file upload process with improved error handling and overwrite confirmation
+   * Initiates file upload process with improved RLS support
    */
   const handleUpload = async (isAuthenticated: boolean, userId: string) => {
     if (!selectedFile) {
@@ -211,7 +210,7 @@ export const useFileUpload = () => {
           try {
             if (selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv')) {
               const fileText = await selectedFile.text();
-              const previewData = await parseCSV(fileText, 100);
+              const previewData = await parseCSV(fileText, 1000);
               
               if (previewData.length > 0) {
                 const schema: Record<string, string> = {};
@@ -227,6 +226,7 @@ export const useFileUpload = () => {
                 // Store preview in session storage
                 const previewKey = `preview_${fallbackTimestamp}_${selectedFile.name}`;
                 sessionStorage.setItem(previewKey, JSON.stringify(previewData));
+                console.log("Preview stored with key:", previewKey);
               }
             }
           } catch (schemaError) {
@@ -234,6 +234,7 @@ export const useFileUpload = () => {
             columnSchema = { "Column1": "string", "Value": "number" };
           }
           
+          // Now create dataset with properly structured data and preview_key
           const fallbackDataset = {
             name: datasetName,
             description: datasetDescription || "",
@@ -243,8 +244,11 @@ export const useFileUpload = () => {
             storage_path: fallbackPath,
             user_id: validatedUserId,
             row_count: rowCount,
-            column_schema: columnSchema
+            column_schema: columnSchema,
+            preview_key: `preview_${fallbackTimestamp}_${selectedFile.name}`
           };
+          
+          console.log("Creating dataset with data:", fallbackDataset);
           
           const { data: insertedData, error: insertError } = await supabase
             .from('datasets')
@@ -256,6 +260,8 @@ export const useFileUpload = () => {
             console.error("Direct dataset insert failed:", insertError);
             throw new Error(`Failed to create dataset record: ${insertError.message}`);
           }
+          
+          console.log("Dataset record created successfully:", insertedData);
           
           clearInterval(progressInterval);
           setUploadProgress(100);

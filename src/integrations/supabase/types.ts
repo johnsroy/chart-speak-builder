@@ -18,6 +18,7 @@ export type Database = {
           file_size: number
           id: string
           name: string
+          preview_key: string | null
           row_count: number
           storage_path: string
           storage_type: string
@@ -32,6 +33,7 @@ export type Database = {
           file_size: number
           id?: string
           name: string
+          preview_key?: string | null
           row_count: number
           storage_path: string
           storage_type: string
@@ -46,6 +48,7 @@ export type Database = {
           file_size?: number
           id?: string
           name?: string
+          preview_key?: string | null
           row_count?: number
           storage_path?: string
           storage_type?: string

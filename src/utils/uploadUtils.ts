@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
 import { Dataset } from '@/services/types/datasetTypes';
@@ -106,7 +105,7 @@ export const simulateProgress = (
 };
 
 /**
- * Performs file upload and dataset creation
+ * Performs file upload and dataset creation with fixed RLS policies
  */
 export const performUpload = async (
   file: File,
@@ -119,24 +118,21 @@ export const performUpload = async (
   try {
     console.log("Starting file upload with props:", { name, size: file.size, userId, ...additionalProps });
     
-    // Remove preview_key from additionalProps to avoid the error
-    if (additionalProps.preview_key) {
-      console.log("Preview key was provided but will be ignored as it's not supported in the schema");
-      delete additionalProps.preview_key;
-    }
+    // Generate a preview_key for storage
+    const timestamp = Date.now();
+    const previewKey = `preview_${timestamp}_${file.name}`;
+    additionalProps.preview_key = previewKey;
     
-    // Store preview data in session storage instead of trying to use preview_key in the database
-    if (file.size > 5 * 1024 * 1024 && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
+    // Store preview data in session storage
+    if (file.size > 0 && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
       try {
-        console.log("Extracting schema and preview for large file");
+        console.log("Extracting schema and preview for file");
         const fileText = await file.text();
-        const previewData = await parseCSV(fileText, 100);
+        const previewData = await parseCSV(fileText, 1000); // Increased from 100 to 1000
         
         if (previewData && previewData.length > 0) {
-          const timestamp = Date.now();
-          const storageKey = `preview_${timestamp}_${file.name}`;
-          sessionStorage.setItem(storageKey, JSON.stringify(previewData));
-          console.log("Created preview data for large file, stored in session storage with key:", storageKey);
+          sessionStorage.setItem(previewKey, JSON.stringify(previewData));
+          console.log("Created preview data for file, stored in session storage with key:", previewKey);
           
           // Extract column schema
           if (previewData[0]) {
@@ -148,11 +144,11 @@ export const performUpload = async (
                             'string';
             });
             additionalProps.column_schema = schema;
-            console.log("Extracted column schema for large file");
+            console.log("Extracted column schema for file");
           }
         }
       } catch (previewErr) {
-        console.warn("Failed to extract preview/schema for large file:", previewErr);
+        console.warn("Failed to extract preview/schema for file:", previewErr);
       }
     }
     
