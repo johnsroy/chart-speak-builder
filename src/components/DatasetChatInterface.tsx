@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -532,7 +533,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
 
       <div className="flex flex-col space-y-4 flex-1">
         <div className="flex items-center justify-between">
-          <ModelSelector currentModel={currentModel} onChange={handleModelChange} />
+          <ModelSelector currentModel={currentModel} onModelChange={handleModelChange} />
         </div>
         
         <div className="flex-1 flex flex-col min-h-[500px]">
@@ -541,7 +542,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             <ChatInput 
               onSendMessage={handleSendMessage} 
               isLoading={isLoading} 
-              suggestions={recommendations}
+              recommendations={recommendations}
             />
           </div>
         </div>

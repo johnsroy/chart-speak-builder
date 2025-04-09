@@ -1,13 +1,13 @@
-
 import { QueryResult } from '@/services/types/queryTypes';
 
 export interface Message {
   id: string;
+  sender: 'user' | 'ai' | 'system';
   content: string;
-  sender: 'user' | 'ai';
   timestamp: Date;
-  result?: QueryResult;
-  model?: 'openai' | 'anthropic';
+  result?: AIQueryResponse;
+  model?: AIModelType;
+  isProcessing?: boolean;
   queryId?: string;
   thinking?: string;
 }

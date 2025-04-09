@@ -32,15 +32,17 @@ import {
 import HighchartsReact from 'highcharts-react-official';
 import Highcharts from 'highcharts';
 
-// Import Highcharts modules properly
-import HighchartsMore from 'highcharts/highcharts-more';
-import HighchartsExporting from 'highcharts/modules/exporting';
-import HighchartsExportData from 'highcharts/modules/export-data';
+// Import Highcharts modules
+import highchartsMore from 'highcharts/highcharts-more';
+import highchartsExporting from 'highcharts/modules/exporting';
+import highchartsExportData from 'highcharts/modules/export-data';
 
-// Apply modules to the Highcharts object
-HighchartsMore(Highcharts);
-HighchartsExporting(Highcharts);
-HighchartsExportData(Highcharts);
+// Apply modules directly
+if (typeof Highcharts === 'object') {
+  highchartsMore(Highcharts);
+  highchartsExporting(Highcharts);
+  highchartsExportData(Highcharts);
+}
 
 interface ChartVisualizationProps {
   datasetId: string;
