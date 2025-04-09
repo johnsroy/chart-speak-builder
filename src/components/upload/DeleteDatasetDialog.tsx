@@ -31,7 +31,23 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
     try {
       console.log(`Deleting dataset with ID: ${datasetId}`);
       
-      // First, delete any dataset_data records (if the table exists)
+      // First, delete any related queries (these reference the dataset)
+      try {
+        const { error: queriesError } = await supabase
+          .from('queries')
+          .delete()
+          .eq('dataset_id', datasetId);
+        
+        if (queriesError) {
+          console.warn("Error deleting related queries:", queriesError);
+        } else {
+          console.log("Successfully deleted related queries");
+        }
+      } catch (queryErr) {
+        console.warn("Exception when deleting queries:", queryErr);
+      }
+      
+      // Then delete any dataset_data records (if the table exists)
       try {
         const { error: dataError } = await supabase
           .from('dataset_data')
@@ -43,6 +59,33 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
         }
       } catch (dataErr) {
         console.warn("Exception when deleting dataset data:", dataErr);
+      }
+      
+      // Delete any visualizations related to this dataset's queries
+      try {
+        // First get all query IDs for this dataset
+        const { data: queries } = await supabase
+          .from('queries')
+          .select('id')
+          .eq('dataset_id', datasetId);
+          
+        if (queries && queries.length > 0) {
+          const queryIds = queries.map(q => q.id);
+          
+          // Delete visualizations that reference these queries
+          const { error: vizError } = await supabase
+            .from('visualizations')
+            .delete()
+            .in('query_id', queryIds);
+            
+          if (vizError) {
+            console.warn("Error deleting related visualizations:", vizError);
+          } else {
+            console.log(`Deleted visualizations related to dataset ${datasetId}`);
+          }
+        }
+      } catch (vizErr) {
+        console.warn("Exception when deleting related visualizations:", vizErr);
       }
       
       // Delete the dataset from storage if needed
@@ -62,6 +105,8 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
             
           if (storageError) {
             console.warn("Error deleting file from storage:", storageError);
+          } else {
+            console.log(`Successfully removed storage file: ${dataset.storage_path}`);
           }
         }
       } catch (storageErr) {
@@ -81,6 +126,25 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
       // Clear any cached data for this dataset
       try {
         sessionStorage.removeItem(`dataset_${datasetId}`);
+        console.log(`Cleared cache for dataset_${datasetId}`);
+        
+        // Also try to clear any other caches that might reference this dataset
+        const cacheKeys = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && (key.includes(datasetId) || key.startsWith('dataset_'))) {
+            cacheKeys.push(key);
+          }
+        }
+        
+        cacheKeys.forEach(key => {
+          try {
+            sessionStorage.removeItem(key);
+            console.log(`Cleared additional cache: ${key}`);
+          } catch (e) {
+            console.warn(`Could not clear cache for ${key}:`, e);
+          }
+        });
       } catch (cacheErr) {
         console.warn("Error clearing dataset cache:", cacheErr);
       }
