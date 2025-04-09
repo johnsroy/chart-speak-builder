@@ -31,39 +31,8 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
     try {
       console.log(`Deleting dataset with ID: ${datasetId}`);
       
-      // First, delete any related queries (these reference the dataset)
+      // Delete any visualizations related to this dataset's queries first
       try {
-        const { error: queriesError } = await supabase
-          .from('queries')
-          .delete()
-          .eq('dataset_id', datasetId);
-        
-        if (queriesError) {
-          console.warn("Error deleting related queries:", queriesError);
-        } else {
-          console.log("Successfully deleted related queries");
-        }
-      } catch (queryErr) {
-        console.warn("Exception when deleting queries:", queryErr);
-      }
-      
-      // Then delete any dataset_data records (if the table exists)
-      try {
-        const { error: dataError } = await supabase
-          .from('dataset_data')
-          .delete()
-          .eq('dataset_id', datasetId);
-        
-        if (dataError && !dataError.message.includes('does not exist')) {
-          console.warn("Error deleting dataset data:", dataError);
-        }
-      } catch (dataErr) {
-        console.warn("Exception when deleting dataset data:", dataErr);
-      }
-      
-      // Delete any visualizations related to this dataset's queries
-      try {
-        // First get all query IDs for this dataset
         const { data: queries } = await supabase
           .from('queries')
           .select('id')
@@ -71,6 +40,7 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
           
         if (queries && queries.length > 0) {
           const queryIds = queries.map(q => q.id);
+          console.log(`Found ${queryIds.length} queries to clean up for dataset ${datasetId}`);
           
           // Delete visualizations that reference these queries
           const { error: vizError } = await supabase
@@ -86,6 +56,38 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
         }
       } catch (vizErr) {
         console.warn("Exception when deleting related visualizations:", vizErr);
+      }
+      
+      // Then delete queries associated with this dataset
+      try {
+        const { error: queriesError } = await supabase
+          .from('queries')
+          .delete()
+          .eq('dataset_id', datasetId);
+        
+        if (queriesError) {
+          console.warn("Error deleting related queries:", queriesError);
+          throw new Error(`Failed to delete related queries: ${queriesError.message}`);
+        } else {
+          console.log("Successfully deleted related queries");
+        }
+      } catch (queryErr) {
+        console.warn("Exception when deleting queries:", queryErr);
+        throw new Error(`Exception deleting queries: ${queryErr instanceof Error ? queryErr.message : String(queryErr)}`);
+      }
+      
+      // Then delete any dataset_data records (if the table exists)
+      try {
+        const { error: dataError } = await supabase
+          .from('dataset_data')
+          .delete()
+          .eq('dataset_id', datasetId);
+        
+        if (dataError && !dataError.message.includes('does not exist')) {
+          console.warn("Error deleting dataset data:", dataError);
+        }
+      } catch (dataErr) {
+        console.warn("Exception when deleting dataset data:", dataErr);
       }
       
       // Delete the dataset from storage if needed
@@ -125,26 +127,31 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
       
       // Clear any cached data for this dataset
       try {
-        sessionStorage.removeItem(`dataset_${datasetId}`);
-        console.log(`Cleared cache for dataset_${datasetId}`);
-        
-        // Also try to clear any other caches that might reference this dataset
-        const cacheKeys = [];
+        // Clear all session storage items that might reference this dataset
+        const keysToRemove = [];
         for (let i = 0; i < sessionStorage.length; i++) {
           const key = sessionStorage.key(i);
-          if (key && (key.includes(datasetId) || key.startsWith('dataset_'))) {
-            cacheKeys.push(key);
+          if (key && (
+            key === `dataset_${datasetId}` ||
+            key.includes(datasetId) || 
+            key.startsWith('dataset_') ||
+            key.startsWith('query_') ||
+            key.startsWith('visualization_')
+          )) {
+            keysToRemove.push(key);
           }
         }
         
-        cacheKeys.forEach(key => {
+        keysToRemove.forEach(key => {
           try {
             sessionStorage.removeItem(key);
-            console.log(`Cleared additional cache: ${key}`);
+            console.log(`Cleared cache: ${key}`);
           } catch (e) {
             console.warn(`Could not clear cache for ${key}:`, e);
           }
         });
+        
+        console.log(`Cleared ${keysToRemove.length} cache entries`);
       } catch (cacheErr) {
         console.warn("Error clearing dataset cache:", cacheErr);
       }

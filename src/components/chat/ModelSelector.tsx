@@ -1,8 +1,8 @@
 
 import React from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AIModelType } from './types';
-import { Sparkles, BrainCircuit } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Check, Bot } from 'lucide-react';
 
 export interface ModelSelectorProps {
   currentModel: AIModelType;
@@ -11,29 +11,25 @@ export interface ModelSelectorProps {
 
 const ModelSelector: React.FC<ModelSelectorProps> = ({ currentModel, onModelChange }) => {
   return (
-    <div className="flex items-center">
-      <Select
-        value={currentModel}
-        onValueChange={(value) => onModelChange(value as AIModelType)}
+    <div className="flex items-center gap-2 bg-black/20 rounded-lg p-1">
+      <Button
+        size="sm"
+        variant={currentModel === 'openai' ? 'default' : 'outline'}
+        className={`flex items-center ${currentModel === 'openai' ? 'bg-primary' : 'bg-transparent'}`}
+        onClick={() => onModelChange('openai')}
       >
-        <SelectTrigger className="w-[180px] h-9 bg-gray-950/50 border-gray-700">
-          <SelectValue placeholder="Select model" />
-        </SelectTrigger>
-        <SelectContent className="bg-gray-900 border-gray-700 text-white">
-          <SelectItem value="openai" className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-blue-400" />
-              <span>GPT-4o</span>
-            </div>
-          </SelectItem>
-          <SelectItem value="anthropic" className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
-              <BrainCircuit className="h-4 w-4 text-violet-400" />
-              <span>Claude 3.7</span>
-            </div>
-          </SelectItem>
-        </SelectContent>
-      </Select>
+        {currentModel === 'openai' && <Check className="mr-1 h-4 w-4" />}
+        <Bot className="mr-1 h-4 w-4" /> GPT
+      </Button>
+      <Button
+        size="sm"
+        variant={currentModel === 'anthropic' ? 'default' : 'outline'}
+        className={`flex items-center ${currentModel === 'anthropic' ? 'bg-primary' : 'bg-transparent'}`}
+        onClick={() => onModelChange('anthropic')}
+      >
+        {currentModel === 'anthropic' && <Check className="mr-1 h-4 w-4" />}
+        <Bot className="mr-1 h-4 w-4" /> Claude
+      </Button>
     </div>
   );
 };

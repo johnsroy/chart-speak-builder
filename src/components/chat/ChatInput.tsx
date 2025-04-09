@@ -1,81 +1,96 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { SendHorizontal, Sparkles } from 'lucide-react';
 
 export interface ChatInputProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string) => Promise<void>;
   isLoading?: boolean;
-  recommendations?: string[];
-  disabled?: boolean;
+  placeholder?: string;
+  suggestions?: string[];
+  onSuggestionSelect?: (query: string) => void;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({ 
   onSendMessage, 
-  isLoading = false,
-  recommendations = [],
-  disabled = false
+  isLoading = false, 
+  placeholder = "Ask a question...",
+  suggestions = [],
+  onSuggestionSelect
 }) => {
   const [message, setMessage] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-  
-  const handleSubmit = (e: React.FormEvent) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim() && !isLoading && !disabled) {
-      onSendMessage(message);
+    if (message.trim() && !isLoading) {
+      const trimmedMessage = message.trim();
       setMessage('');
+      await onSendMessage(trimmedMessage);
+      
+      // Focus back on the textarea after sending
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }, 100);
     }
   };
 
-  const handleRecommendationClick = (recommendation: string) => {
-    if (!isLoading && !disabled) {
-      onSendMessage(recommendation);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
     }
   };
-  
-  // Focus the input field when component mounts
+
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
+    // Auto-resize the textarea as the user types
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
-  }, []);
+  }, [message]);
 
   return (
-    <div>
-      {recommendations.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {recommendations.map((rec, index) => (
-            <button
+    <div className="bg-black/30 backdrop-blur-sm border border-gray-800 rounded-lg p-2 mt-auto">
+      {suggestions && suggestions.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {suggestions.slice(0, 3).map((suggestion, index) => (
+            <Button
               key={index}
-              onClick={() => handleRecommendationClick(rec)}
-              className="text-xs bg-purple-950/30 hover:bg-purple-900/40 text-purple-200 py-1 px-3 rounded-full border border-purple-800/50 transition-colors flex items-center"
-              disabled={isLoading || disabled}
+              size="sm"
+              variant="secondary"
+              className="text-xs py-1 h-auto truncate max-w-[200px] flex items-center"
+              onClick={() => onSuggestionSelect && onSuggestionSelect(suggestion)}
             >
-              <Sparkles className="h-3 w-3 mr-1 text-purple-400" />
-              {rec}
-            </button>
+              <Sparkles className="h-3 w-3 mr-1 text-primary" />
+              {suggestion}
+            </Button>
           ))}
         </div>
       )}
       
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <Input
-          ref={inputRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Ask something about your data..."
-          className="flex-1 bg-black/20 border-gray-800 focus:border-purple-500/70"
-          disabled={isLoading || disabled}
-        />
+      <form onSubmit={handleSubmit} className="flex items-end gap-2">
+        <div className="relative flex-1">
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            rows={1}
+            className="resize-none w-full bg-transparent border-0 focus:ring-0 focus:outline-none text-white p-2 pr-10 max-h-32 overflow-y-auto"
+            disabled={isLoading}
+          />
+        </div>
         <Button 
           type="submit" 
-          size="icon"
-          disabled={!message.trim() || isLoading || disabled}
-          className="bg-purple-700 hover:bg-purple-600"
+          size="icon" 
+          disabled={isLoading || !message.trim()} 
+          className={`${message.trim() ? 'bg-primary hover:bg-primary/90' : 'bg-gray-700'} transition-colors rounded-full h-10 w-10 flex items-center justify-center flex-shrink-0`}
         >
           <SendHorizontal className="h-5 w-5" />
-          <span className="sr-only">Send message</span>
         </Button>
       </form>
     </div>
