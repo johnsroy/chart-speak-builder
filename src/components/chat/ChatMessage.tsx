@@ -22,7 +22,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
           <p className="text-sm text-gray-300">{result.explanation || 'Visualization'}</p>
         </div>
         
-        <div className="h-[300px] w-full">
+        <div className="h-[600px] w-full">
           <ChartWrapper
             data={result.data}
             chartType={result.chartType || 'bar'}
@@ -47,7 +47,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
 
   return (
     <div className={`flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex gap-3 max-w-[85%] ${sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+      <div className={`flex gap-3 max-w-[95%] ${sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
         <Avatar className="h-8 w-8">
           {sender === 'user' ? (
             <>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -89,7 +88,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       try {
         const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: false,
-          limitRows: 5000  // Increased row limit for better analysis
+          limitRows: 10000  // Increased to use much more data - up to 10,000 rows
         });
         
         if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
@@ -229,7 +228,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: false,
           forceRefresh: true,
-          limitRows: 5000  // Increased row limit for better analysis
+          limitRows: 10000  // Increased to use much more data
         });
         
         if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {

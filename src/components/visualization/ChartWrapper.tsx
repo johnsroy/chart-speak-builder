@@ -41,7 +41,7 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
   const useResponsive = width === '100%' || height === '100%' || 
     typeof width === 'string' || typeof height === 'string';
   
-  // Set up common props for axes to avoid defaultProps warning
+  // Set up common props for axes without using defaultProps
   const xAxisProps = {
     dataKey: xAxisKey,
     stroke: '#888',
@@ -55,15 +55,26 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
     fontSize: 12,
     tickLine: false,
     axisLine: true,
-    // Use default parameters instead of defaultProps
     width: 80,
   };
 
+  // Make sure data is valid before rendering
+  const validData = Array.isArray(data) ? data : [];
+  
+  // Check if we have enough data to render a meaningful chart
+  if (validData.length === 0) {
+    return (
+      <div className={`flex items-center justify-center w-full h-full ${className}`}>
+        <p className="text-gray-400">No data available for visualization</p>
+      </div>
+    );
+  }
+
   const renderChart = () => {
-    switch (chartType.toLowerCase()) {
+    switch ((chartType || '').toLowerCase()) {
       case 'bar':
         return (
-          <BarChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+          <BarChart data={validData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisProps} />
@@ -75,7 +86,7 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
         
       case 'line':
         return (
-          <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+          <LineChart data={validData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisProps} />
@@ -94,19 +105,19 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
         
       case 'pie':
         return (
-          <PieChart margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+          <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
             <Pie
-              data={data}
+              data={validData}
               cx="50%"
               cy="50%"
               labelLine={false}
-              outerRadius={80}
+              outerRadius={validData.length > 10 ? 120 : 150}
               fill="#8884d8"
               dataKey={yAxisKey}
               nameKey={xAxisKey}
               label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
             >
-              {data.map((_, index) => (
+              {validData.map((_, index) => (
                 <Cell 
                   key={`cell-${index}`} 
                   fill={COLOR_PALETTES.professional[index % COLOR_PALETTES.professional.length]} 
@@ -120,7 +131,7 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
         
       default:
         return (
-          <BarChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+          <BarChart data={validData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisProps} />
@@ -132,16 +143,23 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
     }
   };
 
-  // Only use ResponsiveContainer when dimensions are relative
-  return useResponsive ? (
+  // Return appropriate container based on dimensions
+  if (!useResponsive) {
+    return (
+      <div className={`${className}`} style={{ width, height }}>
+        {renderChart()}
+      </div>
+    );
+  }
+
+  // Make sure height is set to a reasonable value when using ResponsiveContainer
+  const containerHeight = height === '100%' ? '100%' : typeof height === 'number' ? height : 400;
+  
+  return (
     <div className={`w-full h-full ${className}`}>
-      <ResponsiveContainer width={width} height={height}>
+      <ResponsiveContainer width="100%" height={containerHeight} minHeight={300}>
         {renderChart()}
       </ResponsiveContainer>
-    </div>
-  ) : (
-    <div className={`${className}`} style={{ width, height }}>
-      {renderChart()}
     </div>
   );
 };
