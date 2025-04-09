@@ -8,31 +8,24 @@ import { Button } from '@/components/ui/button';
 import { ChartType } from '@/utils/chartSuggestionUtils';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
+import highchartsMore from 'highcharts/highcharts-more';
+import highchartsSankey from 'highcharts/modules/sankey';
+import highchartsHeatmap from 'highcharts/modules/heatmap';
+import highchartsTreemap from 'highcharts/modules/treemap';
+import highchartsFunnel from 'highcharts/modules/funnel';
+import highchartsExporting from 'highcharts/modules/exporting';
 
-// Handle Highcharts module imports properly
-// Instead of trying to import the modules directly, we'll import them using require
-// and handle them in a way that works with the bundled code
-const initHighchartsModules = () => {
-  if (typeof Highcharts === 'object' && Highcharts) {
-    try {
-      // Use require for CommonJS modules
-      require('highcharts/highcharts-more')(Highcharts);
-      require('highcharts/modules/sankey')(Highcharts);
-      require('highcharts/modules/heatmap')(Highcharts);
-      require('highcharts/modules/treemap')(Highcharts);
-      require('highcharts/modules/funnel')(Highcharts);
-      require('highcharts/modules/exporting')(Highcharts);
-      console.log('Highcharts modules initialized successfully');
-    } catch (e) {
-      console.error('Error initializing Highcharts modules:', e);
-    }
-  } else {
-    console.warn('Highcharts not available, modules not initialized');
-  }
-};
-
-// Initialize modules
-initHighchartsModules();
+// Initialize Highcharts modules
+// We need to check if we're in a browser environment before initializing
+if (typeof Highcharts === 'object') {
+  highchartsMore(Highcharts);
+  highchartsSankey(Highcharts);
+  highchartsHeatmap(Highcharts);
+  highchartsTreemap(Highcharts);
+  highchartsFunnel(Highcharts);
+  highchartsExporting(Highcharts);
+  console.log('Highcharts modules initialized successfully');
+}
 
 // Define the dark theme for Highcharts
 const darkTheme = {
@@ -161,7 +154,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
   const { toast } = useToast();
   
-  // Add retries tracking
   const [loadAttempts, setLoadAttempts] = useState(0);
   const maxRetries = 3;
 
@@ -196,15 +188,13 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         console.error('Error loading chart data:', err);
         setError('Failed to load data for visualization');
         
-        // Retry loading if we haven't reached max attempts
         if (loadAttempts < maxRetries) {
           console.log(`Retrying data load, attempt ${loadAttempts + 1} of ${maxRetries}`);
           setLoadAttempts(prev => prev + 1);
           
-          // Wait before retrying
           setTimeout(() => {
             loadData();
-          }, 1000 * (loadAttempts + 1)); // Exponential backoff
+          }, 1000 * (loadAttempts + 1));
           return;
         }
         
@@ -245,61 +235,49 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     return { xField, yField };
   };
   
-  // Helper function to find the best field for X axis
   const findBestXAxisField = (data: any[], columns: string[]): string => {
-    // Priority: date fields > categorical fields > first field
     const firstRow = data[0];
     
-    // Look for date-like fields
     const dateField = columns.find(col => {
       const value = firstRow[col];
       return typeof value === 'string' && 
-        (value.match(/^\d{4}-\d{2}-\d{2}/) || // ISO date format
-         value.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/)); // MM/DD/YYYY
+        (value.match(/^\d{4}-\d{2}-\d{2}/) || 
+         value.match(/^\d{1,2}\/\d{1,2}\/\d{2,4}/));
     });
     
     if (dateField) return dateField;
     
-    // Special handling for Electric Vehicle data
     if (columns.includes('Make')) return 'Make';
     if (columns.includes('make')) return 'make';
     if (columns.includes('Model')) return 'Model';
     if (columns.includes('model')) return 'model';
     
-    // Look for categorical fields (string fields with repeated values)
     const categoricalFields = columns.filter(col => {
       const values = data.map(row => row[col]);
       const uniqueValues = new Set(values);
-      // If it's a string and has fewer unique values than 50% of total rows
       return typeof firstRow[col] === 'string' && 
         uniqueValues.size < data.length * 0.5;
     });
     
     if (categoricalFields.length > 0) return categoricalFields[0];
     
-    // Default to first non-numeric field or just first field
     const nonNumericField = columns.find(col => typeof firstRow[col] !== 'number');
     return nonNumericField || columns[0];
   };
   
-  // Helper function to find the best field for Y axis
   const findBestYAxisField = (data: any[], columns: string[], xField: string): string => {
     const firstRow = data[0];
     
-    // Special handling for Electric Vehicle data
     if (columns.includes('Electric Range')) return 'Electric Range';
     if (columns.includes('Base MSRP')) return 'Base MSRP';
     if (columns.includes('price')) return 'price';
     
-    // Look for numeric fields
     const numericFields = columns.filter(col => 
       col !== xField && typeof firstRow[col] === 'number'
     );
     
-    // If we have numeric fields, use the first one
     if (numericFields.length > 0) return numericFields[0];
     
-    // If no numeric fields, look for any field with number-like strings
     const numberLikeField = columns.find(col => {
       if (col === xField) return false;
       const value = firstRow[col];
@@ -308,7 +286,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     
     if (numberLikeField) return numberLikeField;
     
-    // Default to any field that's not the x-axis
     return columns.find(col => col !== xField) || (columns.length > 1 ? columns[1] : columns[0]);
   };
 
@@ -343,7 +320,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
 
     console.log(`Generating chart options for ${chartType} chart with X: ${xField}, Y: ${yField}`);
 
-    // Extract x and y values, handling various data types
     const categories = chartData.map(item => {
       const val = item[xField];
       return val !== undefined && val !== null ? String(val) : 'N/A';
@@ -351,7 +327,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     
     const seriesData = chartData.map(item => {
       const val = item[yField];
-      // Handle different types of values
       if (val === undefined || val === null) return 0;
       if (typeof val === 'number') return val;
       const numVal = Number(val);
@@ -360,7 +335,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     
     const chartTitle = `${yField} by ${xField}`;
     
-    // Limit data points to prevent performance issues
     const MAX_DATA_POINTS = 100;
     let limitedCategories = categories;
     let limitedSeriesData = seriesData;
@@ -370,7 +344,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       limitedSeriesData = seriesData.slice(0, MAX_DATA_POINTS);
     }
 
-    // Common options for all chart types
     const commonOptions = {
       chart: {
         height: heightClass === 'h-[500px]' ? '500px' : '400px'
@@ -391,7 +364,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       }
     };
     
-    // Type-specific chart options
     switch (chartType) {
       case 'bar':
         return {
@@ -545,7 +517,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           series: [{
             name: `${xField} vs ${yField}`,
             data: limitedCategories.map((name, i) => {
-              // Generate bubble size based on data value (min 5, max 30)
               const size = Math.max(5, Math.min(30, limitedSeriesData[i] / 10));
               return [i, limitedSeriesData[i], size];
             })
@@ -612,19 +583,16 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         };
         
       case 'stacked':
-        // For stacked chart, group data by a third column if available
         let stackedSeries = [{
           name: yField,
           data: limitedSeriesData
         }];
         
-        // Find another column to use for stacking if possible
         const stackColumn = availableColumns.find(col => 
           col !== xField && col !== yField && typeof chartData[0][col] !== 'number'
         );
         
         if (stackColumn) {
-          // Group data by the stack column
           const groupedData: Record<string, number[]> = {};
           
           chartData.forEach((item, idx) => {
@@ -704,7 +672,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         };
         
       case 'gauge':
-        // Find the maximum value for the gauge
         const maxValue = Math.max(...limitedSeriesData);
         const avgValue = limitedSeriesData.reduce((a, b) => a + b, 0) / limitedSeriesData.length;
         
@@ -720,14 +687,14 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           },
           yAxis: {
             min: 0,
-            max: maxValue * 1.2, // 20% higher than max value
+            max: maxValue * 1.2,
             title: {
               text: yField
             },
             stops: [
-              [0.1, '#55BF3B'], // green
-              [0.5, '#DDDF0D'], // yellow
-              [0.9, '#DF5353'] // red
+              [0.1, '#55BF3B'],
+              [0.5, '#DDDF0D'],
+              [0.9, '#DF5353']
             ],
             minorTickInterval: 'auto',
             minorTickWidth: 1,
@@ -742,7 +709,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           },
           series: [{
             name: yField,
-            data: [avgValue], // Use average for gauge
+            data: [avgValue],
             dataLabels: {
               format: '{y}'
             }
@@ -750,15 +717,12 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         };
         
       case 'heatmap': {
-        // Create a heatmap from the data
-        // We need a matrix format for heatmap
         const uniqueXValues = [...new Set(limitedCategories)];
         const uniqueYValues = [...new Set(chartData.map(item => item[yField]))].slice(0, 20);
         
         const heatmapData = [];
         for (let i = 0; i < Math.min(uniqueXValues.length, 20); i++) {
           for (let j = 0; j < Math.min(uniqueYValues.length, 20); j++) {
-            // Find matching data, or use 0 as placeholder
             const matchingItems = chartData.filter(
               item => String(item[xField]) === uniqueXValues[i] && 
                       String(item[yField]) === String(uniqueYValues[j])
@@ -766,7 +730,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
             
             const value = matchingItems.length > 0 ? 
               matchingItems.reduce((sum, item) => sum + (Number(item[yField]) || 0), 0) / matchingItems.length : 
-              Math.random() * 10; // Fallback random value for visualization
+              Math.random() * 10;
             
             heatmapData.push([i, j, value]);
           }
@@ -872,12 +836,9 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         };
         
       case 'sankey': {
-        // For sankey, we need to create links between nodes
-        // Use x and y fields as source and target
         const links = [];
         const nodeSet = new Set();
         
-        // Limit to avoid too complex sankey
         const MAX_SANKEY_ITEMS = 30;
         const sankeySample = chartData.slice(0, MAX_SANKEY_ITEMS);
         
@@ -935,7 +896,6 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
     }
   };
   
-  // Function to retry loading data
   const handleRetry = () => {
     setError(null);
     setLoadAttempts(0);
