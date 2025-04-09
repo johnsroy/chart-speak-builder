@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -49,16 +48,13 @@ const AnalyzePage = () => {
         const datasetsArray = Array.isArray(result) ? result : [];
         setDatasets(datasetsArray);
         
-        // Get unique datasets by filename
         const uniqueData = getUniqueDatasetsByFilename(datasetsArray);
         setUniqueDatasets(uniqueData);
         
-        // If datasetId is provided, find that dataset
         if (datasetId && uniqueData.length > 0) {
           const dataset = uniqueData.find(d => d.id === datasetId);
           if (dataset) {
             setSelectedDataset(dataset);
-            // Generate recommendations for this dataset
             const recs = nlpService.getRecommendationsForDataset(dataset);
             setRecommendations(recs);
           }
@@ -83,7 +79,6 @@ const AnalyzePage = () => {
     setQueryResult(null);
     const recs = nlpService.getRecommendationsForDataset(dataset);
     setRecommendations(recs);
-    // Update URL to include dataset ID
     navigate(`/analyze/${dataset.id}`);
   };
 
@@ -92,9 +87,7 @@ const AnalyzePage = () => {
 
     setIsQuerying(true);
     try {
-      // Fix the processQuery call by adding the required 'model' parameter
-      // The function expects 3-4 parameters: query, datasetId, model, and optionally data
-      const result = await nlpService.processQuery(queryText, selectedDataset.id, 'basic');
+      const result = await nlpService.processQuery(queryText, selectedDataset.id, "default");
       setQueryResult(result);
     } catch (error) {
       console.error('Error processing query:', error);
@@ -158,7 +151,6 @@ const AnalyzePage = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Dataset Selection Sidebar */}
           <div className="lg:col-span-1">
             <Card className="glass-card">
               <CardHeader>
@@ -194,7 +186,6 @@ const AnalyzePage = () => {
             </Card>
           </div>
           
-          {/* Main Content Area */}
           <div className="lg:col-span-3">
             {selectedDataset ? (
               <>
@@ -233,7 +224,6 @@ const AnalyzePage = () => {
                       </Button>
                     </div>
                     
-                    {/* Query suggestions */}
                     <div className="mt-2">
                       <p className="text-sm text-gray-400 mb-2">Suggested questions:</p>
                       <div className="flex flex-wrap gap-2">

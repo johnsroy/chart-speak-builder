@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import ChartVisualization from '@/components/ChartVisualization';
 import { dataService } from '@/services/dataService';
@@ -19,6 +19,8 @@ import DataTable from '@/components/DataTable';
 import { formatByteSize } from '@/utils/storageUtils';
 import { supabase } from '@/lib/supabase';
 import { datasetUtils } from '@/utils/datasetUtils';
+import ChartTypeSelector from '@/components/visualization/ChartTypeSelector';
+import { ChartType } from '@/utils/chartSuggestionUtils';
 
 const Visualize = () => {
   const { datasetId } = useParams<{ datasetId: string; }>();
@@ -37,16 +39,42 @@ const Visualize = () => {
   const [dataPreview, setDataPreview] = useState<any[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie' | 'table'>(
+  const [activeChartType, setActiveChartType] = useState<ChartType>(
     viewFromUrl === 'bar' ? 'bar' : 
     viewFromUrl === 'line' ? 'line' : 
-    viewFromUrl === 'pie' ? 'pie' : 'table'
+    viewFromUrl === 'pie' ? 'pie' :
+    viewFromUrl === 'scatter' ? 'scatter' :
+    viewFromUrl === 'area' ? 'area' :
+    viewFromUrl === 'column' ? 'column' :
+    viewFromUrl === 'donut' ? 'donut' :
+    viewFromUrl === 'stacked' ? 'stacked' :
+    'table'
   );
   const [loadAttempts, setLoadAttempts] = useState(0);
   const maxRetries = 5;
+  const [chartHeight, setChartHeight] = useState(500);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
 
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  // Detect container size and adjust chart height
+  useEffect(() => {
+    if (chartContainerRef.current) {
+      const updateChartSize = () => {
+        const containerWidth = chartContainerRef.current?.clientWidth || 0;
+        const calculatedHeight = Math.max(500, Math.min(800, containerWidth * 0.6));
+        setChartHeight(calculatedHeight);
+      };
+      
+      updateChartSize();
+      window.addEventListener('resize', updateChartSize);
+      
+      return () => {
+        window.removeEventListener('resize', updateChartSize);
+      };
+    }
+  }, [activeTab, activeChartType]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -68,8 +96,8 @@ const Visualize = () => {
     if (viewFromUrl === 'table') {
       setActiveChartType('table');
       setActiveTab('explore');
-    } else if (viewFromUrl === 'bar' || viewFromUrl === 'line' || viewFromUrl === 'pie') {
-      setActiveChartType(viewFromUrl as 'bar' | 'line' | 'pie');
+    } else if (['bar', 'line', 'pie', 'scatter', 'area', 'column', 'donut', 'stacked'].includes(viewFromUrl as string)) {
+      setActiveChartType(viewFromUrl as ChartType);
       setActiveTab('explore');
     } else if (viewFromUrl === 'chat') {
       setActiveTab('chat');
@@ -409,46 +437,13 @@ const Visualize = () => {
               </TabsContent>
               
               <TabsContent value="explore">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                  <Card 
-                    className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'bar' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
-                    onClick={() => setActiveChartType('bar')}
-                  >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Bar Chart</CardTitle>
-                      <BarChart className="h-4 w-4 text-purple-400" />
-                    </CardHeader>
-                  </Card>
-                  
-                  <Card 
-                    className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'line' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
-                    onClick={() => setActiveChartType('line')}
-                  >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Line Chart</CardTitle>
-                      <LineChart className="h-4 w-4 text-purple-400" />
-                    </CardHeader>
-                  </Card>
-                  
-                  <Card 
-                    className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'pie' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
-                    onClick={() => setActiveChartType('pie')}
-                  >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Pie Chart</CardTitle>
-                      <PieChart className="h-4 w-4 text-purple-400" />
-                    </CardHeader>
-                  </Card>
-                  
-                  <Card 
-                    className={`glass-card hover:bg-white/5 cursor-pointer transition-colors ${activeChartType === 'table' ? 'ring-2 ring-purple-500 shadow-xl' : ''}`}
-                    onClick={() => setActiveChartType('table')}
-                  >
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Data Table</CardTitle>
-                      <TableIcon className="h-4 w-4 text-purple-400" />
-                    </CardHeader>
-                  </Card>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-semibold">Choose Visualization Type</h2>
+                  <ChartTypeSelector 
+                    selectedChartType={activeChartType} 
+                    onChartTypeChange={setActiveChartType}
+                    availableChartTypes={['bar', 'line', 'pie', 'scatter', 'area', 'column', 'donut', 'stacked', 'table']} 
+                  />
                 </div>
                 
                 {activeChartType === 'table' ? (
@@ -462,13 +457,23 @@ const Visualize = () => {
                     onRefresh={handleRefreshData}
                   />
                 ) : (
-                  <ChartVisualization 
-                    datasetId={datasetId!} 
-                    chartType={activeChartType}
-                    data={dataPreview}
-                    useDirectAccess={true}
-                    heightClass="h-[500px]"
-                  />
+                  <div 
+                    ref={chartContainerRef}
+                    className="glass-card p-6 rounded-xl overflow-hidden"
+                    style={{
+                      minHeight: '500px',
+                      height: `${chartHeight}px`
+                    }}
+                  >
+                    <ChartVisualization 
+                      datasetId={datasetId!} 
+                      chartType={activeChartType}
+                      data={dataPreview}
+                      useDirectAccess={true}
+                      heightClass={`h-[${chartHeight - 40}px]`}
+                      className="w-full h-full"
+                    />
+                  </div>
                 )}
               </TabsContent>
             </Tabs>
