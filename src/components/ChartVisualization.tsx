@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import {
@@ -32,17 +33,16 @@ import {
 import HighchartsReact from 'highcharts-react-official';
 import Highcharts from 'highcharts';
 
-// Import Highcharts modules - but as a side effect import to ensure they work with SSR and ESM
-import 'highcharts/highcharts-more';
-import 'highcharts/modules/exporting';
-import 'highcharts/modules/export-data';
+// Import Highcharts modules properly for browser environment
+import HighchartsMore from 'highcharts/highcharts-more';
+import HighchartsExporting from 'highcharts/modules/exporting';
+import HighchartsExportData from 'highcharts/modules/export-data';
 
-// Initialize modules correctly when in browser environment
-if (typeof Highcharts === 'object' && typeof window !== 'undefined') {
-  // These modules modify the Highcharts object directly
-  require('highcharts/highcharts-more')(Highcharts);
-  require('highcharts/modules/exporting')(Highcharts);
-  require('highcharts/modules/export-data')(Highcharts);
+// Initialize Highcharts modules
+if (typeof window !== 'undefined') {
+  HighchartsMore(Highcharts);
+  HighchartsExporting(Highcharts);
+  HighchartsExportData(Highcharts);
 }
 
 interface ChartVisualizationProps {
