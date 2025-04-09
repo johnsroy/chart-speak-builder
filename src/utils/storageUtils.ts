@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { toast } from "sonner";
 import { Dataset, StorageStats } from '@/services/types/datasetTypes';
@@ -50,7 +49,8 @@ export const createStorageBuckets = async (): Promise<boolean> => {
       if (!existingBuckets.includes(bucketName)) {
         try {
           const { error } = await supabase.storage.createBucket(bucketName, {
-            public: true
+            public: true,
+            fileSizeLimit: 100 * 1024 * 1024 // 100MB limit
           });
           
           results.push({
@@ -69,7 +69,7 @@ export const createStorageBuckets = async (): Promise<boolean> => {
           results.push({
             bucketName,
             success: false,
-            error: bucketError.message
+            error: bucketError instanceof Error ? bucketError.message : String(bucketError)
           });
         }
       } else {
@@ -109,26 +109,13 @@ const getBucketNames = async (): Promise<string[]> => {
 };
 
 /**
- * Sets up storage buckets using the edge function
+ * Sets up storage buckets using the edge function or direct API
  */
 export const setupStorageBuckets = async () => {
   try {
-    console.log("Setting up storage buckets via edge function...");
+    console.log("Setting up storage buckets...");
     
-    // Try to use the edge function first
-    try {
-      const result = await callStorageManager('force-create-buckets');
-      
-      if (result && result.success) {
-        return result;
-      }
-    } catch (edgeError) {
-      console.warn("Edge function approach failed:", edgeError);
-    }
-    
-    console.log("Edge function approach failed, trying direct API...");
-    
-    // Fall back to direct API approach
+    // Try direct API approach first
     const success = await createStorageBuckets();
     
     if (success) {
@@ -138,14 +125,15 @@ export const setupStorageBuckets = async () => {
       };
     }
     
-    console.log("Direct bucket creation failed, trying edge function...");
-    
-    // Try the edge function again but with a different action
+    // If direct creation fails, try edge function as fallback
     try {
-      const setupResult = await callStorageManager('setup');
-      return setupResult;
-    } catch (setupError) {
-      console.error("Setup action also failed:", setupError);
+      const result = await callStorageManager('force-create-buckets');
+      
+      if (result && result.success) {
+        return result;
+      }
+    } catch (edgeError) {
+      console.warn("Edge function approach failed:", edgeError);
     }
     
     console.log("All storage setup attempts failed. Proceeding without storage initialization.");
@@ -158,7 +146,7 @@ export const setupStorageBuckets = async () => {
     console.error("Failed to set up storage buckets:", error);
     return {
       success: false,
-      message: `Error: ${error.message}`
+      message: `Error: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 };

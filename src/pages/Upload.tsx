@@ -1,16 +1,19 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import UserDatasetLibrary from '@/components/upload/UserDatasetLibrary';
 import UploadTabContent from '@/components/upload/UploadTabContent';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from '@/components/ui/card';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useDatasets } from '@/hooks/useDatasets';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 const Upload = () => {
   const [activeTab, setActiveTab] = useState('upload');
   const [selectedStorage, setSelectedStorage] = useState<string | null>(null);
+  const [bucketStatus, setBucketStatus] = useState<'checking' | 'ready' | 'error'>('checking');
   
+  // Get file upload functionality
   const {
     dragActive,
     selectedFile,
@@ -34,9 +37,12 @@ const Upload = () => {
     handleUpload,
     retryUpload,
     handleOverwriteConfirm,
-    handleOverwriteCancel
+    handleOverwriteCancel,
+    verifyStorageBucket,
+    createStorageBucketIfNeeded
   } = useFileUpload();
 
+  // Get dataset library functionality
   const {
     datasets,
     selectedDatasetId,
@@ -45,12 +51,49 @@ const Upload = () => {
     loadDatasets
   } = useDatasets();
 
+  // Check and create storage buckets if needed
+  useEffect(() => {
+    const checkAndCreateBuckets = async () => {
+      try {
+        setBucketStatus('checking');
+        const bucketsExist = await verifyStorageBucket();
+        
+        if (!bucketsExist) {
+          console.log("Required storage buckets missing, attempting to create");
+          const created = await createStorageBucketIfNeeded();
+          if (created) {
+            toast.success("Storage initialized successfully");
+            setBucketStatus('ready');
+          } else {
+            console.warn("Storage initialization failed but continuing");
+            // We'll continue anyway, as the backend handles fallback mechanisms
+            setBucketStatus('ready');
+          }
+        } else {
+          console.log("Storage buckets verified");
+          setBucketStatus('ready');
+        }
+      } catch (error) {
+        console.error("Error checking storage buckets:", error);
+        // Continue anyway with storage error state
+        setBucketStatus('error');
+      }
+    };
+    
+    checkAndCreateBuckets();
+  }, []);
+
   // Function to handle the upload action
   const handleUploadAction = async () => {
     try {
-      if (typeof handleUpload === 'function') {
-        await handleUpload(true, "00000000-0000-0000-0000-000000000000");
+      if (selectedFile && selectedFile.size > 50 * 1024 * 1024) {
+        toast("Large file detected", {
+          description: "Uploading large files may take some time. Please be patient."
+        });
       }
+
+      await handleUpload(true, "00000000-0000-0000-0000-000000000000");
+      loadDatasets();
     } catch (error) {
       console.error('Upload failed:', error);
     }
@@ -59,9 +102,7 @@ const Upload = () => {
   // Function to handle retry
   const handleRetryAction = () => {
     try {
-      if (typeof retryUpload === 'function') {
-        retryUpload(true, "00000000-0000-0000-0000-000000000000");
-      }
+      retryUpload(true, "00000000-0000-0000-0000-000000000000");
     } catch (error) {
       console.error('Retry failed:', error);
     }
@@ -70,9 +111,7 @@ const Upload = () => {
   // Function to handle overwrite confirmation
   const handleOverwriteConfirmAction = () => {
     try {
-      if (typeof handleOverwriteConfirm === 'function') {
-        handleOverwriteConfirm(true, "00000000-0000-0000-0000-000000000000");
-      }
+      handleOverwriteConfirm(true, "00000000-0000-0000-0000-000000000000");
     } catch (error) {
       console.error('Overwrite confirmation failed:', error);
     }

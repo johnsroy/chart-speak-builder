@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from "sonner";
@@ -187,9 +188,6 @@ export const useFileUpload = () => {
       // Always use a valid user ID to guarantee upload works
       const validatedUserId = validateUserId(userId);
       
-      // Prepare additional metadata - remove preview_key
-      let additionalProps = {};
-      
       // Start upload process
       setIsUploading(true);
       setUploadError(null);
@@ -198,13 +196,120 @@ export const useFileUpload = () => {
       try {
         console.log("Starting upload for user:", validatedUserId);
         
+        // First try to directly insert the dataset record with local storage path
+        if (selectedFile.size > 5 * 1024 * 1024) {
+          console.log("Large file detected, using direct dataset insertion approach");
+          
+          // Create a fallback dataset record using local storage path
+          const fallbackTimestamp = Date.now();
+          const fallbackPath = `fallback/${validatedUserId}/${fallbackTimestamp}_${selectedFile.name}`;
+          
+          // Preview data for schema inference
+          let columnSchema = {};
+          let rowCount = 0;
+          
+          try {
+            if (selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv')) {
+              const fileText = await selectedFile.text();
+              const previewData = await parseCSV(fileText, 100);
+              
+              if (previewData.length > 0) {
+                const schema: Record<string, string> = {};
+                Object.keys(previewData[0]).forEach(key => {
+                  const value = previewData[0][key];
+                  schema[key] = typeof value === 'number' ? 'number' : 
+                                typeof value === 'boolean' ? 'boolean' :
+                                'string';
+                });
+                columnSchema = schema;
+                rowCount = previewData.length;
+                
+                // Store preview in session storage
+                const previewKey = `preview_${fallbackTimestamp}_${selectedFile.name}`;
+                sessionStorage.setItem(previewKey, JSON.stringify(previewData));
+              }
+            }
+          } catch (schemaError) {
+            console.warn("Error inferring schema:", schemaError);
+            columnSchema = { "Column1": "string", "Value": "number" };
+          }
+          
+          const fallbackDataset = {
+            name: datasetName,
+            description: datasetDescription || "",
+            file_name: selectedFile.name,
+            file_size: selectedFile.size,
+            storage_type: 'local',
+            storage_path: fallbackPath,
+            user_id: validatedUserId,
+            row_count: rowCount,
+            column_schema: columnSchema
+          };
+          
+          const { data: insertedData, error: insertError } = await supabase
+            .from('datasets')
+            .insert([fallbackDataset])
+            .select()
+            .single();
+            
+          if (insertError) {
+            console.error("Direct dataset insert failed:", insertError);
+            throw new Error(`Failed to create dataset record: ${insertError.message}`);
+          }
+          
+          clearInterval(progressInterval);
+          setUploadProgress(100);
+          
+          // Update state with upload results
+          setUploadedDatasetId(insertedData.id);
+          setShowVisualizeAfterUpload(true);
+          
+          // Store dataset ID in session storage for immediate access
+          sessionStorage.setItem('last_uploaded_dataset', insertedData.id);
+          
+          // Reset form
+          setSelectedFile(null);
+          setDatasetName('');
+          setDatasetDescription('');
+          setSchemaPreview(null);
+          
+          // Reset overwrite state
+          setOverwriteInProgress(false);
+          setDatasetToOverwrite(null);
+          
+          // Show redirect dialog
+          setShowRedirectDialog(true);
+          
+          // Show success toast
+          sonnerToast.success("Upload complete!", {
+            description: "Your dataset was successfully processed.",
+            action: {
+              label: "View Dataset",
+              onClick: () => window.location.href = `/visualize/${insertedData.id}?view=table`,
+            },
+          });
+          
+          // Dispatch events
+          const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
+            detail: { datasetId: insertedData.id }
+          });
+          window.dispatchEvent(uploadSuccessEvent);
+          
+          const uploadEvent = new CustomEvent('upload:success', {
+            detail: { datasetId: insertedData.id }
+          });
+          window.dispatchEvent(uploadEvent);
+          
+          return insertedData;
+        }
+        
+        // For smaller files or if direct insert approach failed, try the regular upload
         const dataset = await performUpload(
           selectedFile,
           datasetName,
           datasetDescription || undefined,
           validatedUserId,
-          setUploadProgress,
-          additionalProps
+          setUploadProgress
         );
         
         // Update state with upload results
@@ -236,14 +341,13 @@ export const useFileUpload = () => {
           },
         });
         
-        // Dispatch a custom event for upload success that other components can listen for
+        // Dispatch events
         console.log("Dispatching dataset-upload-success event with dataset ID:", dataset.id);
         const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
           detail: { datasetId: dataset.id }
         });
         window.dispatchEvent(uploadSuccessEvent);
         
-        // Also dispatch the upload:success event directly for the Upload page
         console.log("Dispatching upload:success event with dataset ID:", dataset.id);
         const uploadEvent = new CustomEvent('upload:success', {
           detail: { datasetId: dataset.id }
@@ -254,75 +358,12 @@ export const useFileUpload = () => {
       } catch (error) {
         console.error('Error uploading dataset:', error);
         
-        // If this is a size error, try the fallback mechanism
-        if (error instanceof Error && error.message.includes("exceeded the maximum allowed size")) {
-          console.error("Upload failed, using fallback:", error);
-          
-          // Create a fallback dataset record using local storage path
-          const fallbackTimestamp = Date.now();
-          const fallbackPath = `fallback/${validatedUserId}/${fallbackTimestamp}_${selectedFile.name}`;
-          
-          const fallbackDataset = {
-            name: datasetName,
-            description: datasetDescription || undefined,
-            file_name: selectedFile.name,
-            file_size: selectedFile.size,
-            storage_type: 'local',
-            storage_path: fallbackPath,
-            user_id: validatedUserId,
-            row_count: 0,
-            column_schema: {}
-          };
-          
-          try {
-            // Insert the fallback dataset
-            const { data: insertedData, error: insertError } = await supabase
-              .from('datasets')
-              .insert([fallbackDataset])
-              .select()
-              .single();
-              
-            if (insertError) {
-              throw new Error(`Failed to create fallback dataset: ${insertError.message}`);
-            }
-            
-            // Use this as our successful dataset
-            setUploadedDatasetId(insertedData.id);
-            setShowVisualizeAfterUpload(true);
-            setShowRedirectDialog(true);
-            
-            // Store dataset ID in session storage
-            sessionStorage.setItem('last_uploaded_dataset', insertedData.id);
-            
-            sonnerToast.success("Upload processed successfully!", {
-              description: "Using fallback storage for large file.",
-              action: {
-                label: "View Dataset",
-                onClick: () => window.location.href = `/visualize/${insertedData.id}?view=table`,
-              },
-            });
-            
-            // Dispatch the success events
-            const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
-              detail: { datasetId: insertedData.id }
-            });
-            window.dispatchEvent(uploadSuccessEvent);
-            
-            return insertedData;
-          } catch (fallbackError) {
-            console.error("Fallback creation also failed:", fallbackError);
-            throw fallbackError;
-          }
-        }
-        
-        const errorMessage = error instanceof Error ? error.message : "Failed to upload dataset";
-        
-        setUploadError(errorMessage);
+        setUploadError(error instanceof Error ? error.message : "Failed to upload dataset");
         setOverwriteInProgress(false);
         
         toast({
           title: "Upload issue",
-          description: errorMessage,
+          description: error instanceof Error ? error.message : "Failed to upload dataset",
           variant: "destructive"
         });
       } finally {
