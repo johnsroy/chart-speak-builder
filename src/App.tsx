@@ -1,6 +1,6 @@
 
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Toaster } from './components/ui/toaster';
 import { Toaster as SonnerToaster } from 'sonner';
 import NavBar from './components/NavBar';
@@ -43,11 +43,12 @@ function App() {
         <Route path="/payment-success" element={<PaymentSuccessPage />} />
         <Route path="/payment-cancelled" element={<PaymentCanceledPage />} />
         
-        {/* Protected routes with NavBar */}
-        <Route path="/" element={
+        {/* Protected routes with NavBar - Using element + Outlet pattern to avoid duplicate NavBar */}
+        <Route element={
           <ProtectedRoute>
             <NavBar />
             <main className="container mx-auto px-4 py-8">
+              <Outlet />
             </main>
           </ProtectedRoute>
         }>
