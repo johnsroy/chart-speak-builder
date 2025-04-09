@@ -1,606 +1,513 @@
-import { useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import { toast as sonnerToast } from "sonner";
-import { dataService } from '@/services/dataService';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
-import { 
-  validateFileForUpload, 
-  validateUserId, 
-  simulateProgress, 
-  performUpload,
-  getDatasetNameFromFile 
-} from '@/utils/uploadUtils';
-import { verifyStorageBuckets, setupStorageBuckets } from '@/utils/storageUtils';
+import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { parseCSV } from '@/services/utils/fileUtils';
+import { useUser } from '@/hooks/useUser';
+import { toast } from 'sonner';
+import { extractDatasetNameFromFileName } from '@/utils/chartUtils';
+import { useRouter } from 'next/navigation';
 
-/**
- * Custom hook for managing file uploads
- */
-export const useFileUpload = () => {
-  const [dragActive, setDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [datasetName, setDatasetName] = useState('');
-  const [datasetDescription, setDatasetDescription] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [schemaPreview, setSchemaPreview] = useState<Record<string, string> | null>(null);
-  const [uploadedDatasetId, setUploadedDatasetId] = useState<string | null>(null);
-  const [showVisualizeAfterUpload, setShowVisualizeAfterUpload] = useState(false);
-  const [showRedirectDialog, setShowRedirectDialog] = useState(false);
-  const [existingDatasets, setExistingDatasets] = useState<any[]>([]);
-  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
-  const [datasetToOverwrite, setDatasetToOverwrite] = useState<string | null>(null);
-  const [overwriteInProgress, setOverwriteInProgress] = useState(false);
-  
-  const { toast } = useToast();
-  const navigate = useNavigate();
-  const { user, session } = useAuth();
+interface SchemaPreview {
+  [columnName: string]: string;
+}
 
-  /**
-   * Handles drag events for the file upload area
-   */
-  const handleDrag = (e: React.DragEvent) => {
+interface UseFileUploadResult {
+  dragActive: boolean;
+  selectedFile: File | null;
+  datasetName: string;
+  datasetDescription: string;
+  isUploading: boolean;
+  uploadProgress: number;
+  uploadError: string | null;
+  schemaPreview: SchemaPreview | null;
+  uploadedDatasetId: string | null;
+  showVisualizeAfterUpload: boolean;
+  showRedirectDialog: boolean;
+  showOverwriteConfirm: boolean;
+  overwriteInProgress: boolean;
+  selectedStorage: string | null;
+  handleDrag: (e: React.DragEvent<HTMLDivElement>) => void;
+  handleDrop: (e: React.DragEvent<HTMLDivElement>) => void;
+  handleFileInput: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  setDatasetName: (name: string) => void;
+  setDatasetDescription: (desc: string) => void;
+  handleUpload: (isRetry?: boolean, userId?: string) => Promise<void>;
+  retryUpload: (isRetry?: boolean, userId?: string) => Promise<void>;
+  setShowVisualizeAfterUpload: (show: boolean) => void;
+  setShowRedirectDialog: (show: boolean) => void;
+  setSelectedStorage: (storage: string | null) => void;
+  handleOverwriteConfirm: (isRetry?: boolean, userId?: string) => Promise<void>;
+  handleOverwriteCancel: () => void;
+  verifyStorageBucket: () => Promise<boolean>;
+  createStorageBucketIfNeeded: () => Promise<boolean>;
+}
+
+interface State {
+  dragActive: boolean;
+  selectedFile: File | null;
+  datasetName: string;
+  datasetDescription: string;
+  isUploading: boolean;
+  uploadProgress: number;
+  uploadError: string | null;
+  schemaPreview: SchemaPreview | null;
+  uploadedDatasetId: string | null;
+  showVisualizeAfterUpload: boolean;
+  showRedirectDialog: boolean;
+  showOverwriteConfirm: boolean;
+  overwriteInProgress: boolean;
+  selectedStorage: string | null;
+}
+
+const initialState: State = {
+  dragActive: false,
+  selectedFile: null,
+  datasetName: '',
+  datasetDescription: '',
+  isUploading: false,
+  uploadProgress: 0,
+  uploadError: null,
+  schemaPreview: null,
+  uploadedDatasetId: null,
+  showVisualizeAfterUpload: false,
+  showRedirectDialog: false,
+  showOverwriteConfirm: false,
+  overwriteInProgress: false,
+  selectedStorage: null,
+};
+
+export const useFileUpload = (): UseFileUploadResult => {
+  const [state, setState] = useState<State>(initialState);
+  const { user } = useUser();
+	const router = useRouter();
+
+  const handleDrag = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setState(prevState => ({ ...prevState, dragActive: true }));
+    } else if (e.type === "dragleave") {
+      setState(prevState => ({ ...prevState, dragActive: false }));
     }
-  };
+  }, []);
 
-  /**
-   * Handles file drop events
-   */
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    setState(prevState => ({ ...prevState, dragActive: false }));
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      handleFileSelection(file);
+      updateSelectedFile(file);
     }
-  };
+  }, [updateSelectedFile]);
 
-  /**
-   * Handles file input selection
-   */
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      handleFileSelection(file);
+      updateSelectedFile(file);
     }
-  };
+  }, [updateSelectedFile]);
 
-  /**
-   * Processes a selected file
-   */
-  const handleFileSelection = async (file: File) => {
+  const setDatasetName = useCallback((name: string) => {
+    setState(prevState => ({ ...prevState, datasetName: name }));
+  }, []);
+
+  const setDatasetDescription = useCallback((desc: string) => {
+    setState(prevState => ({ ...prevState, datasetDescription: desc }));
+  }, []);
+
+  const setShowVisualizeAfterUpload = useCallback((show: boolean) => {
+    setState(prevState => ({ ...prevState, showVisualizeAfterUpload: show }));
+  }, []);
+
+  const setShowRedirectDialog = useCallback((show: boolean) => {
+    setState(prevState => ({ ...prevState, showRedirectDialog: show }));
+  }, []);
+
+  const setSelectedStorage = useCallback((storage: string | null) => {
+    setState(prevState => ({ ...prevState, selectedStorage: storage }));
+  }, []);
+
+  const updateSelectedFile = useCallback(async (file: File) => {
+    setState(prevState => ({
+      ...prevState,
+      selectedFile: file,
+      datasetName: extractDatasetNameFromFileName(file.name),
+      uploadProgress: 0,
+      uploadError: null,
+    }));
+
     try {
-      validateFileForUpload(file);
-      
-      setSelectedFile(file);
-      setDatasetName(getDatasetNameFromFile(file));
-      setUploadError(null);
-      
-      // Check for existing datasets with same filename
-      const datasets = await dataService.getDatasets();
-      setExistingDatasets(datasets);
-      
-      const existingWithSameName = datasets.find(d => d.file_name === file.name);
-      if (existingWithSameName) {
-        // Show overwrite confirmation immediately
-        setDatasetToOverwrite(existingWithSameName.id);
-        setShowOverwriteConfirm(true);
-      }
-      
-      // Try to read file contents for preview
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        try {
-          const fileContent = await file.text();
-          const previewData = await parseCSV(fileContent, 1000);
-          
-          // Store preview data in session storage
-          const previewKey = `upload_preview_${Date.now()}`;
-          sessionStorage.setItem(previewKey, JSON.stringify(previewData));
-          console.log("Stored file preview in session storage with key:", previewKey);
-        } catch (previewError) {
-          console.warn("Failed to generate preview:", previewError);
+      const preview = await previewFileSchema(file);
+      setState(prevState => ({ ...prevState, schemaPreview: preview }));
+    } catch (error) {
+      console.error("Error previewing file schema:", error);
+      toast.error("Could not preview file schema", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
+      setState(prevState => ({ ...prevState, schemaPreview: null }));
+    }
+  }, []);
+
+  const previewFileSchema = async (file: File): Promise<SchemaPreview> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (event: ProgressEvent<FileReader>) => {
+        const text = (event.target?.result as string) || '';
+        const lines = text.split('\n');
+        if (lines.length < 1) {
+          reject(new Error("File is empty or has no headers"));
+          return;
         }
-      }
-      
-      previewSchemaInference(file);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      toast({
-        title: "File selection error",
-        description: errorMessage,
-        variant: "destructive"
-      });
-    }
-  };
 
-  /**
-   * Generates a schema preview for CSV files
-   */
-  const previewSchemaInference = async (file: File) => {
-    try {
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      if (file.type === 'text/csv' || fileExtension === 'csv') {
-        const schemaSample = await dataService.previewSchemaInference(file);
-        setSchemaPreview(schemaSample);
-      } else {
-        setSchemaPreview(null);
-      }
-    } catch (error) {
-      console.error('Error previewing schema:', error);
-      setSchemaPreview(null);
-    }
-  };
+        const headers = lines[0].split(',').map(header => header.trim());
+        if (headers.length === 0) {
+          reject(new Error("No columns found in the header row"));
+          return;
+        }
 
-  /**
-   * Initiates file upload process with improved RLS support
-   */
-  const handleUpload = async (isAuthenticated: boolean, userId: string) => {
-    if (!selectedFile) {
-      toast({
-        title: "No file selected",
-        description: "Please select a file to upload",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    if (!datasetName.trim()) {
-      toast({
-        title: "Dataset name required",
-        description: "Please provide a name for your dataset",
-        variant: "destructive"
-      });
-      return;
-    }
+        const preview: SchemaPreview = {};
+        headers.forEach(header => {
+          preview[header] = 'string';
+        });
 
-    // Check if file with same name exists and prompt for overwrite
-    const duplicateDataset = existingDatasets.find(dataset => dataset.file_name === selectedFile.name);
-    if (duplicateDataset && !overwriteInProgress) {
-      setDatasetToOverwrite(duplicateDataset.id);
-      setShowOverwriteConfirm(true);
-      return;
-    }
-
-    try {
-      // Use system account for upload instead of relying on user authentication
-      const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984'; // Known valid user ID from auth logs
-      const validatedUserId = systemUserId;
-      
-      // Start upload process
-      setIsUploading(true);
-      setUploadError(null);
-      const progressInterval = simulateProgress(0, selectedFile.size, setUploadProgress);
-      
-      try {
-        console.log("Starting upload for user:", validatedUserId);
-        
-        // First try to directly insert the dataset record with local storage path
-        if (selectedFile.size > 5 * 1024 * 1024) {
-          console.log("Large file detected, using direct dataset insertion approach");
-          
-          // Create a fallback dataset record using local storage path
-          const fallbackTimestamp = Date.now();
-          const fallbackPath = `fallback/${validatedUserId}/${fallbackTimestamp}_${selectedFile.name}`;
-          
-          // Preview data for schema inference
-          let columnSchema = {};
-          let rowCount = 0;
-          
-          try {
-            if (selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv')) {
-              const fileText = await selectedFile.text();
-              const previewData = await parseCSV(fileText, 1000);
-              
-              if (previewData.length > 0) {
-                const schema: Record<string, string> = {};
-                Object.keys(previewData[0]).forEach(key => {
-                  const value = previewData[0][key];
-                  schema[key] = typeof value === 'number' ? 'number' : 
-                                typeof value === 'boolean' ? 'boolean' :
-                                'string';
-                });
-                columnSchema = schema;
-                rowCount = previewData.length;
-                
-                // Store preview in session storage
-                const previewKey = `preview_${fallbackTimestamp}_${selectedFile.name}`;
-                sessionStorage.setItem(previewKey, JSON.stringify(previewData));
-                console.log("Preview stored with key:", previewKey);
+        if (lines.length > 1) {
+          const firstDataRow = lines[1].split(',');
+          if (firstDataRow.length === headers.length) {
+            headers.forEach((header, index) => {
+              const value = firstDataRow[index].trim();
+              if (!isNaN(Number(value))) {
+                preview[header] = 'number';
+              } else if (!isNaN(Date.parse(value))) {
+                preview[header] = 'date';
               }
-            }
-          } catch (schemaError) {
-            console.warn("Error inferring schema:", schemaError);
-            columnSchema = { "Column1": "string", "Value": "number" };
+            });
           }
-          
-          // Now create dataset with properly structured data and preview_key
-          const fallbackDataset = {
+        }
+
+        resolve(preview);
+      };
+
+      reader.onerror = () => {
+        reject(new Error("Failed to read the file"));
+      };
+
+      reader.readAsText(file, 'UTF-8');
+    });
+  };
+
+  const handleUpload = useCallback(async (isRetry: boolean = false, userId?: string) => {
+    if (!state.selectedFile) {
+      toast.error("No file selected", {
+        description: "Please select a file to upload."
+      });
+      return;
+    }
+
+    if (!state.datasetName) {
+      toast.error("Dataset name is required", {
+        description: "Please enter a name for your dataset."
+      });
+      return;
+    }
+
+    const user_id = userId || user?.id || 'system_user';
+    const file = state.selectedFile;
+    const datasetName = state.datasetName;
+    const datasetDescription = state.datasetDescription;
+
+    setState(prevState => ({
+      ...prevState,
+      isUploading: true,
+      uploadProgress: 0,
+      uploadError: null,
+    }));
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${datasetName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${fileExt}`;
+      const filePath = `uploads/${user_id}/${fileName}`;
+
+      // Check if a dataset with the same name already exists
+      const { data: existingDataset, error: selectError } = await supabase
+        .from('datasets')
+        .select('*')
+        .eq('name', datasetName)
+        .single();
+
+      if (selectError && selectError.code !== 'PGRST116') {
+        throw new Error(selectError.message || 'Could not check existing datasets');
+      }
+
+      if (existingDataset && !isRetry) {
+        console.warn("Dataset with this name already exists");
+        setState(prevState => ({ ...prevState, showOverwriteConfirm: true }));
+        return;
+      }
+
+      // Proceed with upload if no dataset exists or if it's a retry after confirmation
+      const { data, error } = await supabase.storage
+        .from('datasets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        throw new Error(error.message || 'Could not upload file to storage');
+      }
+
+      const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
+
+      // Extract file size
+      const fileSizeInBytes = file.size;
+
+      // Insert dataset metadata
+      const { data: datasetData, error: datasetError } = await supabase
+        .from('datasets')
+        .insert([
+          {
             name: datasetName,
-            description: datasetDescription || "",
-            file_name: selectedFile.name,
-            file_size: selectedFile.size,
-            storage_type: 'local',
-            storage_path: fallbackPath,
-            user_id: validatedUserId,
-            row_count: rowCount,
-            column_schema: columnSchema,
-            preview_key: `preview_${fallbackTimestamp}_${selectedFile.name}`
-          };
-          
-          console.log("Creating dataset with data:", fallbackDataset);
-          
-          const { data: insertedData, error: insertError } = await supabase
-            .from('datasets')
-            .insert([fallbackDataset])
-            .select()
-            .single();
-            
-          if (insertError) {
-            console.error("Direct dataset insert failed:", insertError);
-            throw new Error(`Failed to create dataset record: ${insertError.message}`);
+            description: datasetDescription,
+            file_name: file.name,
+            file_size: fileSizeInBytes,
+            storage_path: filePath,
+            storage_url: publicURL,
+            storage_type: 'datasets',
+            user_id: user_id,
+            column_schema: state.schemaPreview,
           }
-          
-          console.log("Dataset record created successfully:", insertedData);
-          
-          clearInterval(progressInterval);
-          setUploadProgress(100);
-          
-          // Update state with upload results
-          setUploadedDatasetId(insertedData.id);
-          setShowVisualizeAfterUpload(true);
-          
-          // Store dataset ID in session storage for immediate access
-          sessionStorage.setItem('last_uploaded_dataset', insertedData.id);
-          
-          // Reset form
-          setSelectedFile(null);
-          setDatasetName('');
-          setDatasetDescription('');
-          setSchemaPreview(null);
-          
-          // Reset overwrite state
-          setOverwriteInProgress(false);
-          setDatasetToOverwrite(null);
-          
-          // Show redirect dialog
-          setShowRedirectDialog(true);
-          
-          // Show success toast
-          sonnerToast.success("Upload complete!", {
-            description: "Your dataset was successfully processed.",
-            action: {
-              label: "View Dataset",
-              onClick: () => window.location.href = `/visualize/${insertedData.id}?view=table`,
-            },
-          });
-          
-          // Dispatch events
-          const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
-            detail: { datasetId: insertedData.id }
-          });
-          window.dispatchEvent(uploadSuccessEvent);
-          
-          const uploadEvent = new CustomEvent('upload:success', {
-            detail: { datasetId: insertedData.id }
-          });
-          window.dispatchEvent(uploadEvent);
-          
-          return insertedData;
-        }
-        
-        // For smaller files or if direct insert approach failed, try the regular upload
-        const dataset = await performUpload(
-          selectedFile,
-          datasetName,
-          datasetDescription || undefined,
-          validatedUserId,
-          setUploadProgress
-        );
-        
-        // Update state with upload results
-        setUploadedDatasetId(dataset.id);
-        setShowVisualizeAfterUpload(true);
-        
-        // Store dataset ID in session storage for immediate access
-        sessionStorage.setItem('last_uploaded_dataset', dataset.id);
-        
-        // Reset form
-        setSelectedFile(null);
-        setDatasetName('');
-        setDatasetDescription('');
-        setSchemaPreview(null);
-        
-        // Reset overwrite state
-        setOverwriteInProgress(false);
-        setDatasetToOverwrite(null);
-        
-        // Show redirect dialog
-        setShowRedirectDialog(true);
-        
-        // Show success toast - only if not overwriting
-        if (!overwriteInProgress) {
-          sonnerToast.success("Upload complete!", {
-            description: "Your dataset was successfully uploaded.",
-            action: {
-              label: "View Dataset",
-              onClick: () => window.location.href = `/visualize/${dataset.id}?view=table`,
-            },
-          });
-        }
-        
-        // Dispatch events
-        const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
-          detail: { datasetId: dataset.id }
-        });
-        window.dispatchEvent(uploadSuccessEvent);
-        
-        const uploadEvent = new CustomEvent('upload:success', {
-          detail: { datasetId: dataset.id }
-        });
-        window.dispatchEvent(uploadEvent);
-        
-        return dataset;
-      } catch (error) {
-        console.error('Error uploading dataset:', error);
-        
-        setUploadError(error instanceof Error ? error.message : "Failed to upload dataset");
-        setOverwriteInProgress(false);
-        
-        if (!overwriteInProgress) {
-          toast({
-            title: "Upload issue",
-            description: error instanceof Error ? error.message : "Failed to upload dataset",
-            variant: "destructive"
-          });
-        }
-      } finally {
-        clearInterval(progressInterval);
-        setIsUploading(false);
+        ])
+        .select('id')
+        .single();
+
+      if (datasetError) {
+        // Attempt to delete the file from storage if metadata insertion fails
+        await supabase.storage.from('datasets').remove([filePath]);
+        throw new Error(datasetError.message || 'Could not save dataset metadata');
       }
-    } catch (validationError) {
-      const errorMessage = validationError instanceof Error ? validationError.message : String(validationError);
-      
-      setUploadError(errorMessage);
-      setOverwriteInProgress(false);
-      
-      toast({
-        title: "Validation issue",
-        description: errorMessage,
-        variant: "destructive"
-      });
-    }
-  };
 
-  /**
-   * Handles overwriting an existing file with improved reliability and reduced notifications
-   */
-  const handleOverwriteConfirm = async (isAuthenticated: boolean, userId: string) => {
-    if (!selectedFile) {
-      toast({
-        title: "Error",
-        description: "No file selected for overwrite operation",
-        variant: "destructive"
+      toast.success("Dataset uploaded successfully", {
+        description: "Your dataset is now ready for analysis."
       });
-      setShowOverwriteConfirm(false);
-      return;
-    }
 
-    setShowOverwriteConfirm(false);
-    setOverwriteInProgress(true);
-    setUploadProgress(5); // Start with slight progress indication
-    
-    if (datasetToOverwrite) {
-      try {
-        // Use system account for overwrite
-        const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984'; 
-        
-        // Show a single toast for the overwrite process
-        const toastId = sonnerToast.loading("Processing file replacement...", {
-          id: "overwrite-process",
-          duration: 10000, // Long duration to ensure it stays visible
+      setState(prevState => ({
+        ...prevState,
+        isUploading: false,
+        uploadedDatasetId: datasetData.id,
+        showVisualizeAfterUpload: true,
+        selectedFile: null,
+        datasetName: '',
+        datasetDescription: '',
+        schemaPreview: null,
+      }));
+			router.refresh();
+    } catch (uploadError: any) {
+      console.error("Upload failed:", uploadError);
+      toast.error("Upload failed", {
+        description: uploadError.message || "An unexpected error occurred during upload."
+      });
+      setState(prevState => ({
+        ...prevState,
+        isUploading: false,
+        uploadError: uploadError.message || 'Upload failed',
+        uploadProgress: 0,
+      }));
+    }
+  }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, user?.id, router]);
+
+  const retryUpload = useCallback(async (isRetry: boolean = false, userId?: string) => {
+    await handleUpload(isRetry, userId);
+  }, [handleUpload]);
+
+  const handleOverwriteConfirm = useCallback(async (isRetry: boolean = true, userId?: string) => {
+    setState(prevState => ({
+      ...prevState,
+      overwriteInProgress: true,
+      isUploading: true,
+      uploadProgress: 0
+    }));
+
+    try {
+      if (!state.selectedFile) {
+        toast.error("No file selected", {
+          description: "The file selection was lost. Please select a file again."
         });
-        
-        try {
-          console.log("Attempting to delete dataset:", datasetToOverwrite);
-          
-          // First approach: Try standard deletion
-          await dataService.deleteDataset(datasetToOverwrite);
-          setUploadProgress(30);
-        } catch (deleteError) {
-          console.error('Error deleting existing dataset:', deleteError);
-          
-          // Try fallback approaches without showing additional notifications
-          try {
-            console.log("Attempting to delete related visualizations");
-            await supabase
-              .from('visualizations')
-              .delete()
-              .eq('query_id', datasetToOverwrite);
-              
-            console.log("Attempting to delete related queries");
-            await supabase
-              .from('queries')
-              .delete()
-              .eq('dataset_id', datasetToOverwrite);
-              
-            console.log("Attempting direct dataset deletion as fallback");
-            const { error } = await supabase
-              .from('datasets')
-              .delete()
-              .eq('id', datasetToOverwrite);
-              
-            if (error) {
-              console.error("Direct deletion failed:", error);
-            }
-            
-            setUploadProgress(30);
-          } catch (cascadeDeleteError) {
-            console.error("Cascade deletion failed:", cascadeDeleteError);
-            setUploadProgress(20); // Lower progress since deletion had issues
-          }
-        }
-        
-        // Wait a moment to ensure deletion completes
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setUploadProgress(40);
-        
-        // Verify that we still have the selected file before proceeding
-        if (!selectedFile) {
-          throw new Error("File was lost during the overwrite process");
-        }
-        
-        // Now upload the new dataset
-        try {
-          // Upload without showing additional notifications
-          const dataset = await performUpload(
-            selectedFile,
-            datasetName,
-            datasetDescription || undefined,
-            systemUserId,
-            (progress) => {
-              // Scale progress from 40-95% for upload phase
-              setUploadProgress(40 + (progress * 0.55));
-            }
-          );
-          
-          // Update toast to success
-          sonnerToast.success("File replaced successfully", {
-            id: toastId,
-            description: "Your dataset was successfully updated.",
-            action: {
-              label: "View Dataset",
-              onClick: () => window.location.href = `/visualize/${dataset.id}?view=table`,
-            },
-          });
-          
-          // Update state with upload results
-          setUploadedDatasetId(dataset.id);
-          setShowVisualizeAfterUpload(true);
-          
-          // Store dataset ID in session storage for immediate access
-          sessionStorage.setItem('last_uploaded_dataset', dataset.id);
-          
-          // Reset form
-          setSelectedFile(null);
-          setDatasetName('');
-          setDatasetDescription('');
-          setSchemaPreview(null);
-          
-          // Dispatch events
-          const uploadSuccessEvent = new CustomEvent('dataset-upload-success', {
-            detail: { datasetId: dataset.id }
-          });
-          window.dispatchEvent(uploadSuccessEvent);
-          
-          const uploadEvent = new CustomEvent('upload:success', {
-            detail: { datasetId: dataset.id }
-          });
-          window.dispatchEvent(uploadEvent);
-          
-          setUploadProgress(100);
-          
-          // Reset overwrite state at the end of successful operation
-          setTimeout(() => {
-            setOverwriteInProgress(false);
-            setDatasetToOverwrite(null);
-          }, 500);
-          
-        } catch (uploadError) {
-          console.error("Upload phase failed:", uploadError);
-          sonnerToast.error("Replacement failed", {
-            id: toastId,
-            description: "There was an error uploading the new file.",
-          });
-          throw uploadError;
-        }
-        
-      } catch (error) {
-        console.error('Error during overwrite operation:', error);
-        
-        // Show single error notification
-        sonnerToast.error("File replacement failed", {
-          id: "overwrite-process", 
-          description: "Could not replace the existing file. Please try again."
-        });
-        
-        setUploadProgress(0);
-        setOverwriteInProgress(false);
-        setDatasetToOverwrite(null);
+        handleOverwriteCancel();
+        return;
       }
-    } else {
-      setOverwriteInProgress(false);
-    }
-  };
 
-  /**
-   * Cancels the overwrite operation
-   */
-  const handleOverwriteCancel = () => {
-    setShowOverwriteConfirm(false);
-    setDatasetToOverwrite(null);
-    setOverwriteInProgress(false);
-  };
+      const user_id = userId || user?.id || 'system_user';
+      const file = state.selectedFile;
+      const datasetName = state.datasetName;
+      const datasetDescription = state.datasetDescription;
 
-  /**
-   * Retries a failed upload with improved reliability
-   */
-  const retryUpload = (isAuthenticated: boolean, userId: string) => {
-    if (!selectedFile) {
-      toast({
-        title: "No file selected",
-        description: "Please select a file before retrying",
-        variant: "destructive"
+      // Fetch the existing dataset to get its storage path
+      const { data: existingDataset, error: selectError } = await supabase
+        .from('datasets')
+        .select('storage_path, id')
+        .eq('name', datasetName)
+        .single();
+
+      if (selectError) {
+        throw new Error(selectError.message || 'Could not retrieve existing dataset');
+      }
+
+      if (!existingDataset?.storage_path) {
+        throw new Error('Existing dataset has no storage path');
+      }
+
+      // Delete the old file from storage
+      const { error: deleteError } = await supabase.storage
+        .from('datasets')
+        .remove([existingDataset.storage_path]);
+
+      if (deleteError) {
+        throw new Error(deleteError.message || 'Could not delete previous file version');
+      }
+
+      // Upload the new file
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${datasetName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${fileExt}`;
+      const filePath = `uploads/${user_id}/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('datasets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        throw new Error(error.message || 'Could not upload file to storage');
+      }
+
+      const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
+      const fileSizeInBytes = file.size;
+
+      // Update dataset metadata
+      const { data: datasetData, error: datasetError } = await supabase
+        .from('datasets')
+        .update({
+          file_name: file.name,
+          file_size: fileSizeInBytes,
+          storage_path: filePath,
+          storage_url: publicURL,
+          column_schema: state.schemaPreview,
+          description: datasetDescription,
+        })
+        .eq('id', existingDataset.id)
+        .select('id')
+        .single();
+
+      if (datasetError) {
+        // Attempt to delete the newly uploaded file if metadata update fails
+        await supabase.storage.from('datasets').remove([filePath]);
+        throw new Error(datasetError.message || 'Could not update dataset metadata');
+      }
+
+      toast.success("Dataset overwritten successfully", {
+        description: "The dataset has been updated with your new file."
       });
-      return;
+
+      setState(prevState => ({
+        ...prevState,
+        isUploading: false,
+        overwriteInProgress: false,
+        showOverwriteConfirm: false,
+        uploadedDatasetId: datasetData.id,
+        showVisualizeAfterUpload: true,
+        selectedFile: null,
+        datasetName: '',
+        datasetDescription: '',
+        schemaPreview: null,
+      }));
+			router.refresh();
+    } catch (overwriteError: any) {
+      console.error("Overwrite failed:", overwriteError);
+      toast.error("Overwrite failed", {
+        description: overwriteError.message || "An unexpected error occurred during overwrite."
+      });
+      setState(prevState => ({
+        ...prevState,
+        isUploading: false,
+        overwriteInProgress: false,
+        uploadError: overwriteError.message || 'Overwrite failed',
+        uploadProgress: 0,
+        showOverwriteConfirm: false,
+      }));
     }
-    
-    setUploadError(null);
-    setOverwriteInProgress(false);
-    
-    // Use system account for upload
-    const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
-    handleUpload(isAuthenticated, systemUserId);
+  }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, user?.id, router]);
+
+  const handleOverwriteCancel = useCallback(() => {
+    setState(prevState => ({ ...prevState, showOverwriteConfirm: false }));
+  }, []);
+
+  const verifyStorageBucket = async (): Promise<boolean> => {
+    try {
+      const { data: buckets, error } = await supabase.storage.listBuckets();
+      if (error) {
+        console.error("Error fetching storage buckets:", error);
+        return false;
+      }
+
+      const bucketExists = buckets.some(bucket => bucket.name === 'datasets');
+      return bucketExists;
+    } catch (error) {
+      console.error("Error verifying storage bucket:", error);
+      return false;
+    }
+  };
+
+  const createStorageBucketIfNeeded = async (): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.storage.createBucket('datasets', { public: true });
+      if (error) {
+        console.error("Error creating storage bucket:", error);
+        toast.error("Could not initialize storage", {
+          description: error.message || "Failed to create the necessary storage bucket."
+        });
+        return false;
+      }
+
+      console.log("Storage bucket created successfully:", data);
+      return true;
+    } catch (error) {
+      console.error("Error initializing storage:", error);
+      toast.error("Could not initialize storage", {
+        description: error instanceof Error ? error.message : "Failed to initialize storage."
+      });
+      return false;
+    }
   };
 
   return {
-    dragActive,
-    selectedFile,
-    datasetName,
-    datasetDescription,
-    isUploading,
-    uploadProgress,
-    uploadError,
-    schemaPreview,
-    uploadedDatasetId,
-    showVisualizeAfterUpload,
-    showRedirectDialog,
-    showOverwriteConfirm,
-    overwriteInProgress,
-    setDatasetName,
-    setDatasetDescription,
-    setUploadedDatasetId,
-    setShowVisualizeAfterUpload,
-    setShowRedirectDialog,
+    dragActive: state.dragActive,
+    selectedFile: state.selectedFile,
+    datasetName: state.datasetName,
+    datasetDescription: state.datasetDescription,
+    isUploading: state.isUploading,
+    uploadProgress: state.uploadProgress,
+    uploadError: state.uploadError,
+    schemaPreview: state.schemaPreview,
+    uploadedDatasetId: state.uploadedDatasetId,
+    showVisualizeAfterUpload: state.showVisualizeAfterUpload,
+    showRedirectDialog: state.showRedirectDialog,
+    showOverwriteConfirm: state.showOverwriteConfirm,
+    overwriteInProgress: state.overwriteInProgress,
+    selectedStorage: state.selectedStorage,
     handleDrag,
     handleDrop,
     handleFileInput,
+    setDatasetName,
+    setDatasetDescription,
     handleUpload,
     retryUpload,
+    setShowVisualizeAfterUpload,
+    setShowRedirectDialog,
+    setSelectedStorage,
     handleOverwriteConfirm,
     handleOverwriteCancel,
-    verifyStorageBucket: verifyStorageBuckets,
-    createStorageBucketIfNeeded: setupStorageBuckets,
-    overwriteInProgress,
+    verifyStorageBucket,
+    createStorageBucketIfNeeded
   };
 };

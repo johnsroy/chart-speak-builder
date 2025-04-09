@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import {
@@ -57,12 +58,15 @@ export interface ChartDimension {
   y: ChartField;
 }
 
+// Ensure chart container has proper dimensions
+const DEFAULT_HEIGHT = 400;
+
 const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   datasetId,
   chartType,
   data: externalData,
   useDirectAccess = false,
-  heightClass = 'h-[400px]',
+  heightClass = `h-[${DEFAULT_HEIGHT}px]`,
   className = '',
   preventSampleData = true,
 }) => {
@@ -71,6 +75,15 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   const [data, setData] = useState<any[]>([]);
   const [chartDimension, setChartDimension] = useState<ChartDimension | null>(null);
   const [dataset, setDataset] = useState<any>(null);
+  const [chartHeight, setChartHeight] = useState<number>(DEFAULT_HEIGHT);
+
+  useEffect(() => {
+    // Extract height from heightClass if possible
+    const heightMatch = heightClass.match(/h-\[(\d+)px\]/);
+    if (heightMatch && heightMatch[1]) {
+      setChartHeight(parseInt(heightMatch[1], 10));
+    }
+  }, [heightClass]);
 
   useEffect(() => {
     if (externalData && externalData.length > 0) {
@@ -178,13 +191,30 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
       }
     };
 
+    // Ensure data is normalized for Highcharts
+    const normalizedData = data.map(item => {
+      // Convert values to numbers for proper rendering
+      let yValue = Number(item[y.field]);
+      
+      // Handle NaN values
+      if (isNaN(yValue)) {
+        yValue = 0;
+      }
+      
+      return {
+        name: item[x.field]?.toString() || 'Unknown',
+        y: yValue
+      };
+    });
+
     switch (chartType) {
       case 'bar':
         return {
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'bar'
+            type: 'bar',
+            height: chartHeight || DEFAULT_HEIGHT
           },
           plotOptions: {
             bar: {
@@ -196,10 +226,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           },
           series: [{
             name: y.field,
-            data: data.map(item => ({
-              name: item[x.field]?.toString(),
-              y: Number(item[y.field]) || 0
-            }))
+            data: normalizedData
           }]
         };
       
@@ -208,7 +235,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'column'
+            type: 'column',
+            height: chartHeight || DEFAULT_HEIGHT
           },
           plotOptions: {
             column: {
@@ -220,10 +248,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           },
           series: [{
             name: y.field,
-            data: data.map(item => ({
-              name: item[x.field]?.toString(),
-              y: Number(item[y.field]) || 0
-            }))
+            data: normalizedData
           }]
         };
       
@@ -232,7 +257,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'line'
+            type: 'line',
+            height: chartHeight || DEFAULT_HEIGHT
           },
           plotOptions: {
             line: {
@@ -243,10 +269,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           },
           series: [{
             name: y.field,
-            data: data.map(item => ({
-              name: item[x.field]?.toString(),
-              y: Number(item[y.field]) || 0
-            }))
+            data: normalizedData
           }]
         };
       
@@ -255,7 +278,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'area'
+            type: 'area',
+            height: chartHeight || DEFAULT_HEIGHT
           },
           plotOptions: {
             area: {
@@ -264,10 +288,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           },
           series: [{
             name: y.field,
-            data: data.map(item => ({
-              name: item[x.field]?.toString(),
-              y: Number(item[y.field]) || 0
-            }))
+            data: normalizedData
           }]
         };
       
@@ -277,7 +298,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'pie'
+            type: 'pie',
+            height: chartHeight || DEFAULT_HEIGHT
           },
           plotOptions: {
             pie: {
@@ -293,10 +315,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           },
           series: [{
             name: y.field,
-            data: data.map(item => ({
-              name: item[x.field]?.toString(),
-              y: Number(item[y.field]) || 0
-            }))
+            data: normalizedData
           }]
         };
       
@@ -310,7 +329,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'scatter'
+            type: 'scatter',
+            height: chartHeight || DEFAULT_HEIGHT
           },
           plotOptions: {
             scatter: {
@@ -346,7 +366,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'column'
+            type: 'column',
+            height: chartHeight || DEFAULT_HEIGHT
           },
           plotOptions: {
             column: {
@@ -371,15 +392,16 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'column'
+            type: 'column',
+            height: chartHeight || DEFAULT_HEIGHT
           },
           series: [{
             name: y.field,
-            data: data.map(item => Number(item[y.field]) || 0)
+            data: normalizedData
           }]
         };
     }
-  }, [data, chartDimension, chartType]);
+  }, [data, chartDimension, chartType, chartHeight]);
 
   if (loading) {
     return (
@@ -424,7 +446,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
 
   // Use Highcharts for visualization
   return (
-    <div className={`w-full ${heightClass} ${className}`}>
+    <div className={`w-full max-w-6xl mx-auto ${heightClass} ${className}`}>
       {highchartsOptions && (
         <HighchartsReact
           highcharts={Highcharts}

@@ -139,7 +139,7 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   const stats = result.stats;
 
   return (
-    <Card className={`glass-card overflow-hidden shadow-lg ${className}`} ref={containerRef}>
+    <Card className={`glass-card overflow-hidden shadow-lg ${className} w-full max-w-4xl mx-auto`} ref={containerRef}>
       {showTitle && result.chart_title && (
         <CardHeader className="pb-0">
           <CardTitle className="flex items-center gap-2 text-xl">
@@ -391,158 +391,178 @@ const renderChart = ({
             />
             <ChartTooltip
               content={
-                <ChartTooltipContent formatter={(value: any) => formatChartValue(value)} />
+                <ChartTooltipContent 
+                  formatter={(value: any) => formatChartValue(value)} 
+                />
               }
             />
             <Legend 
               verticalAlign="bottom" 
-              height={36}
+              height={36} 
               content={<ChartLegendContent />}
             />
             <Line 
               type="monotone" 
               dataKey="value" 
               name={yAxis} 
-              stroke={colors[0]} 
-              strokeWidth={3}
-              dot={{ r: 6, strokeWidth: 2, fill: '#282c34' }}
-              activeDot={{ r: 8, strokeWidth: 2 }}
-              isAnimationActive={true}
+              stroke={colors[0]}
+              strokeWidth={2}
+              dot={{ fill: colors[0], r: 4, strokeWidth: 1 }}
+              activeDot={{ r: 6, fill: colors[0] }}
             />
           </LineChart>
         );
       case 'pie':
-        // Extra check for pie chart data
-        if (chartData.some(item => typeof item.value !== 'number')) {
-          console.warn('Pie chart has non-numeric values', chartData);
-          // Convert all values to numbers
-          chartData = chartData.map(item => ({
-            ...item,
-            value: Number(item.value) || 0
-          }));
-        }
+        const renderActiveShape = (props: any) => {
+          const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+        
+          return (
+            <g>
+              <Sector
+                cx={cx}
+                cy={cy}
+                innerRadius={innerRadius}
+                outerRadius={outerRadius + 6}
+                startAngle={startAngle}
+                endAngle={endAngle}
+                fill={fill}
+              />
+            </g>
+          );
+        };
         
         return (
-          <RechartsPie
-            margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
+          <RechartsPie 
+            margin={{ top: 5, right: 5, bottom: 5, left: 5 }}
           >
+            <Pie
+              data={chartData}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              outerRadius={Math.min(height * 0.35, 120)}
+              label={(entry) => entry.name}
+              labelLine={true}
+              activeIndex={activeIndex !== null ? activeIndex : undefined}
+              activeShape={renderActiveShape}
+              onMouseEnter={onPieEnter}
+              onMouseLeave={onPieLeave}
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+              ))}
+            </Pie>
             <ChartTooltip
               content={
                 <ChartTooltipContent 
-                  formatter={(value: any, name: any) => {
+                  formatter={(value: any) => {
                     if (displayMode === 'percentages') {
-                      return [formatPercentage(value, total), name];
+                      return formatPercentage(value, total);
                     }
-                    return [formatChartValue(value), name];
-                  }}
+                    return formatChartValue(value);
+                  }} 
                 />
               }
             />
             <Legend 
-              layout="horizontal" 
+              layout="horizontal"
               verticalAlign="bottom" 
               align="center"
-              content={<ChartLegendContent nameKey="name" />}
+              content={<ChartLegendContent />}
             />
-            <Pie
-              data={chartData}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              outerRadius={Math.min(height * 0.35, 120)}
-              dataKey="value"
-              nameKey="name"
-              isAnimationActive={true}
-              label={({name, percent, value, cx, cy, midAngle, innerRadius, outerRadius }) => {
-                if (percent < 0.05) return null;
-                
-                const RADIAN = Math.PI / 180;
-                const radius = 25 + innerRadius + (outerRadius - innerRadius);
-                const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                
-                return (
-                  <text
-                    x={x}
-                    y={y}
-                    textAnchor={x > cx ? 'start' : 'end'}
-                    dominantBaseline="central"
-                    fill="#ccc"
-                    fontSize={12}
-                  >
-                    {displayMode === 'percentages'
-                      ? `${(percent * 100).toFixed(1)}%`
-                      : formatChartValue(value)}
-                  </text>
-                );
-              }}
-              onMouseEnter={onPieEnter}
-              onMouseLeave={onPieLeave}
-              activeIndex={activeIndex !== null ? activeIndex : undefined}
-              activeShape={(props) => {
-                const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, name, value } = props;
-                const percent = value / total;
-                
-                return (
-                  <>
-                    <Sector
-                      cx={cx}
-                      cy={cy}
-                      innerRadius={innerRadius}
-                      outerRadius={outerRadius + 10}
-                      startAngle={startAngle}
-                      endAngle={endAngle}
-                      fill={fill}
-                      opacity={0.9}
-                      stroke="#333"
-                      strokeWidth={1}
-                    />
-                    <Sector
-                      cx={cx}
-                      cy={cy}
-                      startAngle={startAngle}
-                      endAngle={endAngle}
-                      innerRadius={innerRadius - 4}
-                      outerRadius={innerRadius - 2}
-                      fill={fill}
-                    />
-                    <text
-                      x={cx}
-                      y={cy - 20}
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fill="#fff"
-                      fontSize={16}
-                      fontWeight="bold"
-                    >
-                      {name}
-                    </text>
-                    <text
-                      x={cx}
-                      y={cy + 10}
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fill="#fff"
-                      fontSize={14}
-                    >
-                      {displayMode === 'percentages'
-                        ? `${(percent * 100).toFixed(1)}%`
-                        : formatChartValue(value)}
-                    </text>
-                  </>
-                );
-              }}
+          </RechartsPie>
+        );
+      case 'scatter':
+        return (
+          <ScatterChart
+            margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
+            <XAxis 
+              dataKey="x" 
+              name={xAxis}
+              type="number" 
+              tick={{ fill: '#ccc' }} 
+              tickCount={xTicks}
+              tickFormatter={(value) => formatChartValue(value)}
+            />
+            <YAxis 
+              dataKey="value" 
+              name={yAxis}
+              type="number" 
+              tickCount={yTicks}
+              tick={{ fill: '#ccc' }} 
+              tickFormatter={(value) => formatChartValue(value)}
+            />
+            <ChartTooltip
+              cursor={{ strokeDasharray: '3 3' }}
+              content={
+                <ChartTooltipContent 
+                  formatter={(value: any) => formatChartValue(value)} 
+                />
+              }
+            />
+            <Legend 
+              verticalAlign="bottom" 
+              height={36} 
+              content={<ChartLegendContent />}
+            />
+            <Scatter 
+              name={yAxis} 
+              data={chartData} 
+              fill={colors[0]}
             >
               {chartData.map((entry, index) => (
-                <Cell 
-                  key={`cell-${index}`} 
-                  fill={colors[index % colors.length]}
-                  stroke="#444"
-                  strokeWidth={1}
-                />
+                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
               ))}
-            </Pie>
-          </RechartsPie>
+            </Scatter>
+          </ScatterChart>
+        );
+      case 'area':
+        return (
+          <AreaChart
+            data={chartData}
+            margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
+            <XAxis 
+              dataKey="name" 
+              angle={-45} 
+              textAnchor="end" 
+              height={70}
+              tick={{ fill: '#ccc', fontSize: 12 }}
+              tickCount={xTicks}
+              interval={0}
+              tickMargin={8}
+            />
+            <YAxis 
+              tickCount={yTicks}
+              tick={{ fill: '#ccc' }} 
+              tickFormatter={(value) => formatChartValue(value)}
+            />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent 
+                  formatter={(value: any) => formatChartValue(value)} 
+                />
+              }
+            />
+            <Legend 
+              verticalAlign="bottom" 
+              height={36} 
+              content={<ChartLegendContent />}
+            />
+            <Area 
+              type="monotone" 
+              dataKey="value" 
+              name={yAxis} 
+              stroke={colors[0]}
+              fill={colors[0]}
+              fillOpacity={0.3}
+              strokeWidth={2}
+            />
+          </AreaChart>
         );
       default:
         return (
@@ -557,79 +577,124 @@ const renderChart = ({
               textAnchor="end" 
               height={70}
               tick={{ fill: '#ccc', fontSize: 12 }}
+              tickCount={xTicks}
+              interval={0}
+              tickMargin={8}
             />
-            <YAxis tick={{ fill: '#ccc' }} />
+            <YAxis 
+              tickCount={yTicks}
+              tick={{ fill: '#ccc' }} 
+              tickFormatter={(value) => formatChartValue(value)}
+            />
             <ChartTooltip
-              content={<ChartTooltipContent />}
+              content={
+                <ChartTooltipContent 
+                  formatter={(value: any) => formatChartValue(value)} 
+                />
+              }
             />
-            <Bar dataKey="value" name={yAxis}>
-              {chartData.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-              ))}
-            </Bar>
+            <Legend 
+              verticalAlign="bottom" 
+              height={36} 
+              content={<ChartLegendContent />}
+            />
+            <Bar 
+              dataKey="value" 
+              name={yAxis || 'Value'} 
+              fill={colors[0]}
+              radius={[4, 4, 0, 0]}
+            />
           </BarChart>
         );
     }
   } catch (error) {
-    console.error('Error rendering chart:', error);
+    console.error("Error rendering chart:", error);
     return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <p className="text-red-500 mb-2">Error rendering visualization</p>
-        <p className="text-xs text-gray-400">{error.message}</p>
+      <div className="flex h-full justify-center items-center">
+        <p className="text-red-400">Error rendering chart</p>
       </div>
     );
   }
 };
 
+// Function to prepare chart data from various input formats
 const prepareChartData = (result: QueryResult) => {
-  if (!result.data || result.data.length === 0) {
-    return [];
-  }
-  
   try {
-    const xAxis = result.xAxis || result.x_axis;
-    const yAxis = result.yAxis || result.y_axis;
+    const { data } = result;
     
-    if (!xAxis || !yAxis) {
-      console.error('Missing axis configuration in result', result);
+    if (!data || !Array.isArray(data) || data.length === 0) {
       return [];
     }
     
-    // Check if the data is in the expected format
-    const firstItem = result.data[0];
-    if (!firstItem.hasOwnProperty(xAxis) || !firstItem.hasOwnProperty(yAxis)) {
-      console.error(`Data does not contain expected axes properties: ${xAxis}, ${yAxis}`, firstItem);
+    // Check if data already has the format we need
+    if (data[0].name !== undefined && data[0].value !== undefined) {
+      // Already in the format we need
+      console.log("Data already in the right format");
+      return data;
+    }
+    
+    const xAxis = result.xAxis || result.x_axis || Object.keys(data[0])[0];
+    const yAxis = result.yAxis || result.y_axis || Object.keys(data[0])[1];
+    
+    console.log("Using axes:", { xAxis, yAxis });
+    
+    // Handle special case for AI results that might use different field names
+    if (!data[0][xAxis] && !data[0][yAxis]) {
+      console.log("Data does not contain expected axes properties:", xAxis, yAxis, data[0]);
       
-      // Try to recover by finding valid properties
-      const keys = Object.keys(firstItem);
-      if (keys.length >= 2) {
-        // If we have at least two properties, use the first as x and second as y
-        console.log(`Attempting recovery using: ${keys[0]}, ${keys[1]}`);
-        return result.data
-          .map(item => ({
-            name: String(item[keys[0]] || ''),
-            value: Number(item[keys[1]] || 0)
-          }))
-          .filter(item => !isNaN(item.value) && item.name)
-          .sort((a, b) => b.value - a.value)
-          .slice(0, 20);
-      } else {
-        // Not enough properties to create a visualization
-        return [];
+      // Try common field naming patterns
+      const xField = Object.keys(data[0]).find(key => 
+        key.toLowerCase().includes('name') || 
+        key.toLowerCase().includes('category') || 
+        key.toLowerCase().includes('label') ||
+        key.toLowerCase().includes('id')
+      );
+      
+      const yField = Object.keys(data[0]).find(key => 
+        key.toLowerCase().includes('value') || 
+        key.toLowerCase().includes('count') || 
+        key.toLowerCase().includes('amount') ||
+        typeof data[0][key] === 'number'
+      );
+      
+      console.log("Attempting recovery using:", xField, yField);
+      
+      if (xField && yField) {
+        return data.map(item => ({
+          name: String(item[xField]),
+          value: Number(item[yField]) || 0
+        }));
+      }
+      
+      // Last resort - use the first string field and first number field
+      const firstStringField = Object.keys(data[0]).find(key => typeof data[0][key] === 'string');
+      const firstNumberField = Object.keys(data[0]).find(key => typeof data[0][key] === 'number');
+      
+      if (firstStringField && firstNumberField) {
+        console.log("Using first string and number fields:", firstStringField, firstNumberField);
+        return data.map(item => ({
+          name: String(item[firstStringField]),
+          value: Number(item[firstNumberField]) || 0
+        }));
+      }
+      
+      // If all else fails, convert the keys of the first object to name-value pairs
+      if (typeof data[0] === 'object') {
+        console.log("Converting keys to name-value pairs");
+        return Object.entries(data[0]).map(([key, value]) => ({
+          name: key,
+          value: typeof value === 'number' ? value : 0
+        }));
       }
     }
     
-    // Normal processing
-    return result.data
-      .map(item => ({
-        name: String(item[xAxis] !== undefined ? item[xAxis] : ''),
-        value: Number(item[yAxis] !== undefined ? item[yAxis] : 0)
-      }))
-      .filter(item => !isNaN(item.value) && item.name)
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 20);
+    // Standard conversion
+    return data.map(item => ({
+      name: String(item[xAxis]),
+      value: Number(item[yAxis]) || 0
+    }));
   } catch (error) {
-    console.error('Error preparing chart data:', error);
+    console.error("Error preparing chart data:", error);
     return [];
   }
 };
