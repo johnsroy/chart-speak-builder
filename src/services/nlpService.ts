@@ -2,25 +2,33 @@
 import { AIModelType, AIQueryResponse } from '@/components/chat/types';
 
 export const nlpService = {
-  // Add the missing processQuery method
+  // Process query method for handling natural language queries on datasets
   processQuery: async (query: string, datasetId: string, model: AIModelType, data: any[] = []): Promise<AIQueryResponse> => {
     try {
       console.log(`Processing query: "${query}" for dataset ${datasetId} using model ${model}`);
+      console.log(`Data available for analysis: ${data.length} rows`);
       
       // Default to a basic response if API call fails
       const localProcessing = async (): Promise<AIQueryResponse> => {
-        console.log("Falling back to local processing");
+        console.log("Using local processing for query analysis");
         
         const response: AIQueryResponse = {
           chartType: 'bar',
           data: [],
           explanation: `Analyzing your query: "${query}"`,
+          xAxis: '',
+          yAxis: '',
         };
         
         // Extract simple keywords to determine what visualization to show
         const lowerQuery = query.toLowerCase();
         
         // Get some sample fields for potential use
+        if (!data || data.length === 0) {
+          response.explanation = "No data available for analysis. Please check your dataset.";
+          return response;
+        }
+
         const sampleRow = data[0] || {};
         const fields = Object.keys(sampleRow);
         
@@ -49,6 +57,9 @@ export const nlpService = {
           if (categoricalFields.length > 0 && numericFields.length > 0) {
             const categoryField = categoricalFields[0];
             const valueField = numericFields[0];
+            
+            response.xAxis = categoryField;
+            response.yAxis = valueField;
             
             // Group by category and calculate sums
             const groupedData: Record<string, number> = {};
@@ -198,6 +209,9 @@ export const nlpService = {
             const categoryField = categoricalFields[0];
             const valueField = numericFields[0];
             
+            response.xAxis = categoryField;
+            response.yAxis = valueField;
+            
             // Group by category
             const groupedData: Record<string, number> = {};
             data.forEach(row => {
@@ -240,7 +254,9 @@ export const nlpService = {
             name: `Item ${i+1}`, 
             value: 10 - i 
           })),
-          explanation: "I couldn't process your query fully. Here's a simple visualization of your data."
+          explanation: "I couldn't process your query fully. Here's a simple visualization of your data.",
+          xAxis: 'Category',
+          yAxis: 'Value'
         };
       }
     } catch (error) {

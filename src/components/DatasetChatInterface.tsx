@@ -51,6 +51,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     "Compare by category",
     "Calculate average and sum"
   ]);
+  const [datasetInfo, setDatasetInfo] = useState<any>(null);
   const navigate = useNavigate();
 
   const handleSendMessage = async (newMessage: string) => {
@@ -83,7 +84,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         });
         
         const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
-          showToasts: false
+          showToasts: false,
+          forceRefresh: true,
+          limitRows: 5000  // Increased row limit for better analysis
         });
         
         if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
@@ -107,18 +110,30 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         });
       }
       
+      // Add a processing message to show the user we're working on it
+      const processingId = uuidv4();
+      setMessages(prevMessages => [...prevMessages, {
+        id: processingId,
+        sender: 'ai',
+        content: `Processing your query: "${newMessage}"...`,
+        timestamp: new Date(),
+        isProcessing: true
+      }]);
+      
       // Use the NLP service to process the query with the dataset content
       const aiResponse = await nlpService.processQuery(newMessage, datasetId, currentModel, fullData);
 
       if (aiResponse && (!aiResponse.data || aiResponse.data.length === 0)) {
         // Generate fallback visualization if no data was returned
-        const processingMessage: Message = {
+        const fallbackMessage: Message = {
           id: uuidv4(),
           sender: 'ai',
           content: `I couldn't generate a visualization for that query. Let me try a different approach...`,
           timestamp: new Date()
         };
-        setMessages(prevMessages => [...prevMessages, processingMessage]);
+        
+        // Remove the processing message and add the fallback message
+        setMessages(prevMessages => prevMessages.filter(m => m.id !== processingId).concat(fallbackMessage));
         
         // Try using a simpler approach
         const dataset = await dataService.getDataset(datasetId);
@@ -140,7 +155,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             model: currentModel
           };
           
-          setMessages(prevMessages => [...prevMessages.filter(m => m.id !== processingMessage.id), aiMessage]);
+          // Replace the fallback message with the response
+          setMessages(prevMessages => [...prevMessages.filter(m => m.id !== fallbackMessage.id), aiMessage]);
           
           if (onVisualizationChange) {
             onVisualizationChange(fallbackResponse);
@@ -149,6 +165,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           throw new Error('Could not generate visualization with available data.');
         }
       } else if (aiResponse) {
+        // Remove the processing message
         const aiMessage: Message = {
           id: uuidv4(),
           sender: 'ai',
@@ -158,7 +175,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           model: currentModel
         };
         
-        setMessages(prevMessages => [...prevMessages, aiMessage]);
+        // Replace the processing message with the actual response
+        setMessages(prevMessages => prevMessages.filter(m => m.id !== processingId).concat(aiMessage));
         
         if (onVisualizationChange) {
           onVisualizationChange(aiResponse);
@@ -171,15 +189,20 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       toast.error('Error getting AI response', {
         description: error.message || 'Unknown error'
       });
-      setMessages(prevMessages => [
-        ...prevMessages,
-        {
-          id: uuidv4(),
-          sender: 'ai',
-          content: `Sorry, I encountered an error processing your request: ${error.message || 'Unknown error'}. Please try again with a different question or check if your dataset is available.`,
-          timestamp: new Date()
-        }
-      ]);
+      
+      // Remove processing message if it exists
+      setMessages(prevMessages => {
+        const filteredMessages = prevMessages.filter(m => !m.isProcessing);
+        return [
+          ...filteredMessages,
+          {
+            id: uuidv4(),
+            sender: 'ai',
+            content: `Sorry, I encountered an error processing your request: ${error.message || 'Unknown error'}. Please try again with a different question or check if your dataset is available.`,
+            timestamp: new Date()
+          }
+        ];
+      });
     } finally {
       setIsLoading(false);
     }
@@ -199,53 +222,73 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     setDatasetLoadFailed(false);
 
     try {
-      // Use enhanced datasetUtils to get the full dataset with multiple fallback strategies
-      const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
-        showToasts: false // Don't show toasts during initial load
-      });
-
-      if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
-        setFullData(datasetRows);
-        console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
-        
-        // Update message to include row count
-        setMessages([{
-          id: uuidv4(),
-          sender: 'ai',
-          content: `I'm analyzing the ${datasetName} dataset with ${datasetRows.length} rows. Ask me anything about it!`,
-          timestamp: new Date()
-        }]);
-        
-        // Get dataset info to generate better recommendations
-        try {
-          const dataset = await dataService.getDataset(datasetId);
-          if (dataset) {
-            const customRecommendations = nlpService.getRecommendationsForDataset(dataset);
-            setRecommendations(customRecommendations);
-          }
-        } catch (recError) {
-          console.warn('Error generating recommendations:', recError);
-        }
-        
-        setLoadingState({
-          isLoading: false,
-          message: ''
-        });
-        
-        return;
-      }
-      
-      // If datasetUtils failed, try to get dataset metadata to generate samples
+      // First, get the dataset information
       const dataset = await dataService.getDataset(datasetId);
+      setDatasetInfo(dataset);
       
       if (dataset) {
-        console.log("Dataset found:", dataset.name);
+        // Use enhanced datasetUtils to get the full dataset with multiple fallback strategies
+        const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
+          showToasts: false, // Don't show toasts during initial load
+          forceRefresh: true, // Force refresh to ensure we get fresh data
+          limitRows: 5000    // Increased limit for better analysis
+        });
+
+        if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
+          setFullData(datasetRows);
+          console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
+          
+          // Update message to include row count
+          setMessages([{
+            id: uuidv4(),
+            sender: 'ai',
+            content: `I'm analyzing the ${datasetName} dataset with ${datasetRows.length} rows. Ask me anything about it!`,
+            timestamp: new Date()
+          }]);
+          
+          // Generate better recommendations
+          const customRecommendations = nlpService.getRecommendationsForDataset(dataset);
+          setRecommendations(customRecommendations);
+          
+          setLoadingState({
+            isLoading: false,
+            message: ''
+          });
+          
+          return;
+        }
         
+        // If direct data loading failed, try alternate loading methods
+        console.log("Direct data loading failed, trying to use queryService");
+        const alternateData = await queryService.loadDataset(datasetId);
+        if (alternateData && alternateData.length > 0) {
+          setFullData(alternateData);
+          console.log(`Dataset loaded through queryService: ${alternateData.length} rows`);
+          
+          setMessages([{
+            id: uuidv4(),
+            sender: 'ai',
+            content: `I'm analyzing the ${datasetName} dataset with ${alternateData.length} rows. Ask me anything about it!`,
+            timestamp: new Date()
+          }]);
+          
+          // Generate better recommendations
+          const customRecommendations = nlpService.getRecommendationsForDataset(dataset);
+          setRecommendations(customRecommendations);
+          
+          setLoadingState({
+            isLoading: false,
+            message: ''
+          });
+          
+          return;
+        }
+      
         // Generate appropriate recommendations
         const customRecommendations = nlpService.getRecommendationsForDataset(dataset);
         setRecommendations(customRecommendations);
         
-        // Generate sample data based on schema
+        // If all methods failed, generate sample data based on schema or filename
         if (dataset.column_schema && Object.keys(dataset.column_schema).length > 0) {
           console.log("Generating sample data based on schema");
           const schemaSamples = generateSampleDataFromSchema(dataset.column_schema, 5000);
@@ -326,7 +369,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     loadDataset();
   };
   
-  const generateSampleDataFromSchema = (schema: Record<string, string>, count: number) => {
+  function generateSampleDataFromSchema(schema: Record<string, string>, count: number) {
     const sampleData = [];
     const columns = Object.keys(schema);
     
@@ -359,9 +402,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     }
     
     return sampleData;
-  };
+  }
   
-  const generateAppropriateDataFromFilename = (filename: string, count: number = 1000) => {
+  function generateAppropriateDataFromFilename(filename: string, count: number = 1000) {
     const lowerFilename = filename.toLowerCase();
     
     // Generate electric vehicle data if filename suggests it
@@ -376,9 +419,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     
     // Default to generic sample data
     return generateGenericSampleData(count);
-  };
+  }
   
-  const generateElectricVehicleData = (count: number) => {
+  function generateElectricVehicleData(count: number) {
     const makes = ['Tesla', 'Nissan', 'Chevrolet', 'Ford', 'BMW', 'Audi', 'Hyundai', 'Kia', 'Volkswagen', 'Toyota'];
     const models = {
       'Tesla': ['Model S', 'Model 3', 'Model X', 'Model Y', 'Cybertruck'],
@@ -421,9 +464,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         'Registration Date': `${Math.floor(Math.random() * 12) + 1}/${Math.floor(Math.random() * 28) + 1}/${year}`
       };
     });
-  };
+  }
   
-  const generateSalesData = (count: number) => {
+  function generateSalesData(count: number) {
     const products = ['Widget A', 'Widget B', 'Service C', 'Product D', 'Solution E'];
     const regions = ['North', 'South', 'East', 'West', 'Central'];
     const channels = ['Online', 'Retail', 'Direct', 'Partner'];
@@ -449,9 +492,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         CustomerID: `CUST-${Math.floor(Math.random() * 1000) + 1}`
       };
     });
-  };
+  }
   
-  const generateGenericSampleData = (rows: number) => {
+  function generateGenericSampleData(rows: number) {
     return Array.from({ length: rows }, (_, i) => ({
       id: i + 1,
       name: `Item ${i + 1}`,
@@ -460,63 +503,48 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
       active: i % 3 === 0
     }));
-  };
+  }
 
   return (
-    <div className={`flex flex-col h-full ${hasFullHeightLayout ? 'min-h-[80vh]' : ''}`}>
-      <div className="flex items-center justify-between p-4 border-b border-gray-700/50">
-        <h2 className="text-xl font-semibold">
-          <FileText className="inline-block mr-2 h-5 w-5" />
-          {datasetName} Chat
-        </h2>
-        <div className="flex gap-2">
+    <div className={`flex flex-col ${hasFullHeightLayout ? 'h-full' : ''}`}>
+      {loadingState.isLoading ? (
+        <Card className="flex items-center justify-center p-6 glass-card h-48 mb-4">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-purple-500" />
+            <p className="text-gray-300">{loadingState.message || 'Loading dataset...'}</p>
+          </div>
+        </Card>
+      ) : datasetLoadFailed ? (
+        <Card className="flex flex-col items-center justify-center p-6 glass-card mb-4">
+          <AlertTriangle className="h-8 w-8 text-amber-500 mb-2" />
+          <h3 className="text-lg font-medium mb-1">Failed to load dataset</h3>
+          <p className="text-gray-300 text-center mb-4">Using sample data for analysis</p>
           <Button 
             variant="outline" 
-            size="sm"
+            className="border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20"
             onClick={handleRetryLoading}
-            className="flex items-center gap-1"
+            size="sm"
           >
-            <RefreshCw className="h-4 w-4" />
-            Reload Data
+            <RefreshCw className="h-4 w-4 mr-1" /> Retry
           </Button>
-          <ModelSelector currentModel={currentModel} onModelChange={handleModelChange} />
+        </Card>
+      ) : null}
+
+      <div className="flex flex-col space-y-4 flex-1">
+        <div className="flex items-center justify-between">
+          <ModelSelector currentModel={currentModel} onChange={handleModelChange} />
         </div>
-      </div>
-      
-      <div className="flex-grow overflow-y-auto">
-        {loadingState.isLoading ? (
-          <div className="flex justify-center items-center h-full">
-            <div className="text-center">
-              <Loader2 className="h-10 w-10 animate-spin text-purple-400 mx-auto mb-4" />
-              <p className="text-gray-400">{loadingState.message}</p>
-            </div>
+        
+        <div className="flex-1 flex flex-col min-h-[500px]">
+          <ChatContainer messages={messages} downloadVisualization={handleDownloadVisualization} />
+          <div className="mt-4">
+            <ChatInput 
+              onSendMessage={handleSendMessage} 
+              isLoading={isLoading} 
+              suggestions={recommendations}
+            />
           </div>
-        ) : datasetLoadFailed ? (
-          <div className="flex flex-col justify-center items-center h-full p-4">
-            <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
-            <h3 className="text-lg font-medium mb-2">Dataset Load Failed</h3>
-            <p className="text-center text-gray-400 mb-4">
-              We couldn't load your dataset. This could be due to storage issues or because the dataset is unavailable.
-            </p>
-            <Button onClick={handleRetryLoading} variant="outline">
-              Retry Loading
-            </Button>
-          </div>
-        ) : (
-          <ChatContainer 
-            messages={messages} 
-            downloadVisualization={handleDownloadVisualization} 
-          />
-        )}
-      </div>
-      
-      <div className="p-4 border-t border-gray-700/50">
-        <ChatInput 
-          onSendMessage={handleSendMessage} 
-          isLoading={isLoading} 
-          recommendations={recommendations}
-          disabled={datasetLoadFailed && fullData.length === 0}
-        />
+        </div>
       </div>
     </div>
   );
