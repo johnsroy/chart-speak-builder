@@ -23,7 +23,6 @@ export const useDatasets = () => {
     try {
       console.log("Fetching all datasets...");
       
-      // Clear any cached state if force refreshing
       if (forceRefresh) {
         setDatasets([]);
         setUniqueDatasets([]);
@@ -102,11 +101,9 @@ export const useDatasets = () => {
     try {
       console.log(`Deleting dataset with ID: ${datasetId}`);
       
-      // First remove from local state to update the UI immediately
       setDatasets(prev => prev.filter(d => d.id !== datasetId));
       setUniqueDatasets(prev => prev.filter(d => d.id !== datasetId));
       
-      // If the deleted dataset was selected, select another one
       if (selectedDatasetId === datasetId) {
         const remainingDatasets = datasets.filter(d => d.id !== datasetId);
         if (remainingDatasets.length > 0) {
@@ -116,14 +113,12 @@ export const useDatasets = () => {
         }
       }
       
-      // Clear cache for this dataset
       try {
         sessionStorage.removeItem(`dataset_${datasetId}`);
       } catch (e) {
         console.warn("Could not clear dataset cache:", e);
       }
 
-      // Step 1: Get all queries related to this dataset
       const { data: queries, error: queriesError } = await supabase
         .from('queries')
         .select('id')
@@ -135,7 +130,6 @@ export const useDatasets = () => {
         const queryIds = queries.map(q => q.id);
         console.log(`Found ${queryIds.length} queries to clean up for dataset ${datasetId}`);
         
-        // Step 2: Delete all visualizations for these queries first
         if (queryIds.length > 0) {
           const { error: vizError } = await supabase
             .from('visualizations')
@@ -148,27 +142,38 @@ export const useDatasets = () => {
             console.log(`Successfully deleted visualizations related to dataset ${datasetId}`);
           }
           
-          // Wait to ensure database processes deletion
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
       
-      // Step 3: Delete all queries for this dataset
+      for (const query of (queries || [])) {
+        const { error: deleteQueryError } = await supabase
+          .from('queries')
+          .delete()
+          .eq('id', query.id);
+          
+        if (deleteQueryError) {
+          console.warn(`Error deleting query ${query.id}:`, deleteQueryError);
+        } else {
+          console.log(`Successfully deleted query ${query.id}`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
       const { error: deleteQueriesError } = await supabase
         .from('queries')
         .delete()
         .eq('dataset_id', datasetId);
       
       if (deleteQueriesError) {
-        console.warn("Error deleting queries:", deleteQueriesError);
+        console.warn("Error in batch delete of queries:", deleteQueriesError);
       } else {
-        console.log(`Successfully deleted all queries for dataset ${datasetId}`);
+        console.log(`Successfully executed batch delete for all queries`);
       }
       
-      // Wait to ensure database processes deletion
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Step 4: Verify queries are gone
       const { count, error: countError } = await supabase
         .from('queries')
         .select('*', { count: 'exact', head: true })
@@ -178,23 +183,41 @@ export const useDatasets = () => {
         console.warn("Error checking if queries exist:", countError);
       } else if (count && count > 0) {
         console.warn(`WARNING: ${count} queries still exist for dataset ${datasetId}`);
-        toast.error(`Could not delete all queries for this dataset. Please try again.`);
-        return false;
+        
+        try {
+          await supabase.rpc('force_delete_queries', {
+            dataset_id_param: datasetId
+          }).then(({ error }) => {
+            if (error) console.error("RPC force delete failed:", error);
+            else console.log("RPC force delete succeeded");
+          });
+          
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const { count: finalCount } = await supabase
+            .from('queries')
+            .select('*', { count: 'exact', head: true })
+            .eq('dataset_id', datasetId);
+            
+          if (finalCount && finalCount > 0) {
+            toast.error(`Could not delete all queries for this dataset. Please try again.`);
+            return false;
+          }
+        } catch (e) {
+          console.error("Error with RPC call:", e);
+        }
       }
       
-      // Step 5: Execute actual deletion through the dataService
       const success = await dataService.deleteDataset(datasetId);
       
       if (!success) {
         toast.error('Failed to delete dataset');
-        // Reload data to restore state if deletion failed
         loadDatasets(true);
         return false;
       }
       
       toast.success('Dataset deleted successfully');
       
-      // Fully refresh the dataset list
       setTimeout(() => {
         loadDatasets(true);
       }, 500);
@@ -205,7 +228,6 @@ export const useDatasets = () => {
       toast.error('Error deleting dataset', { 
         description: error instanceof Error ? error.message : 'Unknown error occurred'
       });
-      // Reload data to restore state if deletion failed
       loadDatasets(true);
       return false;
     }
@@ -217,7 +239,6 @@ export const useDatasets = () => {
       
       if (!event.detail?.datasetId) return;
       
-      // Remove the deleted dataset from state
       setDatasets(prevDatasets => 
         prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
       );
@@ -226,13 +247,11 @@ export const useDatasets = () => {
         prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
       );
       
-      // If the deleted dataset was selected, select another one
       if (event.detail.datasetId === selectedDatasetId) {
         const remainingDatasets = datasets.filter(d => d.id !== event.detail.datasetId);
         setSelectedDatasetId(remainingDatasets.length > 0 ? remainingDatasets[0].id : null);
       }
       
-      // Fully refresh the dataset list
       loadDatasets(true);
     };
     
