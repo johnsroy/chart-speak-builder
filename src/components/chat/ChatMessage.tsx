@@ -7,7 +7,7 @@ import ChartWrapper from '../visualization/ChartWrapper';
 import { Message, VisualizationType } from './types';
 import { QueryResult } from '@/services/types/queryTypes';
 import { Skeleton } from '@/components/ui/skeleton';
-import ReactMarkdown from 'react-markdown';
+import { ReactMarkdown } from 'react-markdown';
 import { cn } from '@/lib/utils';
 
 interface ChatMessageProps {
@@ -82,7 +82,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
             {chartType === 'bar' && <BarChart className="h-5 w-5 text-blue-400 mr-2" />}
             {chartType === 'line' && <LineChart className="h-5 w-5 text-green-400 mr-2" />}
             {chartType === 'pie' && <PieChart className="h-5 w-5 text-purple-400 mr-2" />}
-            <span className="font-medium">{message.visualization?.title || 'Data Visualization'}</span>
+            <span className="font-medium">{message.visualization?.title || message.visualization?.chart_title || 'Data Visualization'}</span>
           </div>
           {downloadVisualization && message.visualization && (
             <Button 
@@ -110,11 +110,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
         
         {message.visualization?.stats && (
           <div className="mt-3 text-sm text-gray-400">
-            <p>Count: {message.visualization.stats.count} | 
-               Sum: {message.visualization.stats.sum?.toLocaleString()} | 
-               Average: {message.visualization.stats.avg?.toLocaleString()} | 
-               Min: {message.visualization.stats.min?.toLocaleString()} | 
-               Max: {message.visualization.stats.max?.toLocaleString()}
+            <p>
+              Count: {message.visualization.stats.count} | 
+              Sum: {message.visualization.stats.sum?.toLocaleString()} | 
+              Average: {message.visualization.stats.avg?.toLocaleString()} | 
+              Min: {message.visualization.stats.min?.toLocaleString()} | 
+              Max: {message.visualization.stats.max?.toLocaleString()}
             </p>
           </div>
         )}
@@ -140,7 +141,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
             ? "bg-purple-600/30 border border-purple-500/30 text-white" 
             : "bg-gray-800/50 border border-gray-700/30 text-gray-100"
         )}>
-          <ReactMarkdown className="prose prose-invert max-w-none prose-p:leading-normal prose-pre:p-2">
+          <ReactMarkdown>
             {message.content}
           </ReactMarkdown>
         </div>

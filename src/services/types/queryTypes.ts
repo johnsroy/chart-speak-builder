@@ -12,6 +12,7 @@ export interface QueryResult {
   yAxis?: string;
   y_axis?: string; // For backward compatibility
   chart_title?: string;
+  title?: string; // Added for chart title support
   explanation?: string;
   error?: string;
   query_id?: string;
@@ -25,4 +26,3 @@ export interface QueryResult {
     count?: number;
   }; // Add stats property
 }
-
