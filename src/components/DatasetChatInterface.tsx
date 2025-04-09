@@ -29,6 +29,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   onVisualizationChange,
   hasFullHeightLayout = false
 }) => {
+  const defaultExampleQuery = `What insights can you find in this ${datasetName} dataset?`;
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: uuidv4(),
@@ -49,6 +51,10 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const [datasetInfo, setDatasetInfo] = useState<any>(null);
   const [dataAnalysis, setDataAnalysis] = useState<Record<string, any>>({});
   const navigate = useNavigate();
+
+  const handleSetQuery = (query: string) => {
+    toast.info(`Selected example query: "${query}"`);
+  };
 
   useEffect(() => {
     const loadDatasetInfo = async () => {
@@ -557,7 +563,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
                 variant="outline"
                 size="sm"
                 className="bg-purple-900/20 hover:bg-purple-900/40 text-purple-300 border-purple-700/30"
-                onClick={() => setQuery(rec)}
+                onClick={() => handleSetQuery(rec)}
               >
                 {rec}
               </Button>
@@ -568,8 +574,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         <ChatInput 
           onSendMessage={handleSendMessage}
           isLoading={isLoading}
-          placeholder="Ask a question about your data..."
-          defaultValue={exampleQuery}
+          defaultValue={defaultExampleQuery}
+          recommendations={recommendations}
         />
       </div>
     </div>
