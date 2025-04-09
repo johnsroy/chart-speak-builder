@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -294,6 +295,7 @@ export const useFileUpload = (): UseFileUploadResult => {
         schemaPreview: null,
       }));
       
+      // Replace router.refresh() with navigate(0)
       navigate(0);
     } catch (uploadError: any) {
       console.error("Upload failed:", uploadError);
@@ -411,6 +413,7 @@ export const useFileUpload = (): UseFileUploadResult => {
         schemaPreview: null,
       }));
       
+      // Replace router.refresh() with navigate(0)
       navigate(0);
     } catch (overwriteError: any) {
       console.error("Overwrite failed:", overwriteError);
@@ -426,7 +429,7 @@ export const useFileUpload = (): UseFileUploadResult => {
         showOverwriteConfirm: false,
       }));
     }
-  }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, navigate]);
+  }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, navigate, handleOverwriteCancel]);
 
   const handleOverwriteCancel = useCallback(() => {
     setState(prevState => ({ ...prevState, showOverwriteConfirm: false }));
