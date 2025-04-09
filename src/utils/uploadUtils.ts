@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
 import { Dataset } from '@/services/types/datasetTypes';
@@ -172,4 +171,3 @@ export const performUpload = async (
     throw error;
   }
 };
-

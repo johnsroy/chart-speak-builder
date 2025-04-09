@@ -2,6 +2,8 @@
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { dataProcessorUrl } from '@/config/api';
+import { Dataset, StorageStats } from '@/services/types/datasetTypes';
+import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
 
 export const dataService = {
   getDatasets: async () => {
@@ -17,6 +19,160 @@ export const dataService = {
       console.error('Error fetching datasets:', error);
       toast.error('Failed to fetch datasets');
       return [];
+    }
+  },
+
+  // New method to get unique datasets (no duplicates)
+  getUniqueDatasets: async () => {
+    try {
+      const datasets = await dataService.getDatasets();
+      return getUniqueDatasetsByFilename(datasets);
+    } catch (error) {
+      console.error('Error fetching unique datasets:', error);
+      toast.error('Failed to fetch unique datasets');
+      return [];
+    }
+  },
+
+  // New method to get storage statistics
+  getStorageStats: async (userId: string): Promise<StorageStats> => {
+    try {
+      // Get all datasets for the user
+      const { data, error } = await supabase
+        .from('datasets')
+        .select('*')
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      
+      // Calculate statistics
+      const datasets = data || [];
+      const totalSize = datasets.reduce((sum, dataset) => sum + (dataset.file_size || 0), 0);
+      const datasetCount = datasets.length;
+      const storageTypes = [...new Set(datasets.map(d => d.storage_type || 'datasets'))];
+      const totalFields = datasets.reduce((sum, dataset) => {
+        const schema = dataset.column_schema || {};
+        return sum + Object.keys(schema).length;
+      }, 0);
+      
+      // Format the size for display
+      const formattedSize = formatByteSize(totalSize);
+      
+      return {
+        totalSize,
+        datasetCount,
+        formattedSize,
+        storageTypes,
+        totalFields
+      };
+    } catch (error) {
+      console.error('Error getting storage stats:', error);
+      return {
+        totalSize: 0,
+        datasetCount: 0,
+        formattedSize: '0 B',
+        storageTypes: [],
+        totalFields: 0
+      };
+    }
+  },
+
+  // New method to upload datasets
+  uploadDataset: async (
+    file: File,
+    name: string,
+    description?: string,
+    existingDatasetId?: string | null,
+    onProgress?: (progress: number) => void,
+    userId?: string
+  ): Promise<Dataset> => {
+    try {
+      const user_id = userId || 'system_user';
+      
+      // Generate file path
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${name.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${fileExt}`;
+      const filePath = `uploads/${user_id}/${fileName}`;
+      
+      // Upload file to storage
+      const { data, error } = await supabase.storage
+        .from('datasets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (error) throw new Error(error.message || 'Could not upload file to storage');
+      
+      // Get public URL
+      const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
+      
+      let datasetId = existingDatasetId;
+      let column_schema = {};
+      
+      // Try to extract schema from file if it's CSV
+      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+        try {
+          const text = await file.text();
+          const lines = text.split('\n');
+          if (lines.length > 0) {
+            const headers = lines[0].split(',').map(h => h.trim());
+            column_schema = headers.reduce((schema: Record<string, string>, header) => {
+              schema[header] = 'string';
+              return schema;
+            }, {});
+          }
+        } catch (err) {
+          console.warn('Failed to extract schema from CSV file:', err);
+        }
+      }
+      
+      // Create or update dataset record
+      if (existingDatasetId) {
+        // Update existing dataset
+        const { data: updateData, error: updateError } = await supabase
+          .from('datasets')
+          .update({
+            file_name: file.name,
+            file_size: file.size,
+            storage_path: filePath,
+            storage_url: publicURL,
+            updated_at: new Date().toISOString(),
+            column_schema
+          })
+          .eq('id', existingDatasetId)
+          .select()
+          .single();
+        
+        if (updateError) throw new Error(updateError.message || 'Could not update dataset record');
+        return updateData as Dataset;
+      } else {
+        // Create new dataset
+        const { data: insertData, error: insertError } = await supabase
+          .from('datasets')
+          .insert([
+            {
+              name,
+              description,
+              file_name: file.name,
+              file_size: file.size,
+              storage_path: filePath,
+              storage_url: publicURL,
+              storage_type: 'datasets',
+              user_id: user_id,
+              row_count: 0,
+              column_schema
+            }
+          ])
+          .select()
+          .single();
+        
+        if (insertError) throw new Error(insertError.message || 'Could not create dataset record');
+        return insertData as Dataset;
+      }
+    } catch (error) {
+      console.error('Error uploading dataset:', error);
+      throw error;
     }
   },
 
@@ -231,3 +387,17 @@ export const dataService = {
     }
   },
 };
+
+// Helper function to format byte size
+function formatByteSize(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let unitIndex = 0;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}

@@ -7,7 +7,7 @@ import { Loader2, Database, HardDrive, PieChart, FileBarChart, RefreshCw, Trash2
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
-import { Dataset } from '@/services/types/datasetTypes';
+import { Dataset, StorageStats } from '@/services/types/datasetTypes';
 import { formatByteSize } from '@/utils/storageUtils';
 import DeleteDatasetDialog from '@/components/upload/DeleteDatasetDialog';
 
@@ -15,13 +15,13 @@ const UserDatasetLibrary = () => {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [storageStats, setStorageStats] = useState<{
-    totalSize: number;
-    datasetCount: number;
-    formattedSize: string;
-    storageTypes: string[];
-    totalFields: number;
-  }>({ totalSize: 0, datasetCount: 0, formattedSize: '0 B', storageTypes: [], totalFields: 0 });
+  const [storageStats, setStorageStats] = useState<StorageStats>({ 
+    totalSize: 0, 
+    datasetCount: 0, 
+    formattedSize: '0 B', 
+    storageTypes: [], 
+    totalFields: 0 
+  });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
   

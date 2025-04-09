@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { toast } from "sonner";
 import { Dataset, StorageStats } from '@/services/types/datasetTypes';
+import { dataService } from '@/services/dataService';
 
 /**
  * Verifies that all required storage buckets exist
@@ -209,10 +210,16 @@ export const calculateAccurateStorageStats = (datasets: Dataset[]): StorageStats
  * @returns Formatted size string (e.g., "1.5 MB")
  */
 export const formatByteSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B';
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let unitIndex = 0;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
 };
 
 /**
