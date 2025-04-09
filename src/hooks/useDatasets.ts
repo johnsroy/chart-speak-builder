@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast } from 'sonner';
@@ -13,17 +14,24 @@ export const useDatasets = () => {
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const maxRetries = 3;
   
   const { toast: hookToast } = useToast();
   const { isAuthenticated, user } = useAuth();
 
   const loadDatasets = useCallback(async (forceRefresh = false) => {
+    // Don't try to load datasets if already refreshing
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
     setIsLoading(true);
+    
     try {
       console.log("Fetching all datasets...");
       
       if (forceRefresh) {
+        // Clear state before refreshing
         setDatasets([]);
         setUniqueDatasets([]);
       }
@@ -34,25 +42,35 @@ export const useDatasets = () => {
       if (data.length === 0 && retryCount < maxRetries) {
         console.log(`No datasets found, retrying... (${retryCount + 1}/${maxRetries})`);
         setRetryCount(prev => prev + 1);
-        setTimeout(() => loadDatasets(), 1000);
+        
+        // Add a reasonable delay before retrying
+        setTimeout(() => {
+          setIsRefreshing(false);
+          loadDatasets();
+        }, 1000);
         return;
       }
       
       const filtered = getUniqueDatasetsByFilename(data);
       
+      // Update state atomically
       setDatasets(data);
       setUniqueDatasets(filtered);
 
+      // Update selected dataset ID if necessary
       if (filtered.length > 0 && !selectedDatasetId) {
         setSelectedDatasetId(filtered[0].id);
-      } else if (selectedDatasetId && !filtered.find(d => d.id === selectedDatasetId)) {
+      } else if (selectedDatasetId && !filtered.some(d => d.id === selectedDatasetId)) {
+        // If selected dataset was deleted, select first available
         setSelectedDatasetId(filtered.length > 0 ? filtered[0].id : null);
       }
       
       console.log(`Loaded datasets: ${filtered.length} unique datasets available`);
       
+      // Reset retry counter
       setRetryCount(0);
       
+      // Preload dataset content if authenticated
       if (filtered.length > 0 && isAuthenticated) {
         const datasetToPreload = selectedDatasetId || filtered[0].id;
         setTimeout(() => {
@@ -60,7 +78,7 @@ export const useDatasets = () => {
             preventSampleFallback: true,
             showToasts: false
           }).catch(err => console.warn("Preloading dataset failed:", err));
-        }, 100);
+        }, 200);
       }
     } catch (error) {
       const showErrorToast = () => {
@@ -80,20 +98,30 @@ export const useDatasets = () => {
       if (retryCount < maxRetries) {
         console.log(`Error loading datasets, retrying... (${retryCount + 1}/${maxRetries})`);
         setRetryCount(prev => prev + 1);
-        setTimeout(() => loadDatasets(), 1000 * (retryCount + 1));
+        
+        // Add increasing delay for retries
+        setTimeout(() => {
+          setIsRefreshing(false);
+          loadDatasets();
+        }, 1000 * (retryCount + 1));
       } else {
         showErrorToast();
       }
     } finally {
       setIsLoading(false);
+      // Allow a minimum time between refreshes
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 500);
     }
-  }, [selectedDatasetId, hookToast, retryCount, maxRetries, isAuthenticated]);
+  }, [selectedDatasetId, hookToast, retryCount, maxRetries, isAuthenticated, isRefreshing]);
 
+  // Only load datasets once on initial authentication
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !isRefreshing) {
       loadDatasets();
     }
-  }, [isAuthenticated, loadDatasets]);
+  }, [isAuthenticated, loadDatasets, isRefreshing]);
   
   const deleteDataset = useCallback(async (datasetId: string) => {
     if (!datasetId) return false;
@@ -101,9 +129,11 @@ export const useDatasets = () => {
     try {
       console.log(`Deleting dataset with ID: ${datasetId}`);
       
+      // Update local state first for immediate feedback
       setDatasets(prev => prev.filter(d => d.id !== datasetId));
       setUniqueDatasets(prev => prev.filter(d => d.id !== datasetId));
       
+      // Update selected dataset if necessary
       if (selectedDatasetId === datasetId) {
         const remainingDatasets = datasets.filter(d => d.id !== datasetId);
         if (remainingDatasets.length > 0) {
@@ -113,98 +143,31 @@ export const useDatasets = () => {
         }
       }
       
+      // Clear cache for this dataset
       try {
         sessionStorage.removeItem(`dataset_${datasetId}`);
+        console.log(`Cleared dataset cache for ${datasetId}`);
       } catch (e) {
         console.warn("Could not clear dataset cache:", e);
       }
-
-      console.log("Attempting to delete queries using SQL function...");
-      try {
-        const { error: rpcError } = await supabase.rpc('force_delete_queries', {
-          dataset_id_param: datasetId
-        });
-        
-        if (rpcError) {
-          console.warn("SQL function call failed:", rpcError);
-          // Continue with fallback approach
-        } else {
-          console.log("Successfully deleted queries with SQL function");
-          // Wait a moment to ensure database processed the deletion
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      } catch (sqlError) {
-        console.warn("Exception when calling SQL function:", sqlError);
-        // Continue with fallback approach
-      }
       
-      // Verify if queries were properly deleted
-      const { count, error: countError } = await supabase
-        .from('queries')
-        .select('*', { count: 'exact', head: true })
-        .eq('dataset_id', datasetId);
-        
-      if (countError) {
-        console.warn("Error checking if queries exist:", countError);
-      } else if (count && count > 0) {
-        console.warn(`WARNING: ${count} queries still exist for dataset ${datasetId}`);
-        
-        // Fallback: delete queries and visualizations manually
-        const { data: queries } = await supabase
-          .from('queries')
-          .select('id')
-          .eq('dataset_id', datasetId);
-          
-        if (queries && queries.length > 0) {
-          const queryIds = queries.map(q => q.id);
-          console.log(`Found ${queryIds.length} queries to clean up manually for dataset ${datasetId}`);
-          
-          // Delete visualizations first
-          const { error: vizError } = await supabase
-            .from('visualizations')
-            .delete()
-            .in('query_id', queryIds);
-            
-          if (vizError) {
-            console.warn("Error deleting related visualizations:", vizError);
-          } else {
-            console.log(`Successfully deleted visualizations for dataset ${datasetId}`);
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Delete queries individually
-          for (const query of queries) {
-            const { error: deleteQueryError } = await supabase
-              .from('queries')
-              .delete()
-              .eq('id', query.id);
-              
-            if (deleteQueryError) {
-              console.warn(`Error deleting query ${query.id}:`, deleteQueryError);
-            } else {
-              console.log(`Successfully deleted query ${query.id}`);
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 200));
-          }
-        }
-      }
-      
-      // Now attempt to delete the dataset
+      // Delegate actual deletion to dataService
       const success = await dataService.deleteDataset(datasetId);
       
       if (!success) {
         toast.error('Failed to delete dataset');
-        loadDatasets(true);
+        
+        // Restore state and reload data
+        setTimeout(() => loadDatasets(true), 500);
         return false;
       }
       
       toast.success('Dataset deleted successfully');
       
+      // Refresh dataset list, but not immediately to avoid UI flicker
       setTimeout(() => {
         loadDatasets(true);
-      }, 500);
+      }, 1000);
       
       return true;
     } catch (error) {
@@ -212,17 +175,21 @@ export const useDatasets = () => {
       toast.error('Error deleting dataset', { 
         description: error instanceof Error ? error.message : 'Unknown error occurred'
       });
-      loadDatasets(true);
+      
+      // Restore state and reload data
+      setTimeout(() => loadDatasets(true), 500);
       return false;
     }
   }, [selectedDatasetId, datasets, loadDatasets]);
   
+  // Set up event listeners for external dataset changes
   useEffect(() => {
     const handleDatasetDeleted = (event: any) => {
       console.log('Dataset deleted event received:', event.detail?.datasetId);
       
       if (!event.detail?.datasetId) return;
       
+      // Update local state for immediate feedback
       setDatasets(prevDatasets => 
         prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
       );
@@ -231,35 +198,51 @@ export const useDatasets = () => {
         prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
       );
       
+      // Update selected dataset if necessary
       if (event.detail.datasetId === selectedDatasetId) {
         const remainingDatasets = datasets.filter(d => d.id !== event.detail.datasetId);
         setSelectedDatasetId(remainingDatasets.length > 0 ? remainingDatasets[0].id : null);
       }
       
-      loadDatasets(true);
+      // Debounce full refresh to avoid UI flicker
+      setTimeout(() => {
+        if (!isRefreshing) {
+          loadDatasets(true);
+        }
+      }, 1000);
     };
     
     const handleDatasetUploaded = () => {
       console.log('Dataset uploaded event received');
-      loadDatasets(true);
+      
+      // Debounce refresh to avoid UI flicker
+      setTimeout(() => {
+        if (!isRefreshing) {
+          loadDatasets(true);
+        }
+      }, 500);
     };
     
+    // Set up event listeners
     window.addEventListener('dataset-deleted', handleDatasetDeleted);
     window.addEventListener('dataset-upload-success', handleDatasetUploaded);
     window.addEventListener('upload:success', handleDatasetUploaded);
     
     return () => {
+      // Clean up event listeners
       window.removeEventListener('dataset-deleted', handleDatasetDeleted);
       window.removeEventListener('dataset-upload-success', handleDatasetUploaded);
       window.removeEventListener('upload:success', handleDatasetUploaded);
     };
-  }, [selectedDatasetId, loadDatasets, datasets]);
+  }, [selectedDatasetId, loadDatasets, datasets, isRefreshing]);
 
   const forceRefresh = useCallback(() => {
     console.log("Force refreshing datasets...");
-    setRetryCount(0);
-    loadDatasets(true);
-  }, [loadDatasets]);
+    if (!isRefreshing) {
+      setRetryCount(0);
+      loadDatasets(true);
+    }
+  }, [loadDatasets, isRefreshing]);
 
   return {
     datasets: uniqueDatasets, 
@@ -269,6 +252,7 @@ export const useDatasets = () => {
     isLoading,
     loadDatasets,
     forceRefresh,
-    deleteDataset
+    deleteDataset,
+    isRefreshing
   };
 };

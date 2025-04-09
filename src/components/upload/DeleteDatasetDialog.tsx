@@ -50,48 +50,31 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
         console.warn("Exception when getting dataset info:", infoErr);
       }
       
-      // Step 2: Call the Edge Function to delete related queries and visualizations
+      // Step 2: Call the SQL function to delete related queries and visualizations
       try {
-        console.log("Calling Edge Function to delete related queries and visualizations...");
-        const { data, error } = await supabase.functions.invoke('force-delete-queries', {
-          body: { dataset_id: datasetId }
+        console.log("Using SQL function to delete related queries and visualizations...");
+        const { error: rpcError } = await supabase.rpc('force_delete_queries', {
+          dataset_id_param: datasetId
         });
         
-        if (error) {
-          console.warn("Edge function call failed:", error);
-          throw new Error(`Edge function error: ${error.message}`);
+        if (rpcError) {
+          console.warn("SQL function call failed:", rpcError);
+          throw new Error(`RPC error: ${rpcError.message}`);
         }
         
-        console.log("Edge function response:", data);
+        console.log("Successfully executed force_delete_queries function");
         
         // Wait to ensure database processes deletion
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (fnError) {
-        console.error("Error calling Edge Function:", fnError);
+        console.error("Error executing SQL function:", fnError);
         
-        // Fallback: Try using the SQL function
-        try {
-          console.log("Using SQL function as fallback...");
-          const { error: rpcError } = await supabase.rpc('force_delete_queries', {
-            dataset_id_param: datasetId
-          });
-          
-          if (rpcError) {
-            console.warn("SQL function call failed:", rpcError);
-            throw new Error(`RPC error: ${rpcError.message}`);
-          }
-          
-          console.log("Successfully executed force_delete_queries function");
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        } catch (sqlError) {
-          console.error("Error executing SQL function:", sqlError);
-          toast.error("Error deleting related data. Please try again.");
-          setIsDeleting(false);
-          return;
-        }
+        // Don't immediately fail, just log and continue to the next step
+        console.log("Continuing with deletion despite query deletion failure");
       }
       
       // Step 3: Verify all queries are deleted before proceeding
+      let queriesExist = false;
       try {
         const { count, error: countError } = await supabase
           .from('queries')
@@ -102,15 +85,51 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
           console.warn("Error checking if queries exist:", countError);
         } else if (count && count > 0) {
           console.warn(`WARNING: ${count} queries still exist for dataset ${datasetId}`);
-          throw new Error(`Could not delete all queries for this dataset. Operation will be aborted.`);
+          queriesExist = true;
         } else {
           console.log("All queries successfully verified as deleted.");
         }
       } catch (verifyErr) {
         console.error("Error during query verification:", verifyErr);
-        toast.error("Failed to delete related data completely. Please try again.");
-        setIsDeleting(false);
-        return;
+      }
+      
+      // Delete any remaining queries manually if needed
+      if (queriesExist) {
+        try {
+          console.log("Attempting to manually delete remaining queries...");
+          const { data: queries } = await supabase
+            .from('queries')
+            .select('id')
+            .eq('dataset_id', datasetId);
+            
+          if (queries && queries.length > 0) {
+            // Delete visualizations for these queries first
+            const queryIds = queries.map(q => q.id);
+            
+            const { error: vizError } = await supabase
+              .from('visualizations')
+              .delete()
+              .in('query_id', queryIds);
+              
+            if (vizError) {
+              console.warn("Error deleting related visualizations:", vizError);
+            }
+            
+            // Then delete queries
+            for (const query of queries) {
+              const { error: delError } = await supabase
+                .from('queries')
+                .delete()
+                .eq('id', query.id);
+                
+              if (delError) {
+                console.warn(`Error deleting query ${query.id}:`, delError);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error in manual query cleanup:", err);
+        }
       }
       
       // Step 4: Now it's safe to delete the dataset record
@@ -154,8 +173,7 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
       
       // Step 6: Clear any cached data for this dataset
       try {
-        // Clear all session storage items that might reference this dataset
-        const keysToRemove = [];
+        // Clear session storage items that might reference this dataset
         for (let i = 0; i < sessionStorage.length; i++) {
           const key = sessionStorage.key(i);
           if (key && (
@@ -165,37 +183,34 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
             key.startsWith('query_') ||
             key.startsWith('visualization_')
           )) {
-            keysToRemove.push(key);
+            try {
+              sessionStorage.removeItem(key);
+              console.log(`Cleared cache: ${key}`);
+            } catch (e) {
+              console.warn(`Could not clear cache for ${key}:`, e);
+            }
           }
         }
-        
-        keysToRemove.forEach(key => {
-          try {
-            sessionStorage.removeItem(key);
-            console.log(`Cleared cache: ${key}`);
-          } catch (e) {
-            console.warn(`Could not clear cache for ${key}:`, e);
-          }
-        });
-        
-        console.log(`Cleared ${keysToRemove.length} cache entries`);
       } catch (cacheErr) {
         console.warn("Error clearing dataset cache:", cacheErr);
       }
       
       toast.success("Dataset deleted successfully");
       
-      // Close the dialog first
+      // Close the dialog first to avoid UI glitches
       onOpenChange(false);
       
-      // Dispatch custom event for dataset deletion
-      window.dispatchEvent(new CustomEvent('dataset-deleted', {
-        detail: { datasetId }
-      }));
-      
-      // Call the onDeleted callback after a short delay
+      // Allow some time for UI to update before triggering refresh
       setTimeout(() => {
-        onDeleted();
+        // Only dispatch the event once
+        window.dispatchEvent(new CustomEvent('dataset-deleted', {
+          detail: { datasetId }
+        }));
+        
+        // Call the callback last, after a small delay
+        setTimeout(() => {
+          onDeleted();
+        }, 500);
       }, 300);
       
     } catch (error) {

@@ -12,4 +12,3 @@ port = 54322
 [functions]
 [functions.force-delete-queries]
 verify_jwt = true
-

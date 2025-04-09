@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -16,13 +15,12 @@ import DeleteDatasetDialog from '@/components/upload/DeleteDatasetDialog';
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, adminLogin } = useAuth();
-  const { datasets, isLoading, loadDatasets } = useDatasets();
+  const { datasets, isLoading, loadDatasets, isRefreshing } = useDatasets();
   const [filterType, setFilterType] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
   const [duplicateWarnings, setDuplicateWarnings] = useState<boolean>(false);
-  const [refreshing, setRefreshing] = useState(false);
-
+  
   useEffect(() => {
     const setupAuth = async () => {
       if (!isAuthenticated && !user) {
@@ -40,35 +38,12 @@ const Dashboard = () => {
   }, [isAuthenticated, user, adminLogin]);
 
   const handleDatasetDeleted = useCallback(() => {
-    loadDatasets();
-  }, [loadDatasets]);
+    console.log("Dataset deleted callback executed");
+  }, []);
 
-  useEffect(() => {
-    const handleDatasetDeletedEvent = (event: CustomEvent) => {
-      console.log('Dashboard: Dataset deleted event received:', event.detail?.datasetId);
-      loadDatasets();
-    };
-
-    const handleUploadSuccess = () => {
-      loadDatasets();
-    };
-
-    window.addEventListener('dataset-upload-success', handleUploadSuccess);
-    window.addEventListener('upload:success', handleUploadSuccess);
-    window.addEventListener('dataset-deleted', handleDatasetDeletedEvent as EventListener);
-
-    return () => {
-      window.removeEventListener('dataset-upload-success', handleUploadSuccess);
-      window.removeEventListener('upload:success', handleUploadSuccess);
-      window.removeEventListener('dataset-deleted', handleDatasetDeletedEvent as EventListener);
-    };
-  }, [loadDatasets]);
-
-  const handleNewDataset = () => {
-    navigate("/upload");
-  };
-
-  const handleDeleteClick = (dataset: any) => {
+  const handleDeleteClick = (dataset: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
     setDatasetToDelete({
       id: dataset.id,
       name: dataset.name || dataset.file_name
@@ -77,21 +52,20 @@ const Dashboard = () => {
   };
 
   const handleRefreshDatasets = async () => {
-    setRefreshing(true);
+    if (isRefreshing) return;
+    
     try {
-      await loadDatasets();
+      await loadDatasets(true);
       toast.success("Datasets refreshed");
     } catch (error) {
       console.error("Error refreshing datasets:", error);
       toast.error("Failed to refresh datasets");
-    } finally {
-      setRefreshing(false);
     }
   };
   
   const filteredDatasets = filterType 
     ? datasets.filter(dataset => {
-        const fileExt = dataset.file_name.split('.').pop()?.toLowerCase();
+        const fileExt = dataset.file_name?.split('.').pop()?.toLowerCase();
         if (filterType === 'csv') return fileExt === 'csv';
         if (filterType === 'excel') return fileExt === 'xlsx' || fileExt === 'xls';
         if (filterType === 'json') return fileExt === 'json';
@@ -113,9 +87,9 @@ const Dashboard = () => {
               variant="outline" 
               className="flex items-center text-gray-300 hover:text-white"
               onClick={handleRefreshDatasets}
-              disabled={refreshing}
+              disabled={isRefreshing}
             >
-              {refreshing ? (
+              {isRefreshing ? (
                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <RefreshCw className="mr-2 h-4 w-4" />
@@ -128,13 +102,13 @@ const Dashboard = () => {
               className="flex items-center text-gray-300 hover:text-white" 
               asChild
             >
-              <Link to="/upload">
+              <Link to="/">
                 <Home className="mr-2 h-4 w-4" />
                 Home
               </Link>
             </Button>
             
-            <Button onClick={handleNewDataset} className="bg-gradient-to-r from-purple-700 to-purple-600">
+            <Button onClick={() => navigate("/upload")} className="bg-gradient-to-r from-purple-700 to-purple-600">
               <Plus className="mr-2 h-4 w-4" />
               New Dataset
             </Button>
@@ -164,7 +138,7 @@ const Dashboard = () => {
                   </Card>
                 ))}
               </div>
-            ) : filteredDatasets.length > 0 ? (
+            ) : filteredDatasets && filteredDatasets.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredDatasets.map(dataset => (
                   <Card key={dataset.id} className="glass-card hover:bg-white/5 transition-colors cursor-pointer overflow-hidden" onClick={() => navigate(`/visualize/${dataset.id}`)}>
@@ -185,10 +159,7 @@ const Dashboard = () => {
                             <BarChart2 className="mr-2 h-4 w-4" />
                             Visualize
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={e => {
-                            e.stopPropagation();
-                            handleDeleteClick(dataset);
-                          }} className="text-red-500">
+                          <DropdownMenuItem onClick={e => handleDeleteClick(dataset, e)} className="text-red-500">
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </DropdownMenuItem>
@@ -242,7 +213,7 @@ const Dashboard = () => {
                 <p className="text-gray-400 mb-6 max-w-md mx-auto">
                   Get started by uploading a dataset from your computer or connecting to an external data source.
                 </p>
-                <Button onClick={handleNewDataset}>Upload a Dataset</Button>
+                <Button onClick={() => navigate("/upload")}>Upload a Dataset</Button>
               </div>
             )}
           </TabsContent>
@@ -254,13 +225,15 @@ const Dashboard = () => {
           ))}
         </Tabs>
         
-        <DeleteDatasetDialog
-          open={deleteDialogOpen}
-          onOpenChange={setDeleteDialogOpen}
-          datasetId={datasetToDelete?.id || null}
-          datasetName={datasetToDelete?.name}
-          onDeleted={handleDatasetDeleted}
-        />
+        {deleteDialogOpen && (
+          <DeleteDatasetDialog
+            open={deleteDialogOpen}
+            onOpenChange={setDeleteDialogOpen}
+            datasetId={datasetToDelete?.id || null}
+            datasetName={datasetToDelete?.name}
+            onDeleted={handleDatasetDeleted}
+          />
+        )}
       </div>
     </div>
   );
