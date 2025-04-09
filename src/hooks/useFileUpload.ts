@@ -395,6 +395,16 @@ export const useFileUpload = () => {
    * Handles overwriting an existing file with improved reliability
    */
   const handleOverwriteConfirm = async (isAuthenticated: boolean, userId: string) => {
+    if (!selectedFile) {
+      toast({
+        title: "Error",
+        description: "No file selected for overwrite operation",
+        variant: "destructive"
+      });
+      setShowOverwriteConfirm(false);
+      return;
+    }
+
     setShowOverwriteConfirm(false);
     setOverwriteInProgress(true);
     
@@ -467,6 +477,11 @@ export const useFileUpload = () => {
         // Wait a moment to ensure deletion completes
         await new Promise(resolve => setTimeout(resolve, 1500));
         
+        // Verify that we still have the selected file before proceeding
+        if (!selectedFile) {
+          throw new Error("File was lost during the overwrite process");
+        }
+        
         // Now upload the new dataset
         await handleUpload(isAuthenticated, systemUserId);
       } catch (error) {
@@ -474,7 +489,7 @@ export const useFileUpload = () => {
         
         toast({
           title: "Overwrite failed",
-          description: "Failed to replace dataset. Proceeding with upload as a new file.",
+          description: error instanceof Error ? error.message : "Failed to replace dataset. Proceeding with upload as a new file.",
           variant: "warning"
         });
         

@@ -86,6 +86,13 @@ const Upload = () => {
   // Function to handle the upload action
   const handleUploadAction = async () => {
     try {
+      if (!selectedFile) {
+        toast("No file selected", {
+          description: "Please select a file to upload."
+        });
+        return;
+      }
+
       if (selectedFile && selectedFile.size > 50 * 1024 * 1024) {
         toast("Large file detected", {
           description: "Uploading large files may take some time. Please be patient."
@@ -98,28 +105,52 @@ const Upload = () => {
       loadDatasets();
     } catch (error) {
       console.error('Upload failed:', error);
+      toast.error("Upload failed", {
+        description: error instanceof Error ? error.message : "Unknown error occurred"
+      });
     }
   };
 
   // Function to handle retry
   const handleRetryAction = () => {
     try {
+      if (!selectedFile) {
+        toast.error("No file selected", {
+          description: "Please select a file before retrying."
+        });
+        return;
+      }
+
       // Use system account ID for upload
       const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
       retryUpload(true, systemUserId);
     } catch (error) {
       console.error('Retry failed:', error);
+      toast.error("Retry failed", {
+        description: error instanceof Error ? error.message : "Unknown error occurred"
+      });
     }
   };
 
   // Function to handle overwrite confirmation
   const handleOverwriteConfirmAction = () => {
     try {
+      if (!selectedFile) {
+        toast.error("No file selected", {
+          description: "The file selection was lost. Please select a file again."
+        });
+        handleOverwriteCancel();
+        return;
+      }
+
       // Use system account ID for upload
       const systemUserId = 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
       handleOverwriteConfirm(true, systemUserId);
     } catch (error) {
       console.error('Overwrite confirmation failed:', error);
+      toast.error("Overwrite failed", {
+        description: error instanceof Error ? error.message : "Unknown error occurred"
+      });
     }
   };
 

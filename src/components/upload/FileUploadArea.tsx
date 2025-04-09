@@ -196,7 +196,7 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
         </div>
       )}
 
-      <AlertDialog open={showOverwriteConfirm} onOpenChange={() => {}}>
+      <AlertDialog open={showOverwriteConfirm} onOpenChange={() => {}} >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
