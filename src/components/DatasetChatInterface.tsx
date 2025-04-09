@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -47,6 +48,12 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     isLoading: false,
     message: ''
   });
+  const [recommendations, setRecommendations] = useState<string[]>([
+    "What's the trend over time?",
+    "Show me the top 5 values",
+    "Compare by category",
+    "Calculate average and sum"
+  ]);
   const navigate = useNavigate();
 
   const handleSendMessage = async (newMessage: string) => {
@@ -98,6 +105,11 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Mock function to handle visualization download - we'll add proper implementation later
+  const handleDownloadVisualization = () => {
+    toast.info("Downloading visualization...");
   };
 
   useEffect(() => {
@@ -312,12 +324,19 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             </div>
           </div>
         ) : (
-          <ChatContainer messages={messages} />
+          <ChatContainer 
+            messages={messages} 
+            downloadVisualization={handleDownloadVisualization} 
+          />
         )}
       </div>
       
       <div className="p-4 border-t border-gray-700/50">
-        <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
+        <ChatInput 
+          onSendMessage={handleSendMessage} 
+          isLoading={isLoading} 
+          recommendations={recommendations}
+        />
       </div>
     </div>
   );

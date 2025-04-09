@@ -12,6 +12,27 @@ export interface Message {
   thinking?: string;
 }
 
+export type AIModelType = 'openai' | 'anthropic';
+
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  result?: QueryResult;
+}
+
+export interface AIQueryResponse {
+  data?: any[];
+  columns?: any[];
+  explanation?: string;
+  chartType?: string;
+  xAxis?: string;
+  yAxis?: string;
+  error?: string;
+  chart_type?: string;
+  x_axis?: string;
+  y_axis?: string;
+}
+
 export interface DataAnalysisResult {
   growth?: { rate: number; start: string; end: string } | null;
   decline?: { rate: number; start: string; end: string } | null;

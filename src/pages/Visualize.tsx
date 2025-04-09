@@ -130,10 +130,9 @@ const Visualize = () => {
     try {
       console.log("Loading full dataset using enhanced datasetUtils");
       
-      // Use our new comprehensive dataset loading utility
       const fullData = await datasetUtils.loadDatasetContent(datasetId, {
         showToasts: true,
-        limitRows: 10000  // Reasonable limit for browser performance
+        limitRows: 10000
       });
       
       if (fullData && Array.isArray(fullData) && fullData.length > 0) {
@@ -228,14 +227,12 @@ const Visualize = () => {
   const handleDownload = () => {
     if (dataPreview && dataPreview.length > 0) {
       try {
-        // Convert data to CSV
         const headers = Object.keys(dataPreview[0]);
         const csvContent = [
           headers.join(','),
           ...dataPreview.map(row => headers.map(header => JSON.stringify(row[header] || '')).join(','))
         ].join('\n');
         
-        // Create download link
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -243,7 +240,6 @@ const Visualize = () => {
         link.setAttribute('download', `${dataset?.name || 'dataset'}.csv`);
         document.body.appendChild(link);
         
-        // Start download and clean up
         link.click();
         link.parentNode?.removeChild(link);
         URL.revokeObjectURL(url);
@@ -281,7 +277,6 @@ const Visualize = () => {
       try {
         console.log("Manually refreshing data preview");
         
-        // Force refresh by bypassing all cache layers
         const data = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: true,
           forceRefresh: true

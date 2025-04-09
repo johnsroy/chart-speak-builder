@@ -1,6 +1,28 @@
+
 import React from 'react';
 import { BarChart, LineChart, PieChart } from 'lucide-react';
 import { QueryResult } from '@/services/types/queryTypes';
+
+/**
+ * Utility functions for chat components
+ */
+export const ChatUtils = {
+  /**
+   * Get AI query response for a dataset
+   */
+  getAIQuery: async (datasetId: string, query: string, model: string, data: any[]) => {
+    console.log(`Getting AI query for dataset ${datasetId} using ${model} model`);
+    // Mock implementation for now - will be implemented in future
+    return {
+      data: [],
+      columns: [],
+      explanation: `This is a response to: "${query}"`,
+      chartType: 'bar',
+      xAxis: 'category',
+      yAxis: 'value'
+    };
+  }
+};
 
 /**
  * Get the appropriate chart icon based on the chart type
