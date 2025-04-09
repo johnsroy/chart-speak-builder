@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
 import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
+import { supabase } from '@/lib/supabase';
 
 export const useDatasets = () => {
   const [datasets, setDatasets] = useState<any[]>([]);
@@ -89,6 +90,50 @@ export const useDatasets = () => {
     }
   }, [isAuthenticated, loadDatasets]);
   
+  // Handle dataset deletion
+  const deleteDataset = useCallback(async (datasetId: string) => {
+    if (!datasetId) return false;
+    
+    try {
+      console.log(`Deleting dataset with ID: ${datasetId}`);
+      const { error } = await supabase
+        .from('datasets')
+        .delete()
+        .eq('id', datasetId);
+      
+      if (error) {
+        console.error('Error deleting dataset:', error);
+        toast.error('Failed to delete dataset', {
+          description: error.message
+        });
+        return false;
+      }
+      
+      // Update datasets list after deletion
+      setDatasets(prev => prev.filter(d => d.id !== datasetId));
+      setUniqueDatasets(prev => prev.filter(d => d.id !== datasetId));
+      
+      // If the deleted dataset was selected, reset selection
+      if (selectedDatasetId === datasetId) {
+        setSelectedDatasetId(null);
+      }
+      
+      // Dispatch custom event for other components
+      window.dispatchEvent(new CustomEvent('dataset-deleted', { 
+        detail: { datasetId } 
+      }));
+      
+      toast.success('Dataset deleted successfully');
+      return true;
+    } catch (error) {
+      console.error('Error in deleteDataset:', error);
+      toast.error('Error deleting dataset', { 
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
+      return false;
+    }
+  }, [selectedDatasetId]);
+  
   // Listen for dataset events
   useEffect(() => {
     const handleDatasetDeleted = (event: any) => {
@@ -144,6 +189,7 @@ export const useDatasets = () => {
     setSelectedDatasetId,
     isLoading,
     loadDatasets,
-    forceRefresh
+    forceRefresh,
+    deleteDataset
   };
 };
