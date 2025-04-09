@@ -43,8 +43,13 @@ function App() {
         <Route path="/payment-success" element={<PaymentSuccessPage />} />
         <Route path="/payment-cancelled" element={<PaymentCanceledPage />} />
         
-        {/* Protected routes with NavBar */}
-        <Route element={<ProtectedRoute><NavBar /></ProtectedRoute>}>
+        {/* Layout with NavBar for protected routes */}
+        <Route path="/" element={
+          <ProtectedRoute>
+            <NavBar />
+          </ProtectedRoute>
+        }>
+          {/* Protected content routes */}
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/upload" element={<Upload />} />
           <Route path="/upload-old" element={<UploadPage />} />
@@ -60,9 +65,7 @@ function App() {
 
         {/* Fallback - redirect to dashboard if logged in, otherwise to landing page */}
         <Route path="*" element={
-          <ProtectedRoute>
-            <Navigate to="/dashboard" replace />
-          </ProtectedRoute>
+          <Navigate to="/" replace />
         } />
       </Routes>
       

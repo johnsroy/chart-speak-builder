@@ -33,12 +33,8 @@ const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps)
     return <Navigate to="/" replace />;
   }
   
-  return (
-    <>
-      {children}
-      <Outlet /> {/* This allows nested routes to render their elements */}
-    </>
-  );
+  // Return either children OR Outlet, but not both
+  return children || <Outlet />;
 };
 
 export default ProtectedRoute;
