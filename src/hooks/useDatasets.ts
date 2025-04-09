@@ -6,6 +6,7 @@ import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
 import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
 import { supabase } from '@/lib/supabase';
+import { datasetUtils } from '@/utils/datasetUtils';
 
 export const useDatasets = () => {
   const [datasets, setDatasets] = useState<any[]>([]);
@@ -54,6 +55,17 @@ export const useDatasets = () => {
       
       // Reset retry count on success
       setRetryCount(0);
+      
+      // Preload dataset content for better performance
+      if (filtered.length > 0 && isAuthenticated) {
+        const datasetToPreload = selectedDatasetId || filtered[0].id;
+        setTimeout(() => {
+          datasetUtils.loadDatasetContent(datasetToPreload, {
+            preventSampleFallback: true,
+            showToasts: false
+          }).catch(err => console.warn("Preloading dataset failed:", err));
+        }, 100);
+      }
     } catch (error) {
       console.error('Error loading datasets:', error);
       
@@ -82,7 +94,7 @@ export const useDatasets = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDatasetId, hookToast, retryCount, maxRetries]);
+  }, [selectedDatasetId, hookToast, retryCount, maxRetries, isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated) {

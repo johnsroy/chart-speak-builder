@@ -44,6 +44,7 @@ interface ChartVisualizationProps {
   useDirectAccess?: boolean;
   heightClass?: string;
   className?: string;
+  preventSampleData?: boolean;
 }
 
 interface ChartField {
@@ -63,6 +64,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
   useDirectAccess = false,
   heightClass = 'h-[400px]',
   className = '',
+  preventSampleData = true,
 }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);

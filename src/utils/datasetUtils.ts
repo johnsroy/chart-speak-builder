@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Dataset } from '@/services/types/datasetTypes';
@@ -19,10 +20,12 @@ export const datasetUtils = {
       limitRows?: number;
       showToasts?: boolean;
       forceRefresh?: boolean;
+      preventSampleFallback?: boolean;
     } = {}
   ): Promise<any[] | null> {
-    const { limitRows = 0, showToasts = false, forceRefresh = false } = options;
+    const { limitRows = 0, showToasts = false, forceRefresh = false, preventSampleFallback = false } = options;
     let data: any[] | null = null;
+    let loadErrors: string[] = [];
 
     // Skip cache if force refresh is requested
     if (!forceRefresh) {
@@ -73,12 +76,14 @@ export const datasetUtils = {
 
       if (datasetError) {
         console.error("Error getting dataset info:", datasetError);
+        loadErrors.push(`Database error: ${datasetError.message}`);
       } else {
         dataset = datasetInfo;
         console.log("Retrieved dataset info:", dataset);
       }
     } catch (error) {
       console.error("Error fetching dataset info:", error);
+      loadErrors.push(`Fetch error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     // Check for preview_key first in the dataset
@@ -100,12 +105,15 @@ export const datasetUtils = {
         }
       } catch (previewError) {
         console.warn("Error loading data from preview_key:", previewError);
+        loadErrors.push(`Preview error: ${previewError instanceof Error ? previewError.message : 'Unknown error'}`);
       }
     }
 
     // Method 1: Try loading from dataset_data table if it exists
     try {
       console.log("Attempting to fetch data from dataset_data table");
+      await ensureDatasetDataTableExists();
+      
       const { data: tableData, error: tableError } = await supabase
         .from('dataset_data')
         .select('row_data')
@@ -116,6 +124,7 @@ export const datasetUtils = {
       if (tableError) {
         if (!tableError.message.includes("does not exist")) {
           console.error("Error fetching from dataset_data:", tableError);
+          loadErrors.push(`Table error: ${tableError.message}`);
         }
       } else if (tableData && Array.isArray(tableData) && tableData.length > 0) {
         console.log(`Successfully loaded ${tableData.length} rows from dataset_data table`);
@@ -127,6 +136,7 @@ export const datasetUtils = {
       }
     } catch (error) {
       console.warn("Error with dataset_data approach:", error);
+      loadErrors.push(`Dataset data error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     // Method 2: If we have storage info, try to download directly
@@ -143,10 +153,13 @@ export const datasetUtils = {
 
         if (storageError) {
           console.error("Storage error:", storageError);
+          loadErrors.push(`Storage error: ${storageError.message}`);
           
           // Try alternate bucket if the specified one doesn't work
           if (dataset.storage_type !== 'datasets') {
             console.log("Trying alternate bucket 'datasets'");
+            await ensureStorageBucketExists('datasets');
+            
             const { data: altFileData, error: altError } = await supabase.storage
               .from('datasets')
               .download(dataset.storage_path);
@@ -170,9 +183,25 @@ export const datasetUtils = {
                   cacheDataset(datasetId, data);
                   return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
                 }
+              } else {
+                try {
+                  // Try to parse as JSON
+                  const jsonData = JSON.parse(text);
+                  if (Array.isArray(jsonData)) {
+                    console.log(`Successfully parsed ${jsonData.length} rows from JSON`);
+                    data = jsonData;
+                    
+                    // Save to caches
+                    cacheDataset(datasetId, data);
+                    return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
+                  }
+                } catch (jsonError) {
+                  console.warn("File is not valid JSON, trying other parsing methods");
+                }
               }
             } else {
               console.error("Alternate storage error:", altError);
+              loadErrors.push(`Alternate storage error: ${altError?.message || 'Unknown error'}`);
             }
           }
         }
@@ -216,6 +245,7 @@ export const datasetUtils = {
         }
       } catch (storageErr) {
         console.error("Error accessing storage:", storageErr);
+        loadErrors.push(`Storage access error: ${storageErr instanceof Error ? storageErr.message : 'Unknown error'}`);
       }
     }
 
@@ -236,6 +266,7 @@ export const datasetUtils = {
       }
     } catch (serviceErr) {
       console.warn("Error with queryService approach:", serviceErr);
+      loadErrors.push(`Query service error: ${serviceErr instanceof Error ? serviceErr.message : 'Unknown error'}`);
     }
     
     // Method 4: Try dataService API
@@ -259,10 +290,11 @@ export const datasetUtils = {
       }
     } catch (previewErr) {
       console.warn("Error with preview approach:", previewErr);
+      loadErrors.push(`Preview error: ${previewErr instanceof Error ? previewErr.message : 'Unknown error'}`);
     }
 
-    // If we still have no data but have dataset info, generate some sample data
-    if (!data && dataset) {
+    // If we still have no data but have dataset info, and sample fallback is allowed, generate sample data
+    if (!data && dataset && !preventSampleFallback) {
       if (showToasts) {
         toast.error("Could not load actual dataset", {
           description: "Using generated sample data instead"
@@ -272,6 +304,17 @@ export const datasetUtils = {
       console.log("Generating sample data based on schema");
       data = generateSampleDataFromSchema(dataset, 1000);
       return limitRows && limitRows > 0 ? data.slice(0, limitRows) : data;
+    } else if (!data && preventSampleFallback) {
+      // If sample fallback is prevented, show detailed error about why loading failed
+      const errorDetails = loadErrors.length > 0 
+        ? `Load attempts failed: ${loadErrors.join('; ')}` 
+        : 'No loading methods succeeded';
+      
+      if (showToasts) {
+        toast.error("Dataset loading failed", {
+          description: errorDetails
+        });
+      }
     }
 
     // All methods failed
@@ -284,14 +327,14 @@ export const datasetUtils = {
   ensureDatasetDataTableExists: async function(): Promise<boolean> {
     try {
       // Check if the table exists first
-      const { data, error } = await supabase
-        .from('information_schema.tables')
-        .select('table_name')
-        .eq('table_name', 'dataset_data')
-        .eq('table_schema', 'public')
-        .single();
+      const { data, error } = await supabase.rpc('table_exists', { table_name: 'dataset_data' });
       
-      if (error || !data) {
+      if (error) {
+        console.error("Error checking if table exists:", error);
+        return false;
+      }
+      
+      if (!data) {
         // Table doesn't exist, create it
         console.log("Creating dataset_data table");
         const { error: createError } = await supabase.rpc('create_dataset_data_table');
@@ -339,13 +382,22 @@ function cacheDataset(datasetId: string, data: any[]): void {
  */
 async function ensureStorageBucketExists(bucketName: string): Promise<void> {
   try {
-    const { data: buckets } = await supabase.storage.listBuckets();
+    const { data: buckets, error } = await supabase.storage.listBuckets();
+    
+    if (error) {
+      console.error("Error listing buckets:", error);
+      return;
+    }
     
     if (!buckets?.some(bucket => bucket.name === bucketName)) {
       console.log(`Creating storage bucket: ${bucketName}`);
       await supabase.storage.createBucket(bucketName, {
         public: false
       });
+      
+      console.log(`Bucket '${bucketName}' created successfully`);
+    } else {
+      console.log(`Bucket '${bucketName}' already exists`);
     }
   } catch (error) {
     console.warn(`Error checking/creating bucket ${bucketName}:`, error);
@@ -470,3 +522,4 @@ declare global {
     };
   }
 }
+

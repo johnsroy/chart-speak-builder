@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import ChartVisualization from '@/components/ChartVisualization';
 import { useNavigate } from 'react-router-dom';
@@ -22,6 +22,7 @@ import { ChartType, getSuitableChartTypes, getChartTypeName } from '@/utils/char
 import { queryService } from '@/services/queryService';
 import { toast } from 'sonner';
 import { datasetUtils } from '@/utils/datasetUtils';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface DatasetVisualizationCardProps {
   datasetId?: string;
@@ -45,6 +46,7 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   setActiveTab
 }) => {
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
   const [activeView, setActiveView] = useState<'chart' | 'table'>('chart');
   const [selectedChartType, setSelectedChartType] = useState<ChartType>('bar');
   const [dataPreview, setDataPreview] = useState<any[] | null>(null);
@@ -101,11 +103,15 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
     try {
       console.log("Loading dataset preview for ID:", datasetId);
       
+      // Only allow real data for authenticated users
+      const preventSampleFallback = isAuthenticated;
+      
       // First attempt: Use datasetUtils which has better caching
       try {
         const loadedData = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: false,
-          limitRows: 5000
+          limitRows: 5000,
+          preventSampleFallback: preventSampleFallback
         });
         
         if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
@@ -113,9 +119,18 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
           setDataPreview(loadedData);
           setPreviewLoading(false);
           return;
+        } else if (preventSampleFallback) {
+          throw new Error("Unable to load dataset and sample data is disabled for authenticated users");
         }
       } catch (error) {
         console.warn("Failed to load with datasetUtils, falling back to dataService:", error);
+        
+        if (preventSampleFallback && isAuthenticated) {
+          toast.error("Failed to load dataset", {
+            description: "Please check your connection and try again"
+          });
+          throw error; // Re-throw to prevent further fallbacks to sample data
+        }
       }
       
       // Second attempt: Use standard dataService
@@ -128,7 +143,12 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
         return;
       }
       
-      // If we get here, try to generate sample data based on the dataset info
+      // If we're here and user is authenticated, don't use sample data
+      if (isAuthenticated) {
+        throw new Error("Could not load dataset. Please check your connection or contact support.");
+      }
+      
+      // For unauthenticated users only - generate sample data
       const dataset = await dataService.getDataset(datasetId);
       if (dataset?.file_name && dataset?.column_schema) {
         const sampleData = generateSampleData(dataset.column_schema, 100);
@@ -144,17 +164,19 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
       console.error('Error loading data preview:', error);
       setPreviewError('Failed to load data preview. Please try again.');
       
-      // Try one more fallback option if we have schema
-      try {
-        const dataset = await dataService.getDataset(datasetId);
-        if (dataset?.file_name) {
-          toast.warning("Using generated data for visualization");
-          const sampleData = generateSampleDataFromFilename(dataset.file_name, 100);
-          setDataPreview(sampleData);
-          setPreviewError(null);
+      // Try one more fallback option if we have schema and user is not authenticated
+      if (!isAuthenticated) {
+        try {
+          const dataset = await dataService.getDataset(datasetId);
+          if (dataset?.file_name) {
+            toast.warning("Using generated data for visualization");
+            const sampleData = generateSampleDataFromFilename(dataset.file_name, 100);
+            setDataPreview(sampleData);
+            setPreviewError(null);
+          }
+        } catch (fallbackError) {
+          console.error("Error in fallback data generation:", fallbackError);
         }
-      } catch (fallbackError) {
-        console.error("Error in fallback data generation:", fallbackError);
       }
     } finally {
       setPreviewLoading(false);
@@ -162,6 +184,12 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   };
 
   const generateSampleDataFromFilename = (filename: string, count: number): any[] => {
+    // Only run for non-authenticated users
+    if (isAuthenticated) {
+      toast.error("Cannot generate sample data for authenticated users");
+      throw new Error("Sample data generation is disabled for authenticated users");
+    }
+    
     const lowerName = filename.toLowerCase();
     const data = [];
     
@@ -191,6 +219,12 @@ const DatasetVisualizationCard: React.FC<DatasetVisualizationCardProps> = ({
   };
 
   const generateSampleData = (schema: Record<string, string>, count: number): any[] => {
+    // Only run for non-authenticated users
+    if (isAuthenticated) {
+      toast.error("Cannot generate sample data for authenticated users");
+      throw new Error("Sample data generation is disabled for authenticated users");
+    }
+    
     const data = [];
     const fields = Object.keys(schema);
     

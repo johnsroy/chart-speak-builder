@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
@@ -102,6 +101,9 @@ serve(async (req) => {
     }
     
     if (action === 'preview') {
+      // First make sure the dataset_data table exists
+      await ensureDatasetDataTable(supabase);
+      
       // Instead of trying to download the actual file, we'll generate sample data
       // based on the column schema or file name hints
       try {
@@ -292,4 +294,40 @@ function inferSchema(sample: Record<string, any>) {
   }
   
   return schema;
+}
+
+// Add a helper function to ensure the dataset_data table exists
+async function ensureDatasetDataTable(supabase) {
+  try {
+    // Check if table exists using RPC function
+    const { data: tableExists, error: checkError } = await supabase.rpc('table_exists', {
+      table_name: 'dataset_data'
+    });
+    
+    if (checkError) {
+      console.error("Error checking if dataset_data table exists:", checkError);
+      
+      // If RPC is not available, try to create the table directly
+      await supabase.rpc('create_dataset_data_table').catch(e => {
+        console.error("Error creating dataset_data table:", e);
+      });
+      
+      return;
+    }
+    
+    if (!tableExists) {
+      console.log("Dataset_data table doesn't exist, creating it...");
+      const { error: createError } = await supabase.rpc('create_dataset_data_table');
+      
+      if (createError) {
+        console.error("Error creating dataset_data table:", createError);
+      } else {
+        console.log("Created dataset_data table successfully");
+      }
+    } else {
+      console.log("Dataset_data table already exists");
+    }
+  } catch (error) {
+    console.error("Error checking/creating dataset_data table:", error);
+  }
 }
