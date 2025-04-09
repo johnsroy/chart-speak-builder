@@ -72,18 +72,12 @@ export const useDatasets = () => {
       );
       
       // Also reload datasets to ensure we have the latest data
-      // This ensures the state is fully consistent with the backend
       loadDatasets();
     };
     
-    const handleDatasetUploaded = (event: any) => {
+    const handleDatasetUploaded = () => {
       console.log('Dataset uploaded event received');
       loadDatasets();
-      
-      // If there's a datasetId in the event, select it
-      if (event.detail?.datasetId) {
-        setSelectedDatasetId(event.detail.datasetId);
-      }
     };
     
     // Add event listeners

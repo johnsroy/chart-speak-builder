@@ -1,6 +1,6 @@
 
-import React, { ReactNode, useEffect } from 'react';
-import { Navigate, useNavigate, Outlet } from 'react-router-dom';
+import React, { ReactNode } from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from "sonner";
 
@@ -11,16 +11,6 @@ interface ProtectedRouteProps {
 
 const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
   const { isAuthenticated, isLoading, user, isAdmin } = useAuth();
-  const navigate = useNavigate();
-  
-  useEffect(() => {
-    console.log("ProtectedRoute - Auth state:", { 
-      isAuthenticated, 
-      isLoading, 
-      userEmail: user?.email,
-      isAdmin 
-    });
-  }, [isAuthenticated, isLoading, user, isAdmin]);
   
   if (isLoading) {
     return (

@@ -1,10 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Database, Loader2, BarChart2, Eye, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { dataService } from '@/services/dataService';
 import { useNavigate } from 'react-router-dom';
 import { Dataset } from '@/services/types/datasetTypes';
 import { toast } from 'sonner';
