@@ -1,11 +1,37 @@
 
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { BarChart3, LineChart, PieChart, ArrowUp, ArrowDown, DollarSign, Users, ShoppingCart, AreaChart } from 'lucide-react';
 import { Card, CardContent, CardTitle } from './ui/card';
 
 const AnalyticsDashboardDemo = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  // Track container size for responsive layouts
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        setContainerSize({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight
+        });
+      }
+    };
+
+    // Initial measurement
+    updateSize();
+    
+    // Add resize listener
+    window.addEventListener('resize', updateSize);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('resize', updateSize);
+    };
+  }, []);
+
   return (
-    <div className="w-full rounded-2xl overflow-hidden bg-gradient-to-b from-white/5 to-white/10 p-4 animate-fade-in">
+    <div ref={containerRef} className="w-full h-full rounded-2xl overflow-hidden bg-gradient-to-b from-white/5 to-white/10 p-4 animate-fade-in flex flex-col">
       {/* Dashboard Header */}
       <div className="flex justify-between mb-4">
         <h3 className="text-sm font-medium text-white">Dashboard Overview</h3>
@@ -14,7 +40,7 @@ const AnalyticsDashboardDemo = () => {
       
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-        <Card className="bg-white/10 backdrop-blur-sm border-0">
+        <Card className="bg-white/10 backdrop-blur-sm border-0 shadow-md">
           <CardContent className="p-3">
             <div className="flex justify-between">
               <div>
@@ -32,7 +58,7 @@ const AnalyticsDashboardDemo = () => {
           </CardContent>
         </Card>
         
-        <Card className="bg-white/10 backdrop-blur-sm border-0">
+        <Card className="bg-white/10 backdrop-blur-sm border-0 shadow-md">
           <CardContent className="p-3">
             <div className="flex justify-between">
               <div>
@@ -50,7 +76,7 @@ const AnalyticsDashboardDemo = () => {
           </CardContent>
         </Card>
         
-        <Card className="bg-white/10 backdrop-blur-sm border-0">
+        <Card className="bg-white/10 backdrop-blur-sm border-0 shadow-md">
           <CardContent className="p-3">
             <div className="flex justify-between">
               <div>
@@ -68,7 +94,7 @@ const AnalyticsDashboardDemo = () => {
           </CardContent>
         </Card>
         
-        <Card className="bg-white/10 backdrop-blur-sm border-0">
+        <Card className="bg-white/10 backdrop-blur-sm border-0 shadow-md">
           <CardContent className="p-3">
             <div className="flex justify-between">
               <div>
@@ -87,11 +113,11 @@ const AnalyticsDashboardDemo = () => {
         </Card>
       </div>
       
-      {/* Main Chart */}
-      <Card className="bg-white/10 backdrop-blur-sm border-0 mb-3">
-        <CardContent className="p-3">
+      {/* Main Chart - flex-grow allows it to take available space */}
+      <Card className="bg-white/10 backdrop-blur-sm border-0 mb-3 flex-grow">
+        <CardContent className="p-3 h-full flex flex-col">
           <CardTitle className="text-xs mb-2">Monthly Revenue</CardTitle>
-          <div className="h-32">
+          <div className="flex-grow">
             <svg className="w-full h-full" viewBox="0 0 300 100" preserveAspectRatio="none">
               {/* Grid lines */}
               <line x1="0" y1="0" x2="300" y2="0" stroke="rgba(255,255,255,0.1)" />
@@ -128,8 +154,8 @@ const AnalyticsDashboardDemo = () => {
       </Card>
       
       {/* Bottom Charts */}
-      <div className="grid grid-cols-2 gap-2">
-        <Card className="bg-white/10 backdrop-blur-sm border-0">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <Card className="bg-white/10 backdrop-blur-sm border-0 shadow-md">
           <CardContent className="p-3">
             <CardTitle className="text-xs mb-2">Sales by Category</CardTitle>
             <div className="h-24 flex items-end justify-between gap-1">
@@ -146,11 +172,11 @@ const AnalyticsDashboardDemo = () => {
           </CardContent>
         </Card>
         
-        <Card className="bg-white/10 backdrop-blur-sm border-0">
+        <Card className="bg-white/10 backdrop-blur-sm border-0 shadow-md">
           <CardContent className="p-3">
             <CardTitle className="text-xs mb-2">Customer Demographics</CardTitle>
-            <div className="flex justify-center items-center h-24">
-              <div className="w-24 h-24 relative">
+            <div className="flex flex-col sm:flex-row justify-center items-center h-24">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 relative">
                 <svg viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(168,85,247,0.8)" strokeWidth="20" strokeDasharray="40 100" transform="rotate(-90 50 50)" />
                   <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(59,130,246,0.8)" strokeWidth="20" strokeDasharray="30 100" strokeDashoffset="-40" transform="rotate(-90 50 50)" />
@@ -158,7 +184,7 @@ const AnalyticsDashboardDemo = () => {
                   <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(245,158,11,0.8)" strokeWidth="20" strokeDasharray="10 100" strokeDashoffset="-90" transform="rotate(-90 50 50)" />
                 </svg>
               </div>
-              <div className="text-[8px] flex flex-col gap-1 ml-2">
+              <div className="text-[8px] flex flex-col gap-1 ml-0 mt-2 sm:mt-0 sm:ml-2">
                 <div className="flex items-center">
                   <div className="w-2 h-2 bg-purple-500 mr-1"></div>
                   <span>18-24 (40%)</span>

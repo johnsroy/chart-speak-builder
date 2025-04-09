@@ -22,7 +22,7 @@ const Hero = () => {
   return (
     <section id="hero" className="py-16 md:py-24 relative overflow-hidden">
       <div className="container mx-auto px-4 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-center">
           <div className="max-w-2xl text-center lg:text-left">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-gradient">
               Turn Your Data into Visual Insights
@@ -72,29 +72,31 @@ const Hero = () => {
             </div>
           </div>
 
-          <div className="glass-card p-1 rounded-2xl">
+          <div className="glass-card p-1 rounded-2xl shadow-glow">
             <Tabs 
               defaultValue="chart" 
               value={activeDemo}
               onValueChange={setActiveDemo}
-              className="mb-3 flex justify-center"
+              className="w-full h-full"
             >
-              <TabsList className="bg-white/10 backdrop-blur-sm">
-                <TabsTrigger value="chart" className="text-sm">
+              <TabsList className="bg-white/10 backdrop-blur-sm w-full justify-center mb-2">
+                <TabsTrigger value="chart" className="text-sm data-[state=active]:bg-purple-800/50 data-[state=active]:text-white">
                   Chart Generator
                 </TabsTrigger>
-                <TabsTrigger value="dashboard" className="text-sm">
+                <TabsTrigger value="dashboard" className="text-sm data-[state=active]:bg-purple-800/50 data-[state=active]:text-white">
                   Analytics Dashboard
                 </TabsTrigger>
               </TabsList>
               
-              <TabsContent value="chart" className="m-0 animate-fade-in">
-                <HeroDemo />
-              </TabsContent>
-              
-              <TabsContent value="dashboard" className="m-0 animate-fade-in">
-                <AnalyticsDashboardDemo />
-              </TabsContent>
+              <div className="w-full h-full overflow-hidden rounded-xl">
+                <TabsContent value="chart" className="m-0 h-full animate-fade-in">
+                  <HeroDemo />
+                </TabsContent>
+                
+                <TabsContent value="dashboard" className="m-0 h-full animate-fade-in">
+                  <AnalyticsDashboardDemo />
+                </TabsContent>
+              </div>
             </Tabs>
           </div>
         </div>

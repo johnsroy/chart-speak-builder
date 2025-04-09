@@ -1,11 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BarChart3, Send, Sparkles, LineChart, PieChart } from 'lucide-react';
 
 const HeroDemo = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [showGraph, setShowGraph] = useState(false);
   const [activeChartType, setActiveChartType] = useState<'bar' | 'line' | 'pie'>('bar');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
   // Demo conversation flow
   const conversation = [
@@ -13,6 +15,27 @@ const HeroDemo = () => {
     { query: "Show me sales by product category", response: "Here's the breakdown by product category:" },
     { query: "Which product had the highest growth?", response: "Electronics showed the highest growth at 24%:" }
   ];
+  
+  // Update dimensions on resize
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        setDimensions({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight
+        });
+      }
+    };
+
+    // Initial measurement
+    updateDimensions();
+    
+    // Add resize listener
+    window.addEventListener('resize', updateDimensions);
+    
+    // Remove event listener on cleanup
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
   
   // Simulate typing and response effect
   useEffect(() => {
@@ -41,7 +64,7 @@ const HeroDemo = () => {
   }, []);
 
   return (
-    <div className="w-full rounded-2xl overflow-hidden bg-gradient-to-b from-white/5 to-white/10 p-6 relative animate-fade-in">
+    <div ref={containerRef} className="w-full rounded-2xl overflow-hidden bg-gradient-to-b from-white/5 to-white/10 p-4 md:p-6 relative animate-fade-in">
       {/* Stats Card */}
       <div className="absolute -top-8 left-8 glass-card p-3 flex items-center gap-2 animate-fade-in shadow-lg">
         <Sparkles className="h-4 w-4 text-primary" />
@@ -64,7 +87,7 @@ const HeroDemo = () => {
           <p className="text-sm text-gray-200 mb-2">{conversation[activeStep].response}</p>
           
           {/* Chart Type Selector */}
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-4 flex-wrap">
             <button 
               className={`${activeChartType === 'bar' ? 'bg-primary/20 text-primary' : 'text-gray-300 hover:bg-white/10'} px-3 py-1 rounded-full text-xs flex items-center gap-1 backdrop-blur-sm transition-colors`}
               onClick={() => setActiveChartType('bar')}
@@ -145,15 +168,17 @@ const HeroDemo = () => {
                 </svg>
                 
                 <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2">
-                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, i) => (
-                    <span key={i} className="text-[10px] text-gray-300">{month}</span>
-                  ))}
+                  <span className="text-[10px] text-gray-300">Jan</span>
+                  <span className="hidden sm:inline text-[10px] text-gray-300">Mar</span>
+                  <span className="text-[10px] text-gray-300">Jun</span>
+                  <span className="hidden sm:inline text-[10px] text-gray-300">Sep</span>
+                  <span className="text-[10px] text-gray-300">Dec</span>
                 </div>
               </div>
             )}
 
             {activeChartType === 'pie' && (
-              <div className="h-40 flex justify-center items-center">
+              <div className="h-40 flex flex-col sm:flex-row justify-center items-center">
                 <div className="relative w-32 h-32">
                   {/* Pie chart segments */}
                   <svg viewBox="0 0 100 100" className="w-full h-full">
@@ -168,7 +193,7 @@ const HeroDemo = () => {
                   </div>
                 </div>
                 
-                <div className="ml-4">
+                <div className="ml-0 sm:ml-4 mt-2 sm:mt-0">
                   <div className="flex items-center mb-2">
                     <span className="h-3 w-3 bg-purple-500 rounded-full mr-2"></span>
                     <span className="text-[10px] text-gray-300">Electronics (75%)</span>
