@@ -31,8 +31,9 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
     try {
       console.log(`Starting deletion process for dataset: ${datasetId}`);
       
-      // Step 1: Delete any visualizations related to dataset queries first
+      // Step 1: Delete visualizations first (directly, not through related queries)
       try {
+        // Get all queries related to this dataset
         const { data: queries, error: queriesError } = await supabase
           .from('queries')
           .select('id')
@@ -40,13 +41,11 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
           
         if (queriesError) {
           console.warn("Error fetching queries for cleanup:", queriesError);
-        }
-          
-        if (queries && queries.length > 0) {
+        } else if (queries && queries.length > 0) {
           const queryIds = queries.map(q => q.id);
           console.log(`Found ${queryIds.length} queries to clean up for dataset ${datasetId}`);
           
-          // Delete visualizations that reference these queries
+          // Delete all visualizations for these queries in a single operation
           if (queryIds.length > 0) {
             const { error: vizError } = await supabase
               .from('visualizations')
@@ -56,33 +55,36 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
             if (vizError) {
               console.warn("Error deleting related visualizations:", vizError);
             } else {
-              console.log(`Deleted visualizations related to dataset ${datasetId}`);
+              console.log(`Successfully deleted visualizations related to dataset ${datasetId}`);
             }
           }
         }
-      } catch (vizErr) {
-        console.warn("Exception when deleting related visualizations:", vizErr);
+      } catch (err) {
+        console.warn("Error during visualization cleanup:", err);
       }
       
-      // Step 2: Delete queries associated with this dataset
+      // Step 2: Now delete all queries for this dataset in a separate transaction
       try {
-        const { error: queriesDeleteError } = await supabase
+        const { error: deleteQueriesError } = await supabase
           .from('queries')
           .delete()
           .eq('dataset_id', datasetId);
         
-        if (queriesDeleteError) {
-          console.warn("Error deleting related queries:", queriesDeleteError);
-          throw new Error(`Failed to delete related queries: ${queriesDeleteError.message}`);
+        if (deleteQueriesError) {
+          console.warn("Error deleting queries:", deleteQueriesError);
+          throw new Error(`Failed to delete queries: ${deleteQueriesError.message}`);
         } else {
-          console.log("Successfully deleted related queries");
+          console.log(`Successfully deleted all queries for dataset ${datasetId}`);
         }
-      } catch (queryErr) {
-        console.warn("Exception when deleting queries:", queryErr);
-        // Continue with deletion even if this step fails
+      } catch (err) {
+        console.warn("Error during query deletion:", err);
+        throw err;
       }
+        
+      // Sleep for a brief moment to allow database to process deletions
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Step 3: Get the storage information for the dataset
+      // Step 3: Get storage info for the dataset
       let storageInfo = null;
       try {
         const { data: dataset, error: datasetError } = await supabase
@@ -118,7 +120,7 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
         throw deleteErr;
       }
       
-      // Step 5: Delete the storage file if we have storage info
+      // Step 5: Delete storage file if we have the info
       if (storageInfo && storageInfo.storage_path && storageInfo.storage_type) {
         try {
           console.log(`Removing file from storage: ${storageInfo.storage_type}/${storageInfo.storage_path}`);
@@ -187,7 +189,7 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
       console.error("Failed to delete dataset:", error);
       toast.error("Failed to delete dataset. Please try again.");
     } finally {
-      setIsDeleting(false); // Fix the variable name here from setIsLoading to setIsDeleting
+      setIsDeleting(false);
     }
   };
 
