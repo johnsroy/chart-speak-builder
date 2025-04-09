@@ -8,22 +8,23 @@ import { Button } from '@/components/ui/button';
 import { ChartType } from '@/utils/chartSuggestionUtils';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
-import highchartsMore from 'highcharts/highcharts-more';
-import highchartsSankey from 'highcharts/modules/sankey';
-import highchartsHeatmap from 'highcharts/modules/heatmap';
-import highchartsTreemap from 'highcharts/modules/treemap';
-import highchartsFunnel from 'highcharts/modules/funnel';
-import highchartsExporting from 'highcharts/modules/exporting';
+import HighchartsMore from 'highcharts/highcharts-more';
+import HighchartsSankey from 'highcharts/modules/sankey';
+import HighchartsHeatmap from 'highcharts/modules/heatmap';
+import HighchartsTreemap from 'highcharts/modules/treemap';
+import HighchartsFunnel from 'highcharts/modules/funnel';
+import HighchartsExporting from 'highcharts/modules/exporting';
 
 // Initialize Highcharts modules
 // We need to check if we're in a browser environment before initializing
 if (typeof Highcharts === 'object') {
-  highchartsMore(Highcharts);
-  highchartsSankey(Highcharts);
-  highchartsHeatmap(Highcharts);
-  highchartsTreemap(Highcharts);
-  highchartsFunnel(Highcharts);
-  highchartsExporting(Highcharts);
+  // Apply the modules to Highcharts correctly
+  HighchartsMore(Highcharts);
+  HighchartsSankey(Highcharts);
+  HighchartsHeatmap(Highcharts);
+  HighchartsTreemap(Highcharts);
+  HighchartsFunnel(Highcharts);
+  HighchartsExporting(Highcharts);
   console.log('Highcharts modules initialized successfully');
 }
 
