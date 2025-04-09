@@ -84,15 +84,19 @@ export const dataService = {
     description?: string,
     existingDatasetId?: string | null,
     onProgress?: (progress: number) => void,
-    userId?: string
+    userId?: string,
+    additionalProps: Record<string, any> = {}
   ): Promise<Dataset> => {
     try {
       const user_id = userId || 'system_user';
       
       // Generate file path
       const fileExt = file.name.split('.').pop();
-      const fileName = `${name.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${fileExt}`;
+      const timestamp = Date.now();
+      const fileName = `${name.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.${fileExt}`;
       const filePath = `uploads/${user_id}/${fileName}`;
+      
+      console.log(`Uploading file ${file.name} to path ${filePath}`);
       
       // Upload file to storage
       const { data, error } = await supabase.storage
@@ -108,10 +112,10 @@ export const dataService = {
       const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
       
       let datasetId = existingDatasetId;
-      let column_schema = {};
+      let column_schema = additionalProps.column_schema || {};
       
-      // Try to extract schema from file if it's CSV
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+      // Try to extract schema from file if it's CSV and we don't already have schema
+      if (!additionalProps.column_schema && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
         try {
           const text = await file.text();
           const lines = text.split('\n');
@@ -127,47 +131,73 @@ export const dataService = {
         }
       }
       
+      const datasetData = {
+        name,
+        description,
+        file_name: file.name,
+        file_size: file.size,
+        storage_path: filePath,
+        storage_url: publicURL,
+        storage_type: 'datasets',
+        user_id: user_id,
+        row_count: 0,
+        column_schema,
+        ...additionalProps
+      };
+      
       // Create or update dataset record
       if (existingDatasetId) {
         // Update existing dataset
         const { data: updateData, error: updateError } = await supabase
           .from('datasets')
-          .update({
-            file_name: file.name,
-            file_size: file.size,
-            storage_path: filePath,
-            storage_url: publicURL,
-            updated_at: new Date().toISOString(),
-            column_schema
-          })
+          .update(datasetData)
           .eq('id', existingDatasetId)
           .select()
           .single();
         
         if (updateError) throw new Error(updateError.message || 'Could not update dataset record');
+        
+        console.log("Dataset updated successfully:", updateData);
+        
+        // Now update the session storage cache to ensure immediate access
+        if (additionalProps.preview_key) {
+          try {
+            const previewData = sessionStorage.getItem(additionalProps.preview_key);
+            if (previewData) {
+              sessionStorage.setItem(`dataset_${updateData.id}`, previewData);
+              console.log(`Dataset cache created with ID ${updateData.id} from preview key ${additionalProps.preview_key}`);
+            }
+          } catch (e) {
+            console.warn("Could not update dataset cache:", e);
+          }
+        }
+        
         return updateData as Dataset;
       } else {
         // Create new dataset
         const { data: insertData, error: insertError } = await supabase
           .from('datasets')
-          .insert([
-            {
-              name,
-              description,
-              file_name: file.name,
-              file_size: file.size,
-              storage_path: filePath,
-              storage_url: publicURL,
-              storage_type: 'datasets',
-              user_id: user_id,
-              row_count: 0,
-              column_schema
-            }
-          ])
+          .insert([datasetData])
           .select()
           .single();
         
         if (insertError) throw new Error(insertError.message || 'Could not create dataset record');
+        
+        console.log("Dataset created successfully:", insertData);
+        
+        // Now update the session storage cache to ensure immediate access
+        if (additionalProps.preview_key) {
+          try {
+            const previewData = sessionStorage.getItem(additionalProps.preview_key);
+            if (previewData) {
+              sessionStorage.setItem(`dataset_${insertData.id}`, previewData);
+              console.log(`Dataset cache created with ID ${insertData.id} from preview key ${additionalProps.preview_key}`);
+            }
+          } catch (e) {
+            console.warn("Could not create dataset cache:", e);
+          }
+        }
+        
         return insertData as Dataset;
       }
     } catch (error) {
@@ -275,7 +305,45 @@ export const dataService = {
         throw new Error('Dataset not found');
       }
 
-      // First try the edge function
+      // First check if we have data in session storage cache
+      try {
+        const cachedData = sessionStorage.getItem(`dataset_${id}`);
+        if (cachedData) {
+          const parsed = JSON.parse(cachedData);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log(`Found ${parsed.length} cached rows for dataset ${id} in previewDataset`);
+            return parsed;
+          }
+        }
+      } catch (cacheError) {
+        console.warn("Cache access error in previewDataset:", cacheError);
+      }
+
+      // Check for preview key in dataset
+      if (dataset.preview_key) {
+        try {
+          const previewData = sessionStorage.getItem(dataset.preview_key);
+          if (previewData) {
+            const parsed = JSON.parse(previewData);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log(`Found ${parsed.length} rows in preview data for dataset ${id}`);
+              
+              // Store this for future access
+              try {
+                sessionStorage.setItem(`dataset_${id}`, previewData);
+              } catch (e) {
+                console.warn("Could not cache dataset:", e);
+              }
+              
+              return parsed;
+            }
+          }
+        } catch (previewError) {
+          console.warn("Preview key access error:", previewError);
+        }
+      }
+      
+      // Try the edge function
       try {
         const response = await fetch(`${dataProcessorUrl}`, {
           method: 'POST',
@@ -333,10 +401,19 @@ export const dataService = {
               const row: Record<string, any> = {};
               
               headers.forEach((header, index) => {
-                row[header] = values[index] || '';
+                const value = values[index]?.trim() || '';
+                // Try to convert numerical values
+                row[header] = !isNaN(Number(value)) ? Number(value) : value;
               });
               
               rows.push(row);
+            }
+            
+            // Cache this for future access
+            try {
+              sessionStorage.setItem(`dataset_${id}`, JSON.stringify(rows));
+            } catch (e) {
+              console.warn("Could not cache dataset:", e);
             }
             
             return rows;
@@ -389,7 +466,7 @@ export const dataService = {
 };
 
 // Helper function to format byte size
-function formatByteSize(bytes: number): string {
+export const formatByteSize = (bytes: number): string => {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let size = bytes;
   let unitIndex = 0;
@@ -400,4 +477,4 @@ function formatByteSize(bytes: number): string {
   }
   
   return `${size.toFixed(1)} ${units[unitIndex]}`;
-}
+};

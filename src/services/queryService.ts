@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 import { toast } from 'sonner';
+import { parseCSV } from '@/services/utils/fileUtils';
 
 export interface QueryConfig {
   datasetId: string;
@@ -49,7 +50,27 @@ export const queryService = {
         dataLoadingMethod = 'preview';
       } 
       
-      // Approach 2: Try to get data from dataset_data table
+      // Approach 2: Try to get dataset from session storage
+      if (!fullData || fullData.length < 100) {
+        try {
+          console.log("Checking session storage for dataset cache");
+          const sessionKey = `dataset_${config.datasetId}`;
+          const cachedData = sessionStorage.getItem(sessionKey);
+          
+          if (cachedData) {
+            const parsedCache = JSON.parse(cachedData);
+            if (Array.isArray(parsedCache) && parsedCache.length > 0) {
+              console.log(`Found ${parsedCache.length} rows in session storage cache`);
+              fullData = parsedCache;
+              dataLoadingMethod = 'cache';
+            }
+          }
+        } catch (cacheErr) {
+          console.error("Error accessing cache:", cacheErr);
+        }
+      }
+      
+      // Approach 3: Try to get data from dataset_data table
       if (!fullData || fullData.length < 100) {
         try {
           console.log("Attempting to get full dataset from dataset_data table");
@@ -71,7 +92,7 @@ export const queryService = {
         }
       }
       
-      // Approach 3: Try to get data directly from storage
+      // Approach 4: Try to get data directly from storage
       if (!fullData || fullData.length < 100) {
         try {
           console.log("Attempting to load dataset from storage");
@@ -97,52 +118,23 @@ export const queryService = {
             } else {
               // Parse CSV content
               const text = await fileData.text();
-              const rows = text.split('\n');
-              const headers = rows[0].split(',').map(h => h.trim());
-              
-              const parsedData = [];
-              const maxRows = Math.min(rows.length, 10000); // Limit to 10,000 rows for performance
-              
-              for (let i = 1; i < maxRows; i++) {
-                if (!rows[i].trim()) continue;
-                
-                const values = rows[i].split(',');
-                const row: any = {};
-                
-                headers.forEach((header, index) => {
-                  row[header] = values[index]?.trim() || '';
-                });
-                
-                parsedData.push(row);
-              }
+              const parsedData = await parseCSV(text, 10000); // Use our CSV parser utility
               
               console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
               fullData = parsedData;
               dataLoadingMethod = 'storage';
+              
+              // Try to cache the data for future use
+              try {
+                sessionStorage.setItem(`dataset_${config.datasetId}`, JSON.stringify(parsedData.slice(0, 1000)));
+                console.log("Dataset cached in session storage for future use");
+              } catch (cacheErr) {
+                console.warn("Could not cache dataset:", cacheErr);
+              }
             }
           }
         } catch (storageErr) {
           console.error("Error loading from storage:", storageErr);
-        }
-      }
-      
-      // Approach 4: Fallback to session/local storage if we saved data there previously
-      if (!fullData || fullData.length < 100) {
-        try {
-          console.log("Checking session storage for dataset cache");
-          const sessionKey = `dataset_${config.datasetId}`;
-          const cachedData = sessionStorage.getItem(sessionKey);
-          
-          if (cachedData) {
-            const parsedCache = JSON.parse(cachedData);
-            if (Array.isArray(parsedCache) && parsedCache.length > 0) {
-              console.log(`Found ${parsedCache.length} rows in session storage cache`);
-              fullData = parsedCache;
-              dataLoadingMethod = 'cache';
-            }
-          }
-        } catch (cacheErr) {
-          console.error("Error accessing cache:", cacheErr);
         }
       }
       
@@ -151,13 +143,15 @@ export const queryService = {
         config.dataPreview = fullData;
         config.useDirectAccess = true;
         
-        // Try to cache the data for future use
-        try {
-          const sessionKey = `dataset_${config.datasetId}`;
-          sessionStorage.setItem(sessionKey, JSON.stringify(fullData.slice(0, 1000))); // Store up to 1000 rows
-          console.log("Dataset cached in session storage for future use");
-        } catch (cacheErr) {
-          console.warn("Could not cache dataset:", cacheErr);
+        // Try to cache the data for future use if not already done
+        if (dataLoadingMethod !== 'cache') {
+          try {
+            const sessionKey = `dataset_${config.datasetId}`;
+            sessionStorage.setItem(sessionKey, JSON.stringify(fullData.slice(0, 1000))); // Store up to 1000 rows
+            console.log("Dataset cached in session storage for future use");
+          } catch (cacheErr) {
+            console.warn("Could not cache dataset:", cacheErr);
+          }
         }
         
         console.log(`Using direct data access with ${fullData.length} rows (source: ${dataLoadingMethod})`);
@@ -166,53 +160,66 @@ export const queryService = {
       
       // If we still have no data, try using the edge function
       console.log("Unable to access full dataset directly, using edge function");
-      const response = await supabase.functions.invoke('transform', {
-        body: { config },
-      });
-
-      if (response.error) {
-        console.log("Error from transform function:", response.error);
+      try {
+        const response = await supabase.functions.invoke('transform', {
+          body: { config },
+        });
+  
+        if (response.error) {
+          console.log("Error from transform function:", response.error);
+          throw new Error(response.error.message || 'Error executing query');
+        }
+  
+        // Normalize the response to ensure property consistency
+        const result = response.data as QueryResult;
         
-        // If the transform function fails and we have some preview data, use that
-        if (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0) {
-          console.log("Falling back to local processing after edge function failure");
+        // If the result is empty or invalid, try to process locally if we have data
+        if (!result || !result.data || result.data.length === 0) {
+          throw new Error("Edge function returned empty results");
+        }
+        
+        console.log("Query executed successfully via edge function:", result);
+        
+        // Add property aliases for consistency
+        if (result.x_axis && !result.xAxis) {
+          result.xAxis = result.x_axis;
+        }
+        if (result.y_axis && !result.yAxis) {
+          result.yAxis = result.y_axis;
+        }
+        if (result.chart_type && !result.chartType) {
+          result.chartType = result.chart_type;
+        }
+  
+        return result;
+      } catch (edgeFunctionError) {
+        console.error("Edge function error:", edgeFunctionError);
+        
+        // Try direct data access as fallback
+        const dataset = await getDatasetDirectly(config.datasetId);
+        if (dataset && dataset.length > 0) {
+          config.dataPreview = dataset;
+          config.useDirectAccess = true;
+          console.log(`Using fallback direct data access with ${dataset.length} rows`);
           return processQueryLocally(config);
         }
-        throw new Error(response.error.message || 'Error executing query');
+        
+        throw edgeFunctionError;
       }
-
-      // Normalize the response to ensure property consistency
-      const result = response.data as QueryResult;
-      
-      // If the result is empty or invalid, try to process locally if we have data
-      if (!result || !result.data || result.data.length === 0) {
-        if (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0) {
-          console.log("Empty result from edge function, using local processing instead");
-          return processQueryLocally(config);
-        }
-      }
-      
-      console.log("Query executed successfully via edge function:", result);
-      
-      // Add property aliases for consistency
-      if (result.x_axis && !result.xAxis) {
-        result.xAxis = result.x_axis;
-      }
-      if (result.y_axis && !result.yAxis) {
-        result.yAxis = result.y_axis;
-      }
-      if (result.chart_type && !result.chartType) {
-        result.chartType = result.chart_type;
-      }
-
-      return result;
     } catch (error) {
       console.error('Query execution error:', error);
       
-      // If we have dataPreview, try to process locally even on error
-      if (config.dataPreview && Array.isArray(config.dataPreview) && config.dataPreview.length > 0) {
-        console.log("Error occurred, using direct data processing as fallback");
-        return processQueryLocally(config);
+      // Final fallback - try direct dataset access one more time
+      try {
+        const dataset = await getDatasetDirectly(config.datasetId);
+        if (dataset && dataset.length > 0) {
+          config.dataPreview = dataset;
+          config.useDirectAccess = true;
+          console.log(`Using error handler fallback with ${dataset.length} rows`);
+          return processQueryLocally(config);
+        }
+      } catch (finalError) {
+        console.error("Final fallback error:", finalError);
       }
       
       // Return a valid QueryResult object even on error
@@ -233,127 +240,7 @@ export const queryService = {
    * @returns Promise resolving to the dataset data or null if not found
    */
   loadDataset: async (datasetId: string): Promise<any[] | null> => {
-    try {
-      console.log(`Loading dataset ${datasetId} directly`);
-      
-      // Try multiple approaches to get the full dataset
-      let fullData: any[] | null = null;
-      
-      // Approach 1: Try to get data from dataset_data table
-      try {
-        console.log("Attempting to get dataset from dataset_data table");
-        const { data: tableData, error } = await supabase
-          .from('dataset_data')
-          .select('*')
-          .eq('dataset_id', datasetId)
-          .limit(10000);
-          
-        if (!error && tableData && Array.isArray(tableData) && tableData.length > 0) {
-          console.log(`Successfully loaded ${tableData.length} rows from dataset_data table`);
-          fullData = tableData;
-          
-          // Cache the result for future use
-          try {
-            sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(tableData.slice(0, 1000)));
-          } catch (e) {
-            console.warn("Could not cache dataset in session storage", e);
-          }
-          
-          return fullData;
-        } else if (error) {
-          console.log("Error fetching from dataset_data table:", error.message);
-        }
-      } catch (err) {
-        console.error("Exception when accessing dataset_data:", err);
-      }
-      
-      // Approach 2: Try to get data directly from storage
-      try {
-        console.log("Attempting to load dataset from storage");
-        
-        // Get dataset info to find storage path
-        const { data: dataset, error: datasetError } = await supabase
-          .from('datasets')
-          .select('*')
-          .eq('id', datasetId)
-          .single();
-          
-        if (datasetError) {
-          console.error("Error getting dataset info:", datasetError);
-        } else if (dataset && dataset.storage_path) {
-          // Try to download the file from storage
-          const { data: fileData, error: storageError } = await supabase
-            .storage
-            .from(dataset.storage_type || 'datasets')
-            .download(dataset.storage_path);
-            
-          if (storageError) {
-            console.error("Error downloading dataset file:", storageError);
-          } else {
-            // Parse CSV content
-            const text = await fileData.text();
-            const rows = text.split('\n');
-            const headers = rows[0].split(',').map(h => h.trim());
-            
-            const parsedData = [];
-            const maxRows = Math.min(rows.length, 10000); // Limit to 10,000 rows for performance
-            
-            for (let i = 1; i < maxRows; i++) {
-              if (!rows[i].trim()) continue;
-              
-              const values = rows[i].split(',');
-              const row: any = {};
-              
-              headers.forEach((header, index) => {
-                row[header] = values[index]?.trim() || '';
-              });
-              
-              parsedData.push(row);
-            }
-            
-            console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
-            fullData = parsedData;
-            
-            // Cache the result for future use
-            try {
-              sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsedData.slice(0, 1000)));
-            } catch (e) {
-              console.warn("Could not cache dataset in session storage", e);
-            }
-            
-            return parsedData;
-          }
-        }
-      } catch (storageErr) {
-        console.error("Error loading from storage:", storageErr);
-      }
-      
-      // Approach 3: Check session/local storage if we saved data there previously
-      try {
-        console.log("Checking session storage for dataset cache");
-        const sessionKey = `dataset_${datasetId}`;
-        const cachedData = sessionStorage.getItem(sessionKey);
-        
-        if (cachedData) {
-          const parsedCache = JSON.parse(cachedData);
-          if (Array.isArray(parsedCache) && parsedCache.length > 0) {
-            console.log(`Found ${parsedCache.length} rows in session storage cache`);
-            return parsedCache;
-          }
-        }
-      } catch (cacheErr) {
-        console.error("Error accessing cache:", cacheErr);
-      }
-      
-      console.log("Could not load dataset from any source");
-      return null;
-    } catch (error) {
-      console.error("Error loading dataset:", error);
-      toast.error("Could not load dataset data", {
-        description: error instanceof Error ? error.message : 'Unknown error'
-      });
-      return null;
-    }
+    return getDatasetDirectly(datasetId);
   },
   
   saveQuery: async (query: SavedQuery): Promise<{ id: string }> => {
@@ -374,6 +261,141 @@ export const queryService = {
     }
   }
 };
+
+/**
+ * Helper function to get dataset data directly from multiple sources
+ */
+async function getDatasetDirectly(datasetId: string): Promise<any[] | null> {
+  console.log(`Loading dataset ${datasetId} directly`);
+  
+  // Try multiple approaches to get the full dataset
+  let fullData: any[] | null = null;
+  
+  // First check session storage cache
+  try {
+    console.log("Checking session storage for dataset cache");
+    const sessionKey = `dataset_${datasetId}`;
+    const cachedData = sessionStorage.getItem(sessionKey);
+    
+    if (cachedData) {
+      const parsedCache = JSON.parse(cachedData);
+      if (Array.isArray(parsedCache) && parsedCache.length > 0) {
+        console.log(`Found ${parsedCache.length} rows in session storage cache`);
+        return parsedCache;
+      }
+    }
+  } catch (cacheErr) {
+    console.error("Error accessing cache:", cacheErr);
+  }
+  
+  // Get dataset info to check preview_key
+  let dataset: any = null;
+  try {
+    const { data, error } = await supabase
+      .from('datasets')
+      .select('*')
+      .eq('id', datasetId)
+      .single();
+      
+    if (error) {
+      console.error("Error getting dataset info:", error);
+    } else {
+      dataset = data;
+      console.log("Dataset info:", dataset);
+      
+      // Check for preview key
+      if (dataset.preview_key) {
+        try {
+          const previewData = sessionStorage.getItem(dataset.preview_key);
+          if (previewData) {
+            const parsed = JSON.parse(previewData);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log(`Found ${parsed.length} rows using preview_key: ${dataset.preview_key}`);
+              
+              // Cache this for future use under the dataset ID
+              try {
+                sessionStorage.setItem(`dataset_${datasetId}`, previewData);
+              } catch (e) {
+                console.warn("Could not cache dataset:", e);
+              }
+              
+              return parsed;
+            }
+          }
+        } catch (previewError) {
+          console.warn("Preview key access error:", previewError);
+        }
+      }
+    }
+  } catch (datasetErr) {
+    console.error("Error loading dataset metadata:", datasetErr);
+  }
+  
+  // Try to get data from dataset_data table
+  try {
+    console.log("Attempting to get dataset from dataset_data table");
+    const { data: tableData, error } = await supabase
+      .from('dataset_data')
+      .select('*')
+      .eq('dataset_id', datasetId)
+      .limit(10000);
+      
+    if (!error && tableData && Array.isArray(tableData) && tableData.length > 0) {
+      console.log(`Successfully loaded ${tableData.length} rows from dataset_data table`);
+      fullData = tableData;
+      
+      // Cache the result for future use
+      try {
+        sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(tableData.slice(0, 1000)));
+      } catch (e) {
+        console.warn("Could not cache dataset in session storage", e);
+      }
+      
+      return fullData;
+    } else if (error) {
+      console.log("Error fetching from dataset_data table:", error.message);
+    }
+  } catch (err) {
+    console.error("Exception when accessing dataset_data:", err);
+  }
+  
+  // Try to get data directly from storage if we have dataset info
+  if (dataset && dataset.storage_path) {
+    try {
+      console.log(`Attempting to load dataset file from ${dataset.storage_type || 'datasets'}/${dataset.storage_path}`);
+      
+      // Try to download the file from storage
+      const { data: fileData, error: storageError } = await supabase
+        .storage
+        .from(dataset.storage_type || 'datasets')
+        .download(dataset.storage_path);
+        
+      if (storageError) {
+        console.error("Error downloading dataset file:", storageError);
+      } else if (fileData) {
+        // Parse CSV content
+        const text = await fileData.text();
+        const parsedData = await parseCSV(text, 10000);
+        
+        console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
+        
+        // Cache the result for future use
+        try {
+          sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsedData.slice(0, 1000)));
+        } catch (e) {
+          console.warn("Could not cache dataset in session storage", e);
+        }
+        
+        return parsedData;
+      }
+    } catch (storageErr) {
+      console.error("Error loading from storage:", storageErr);
+    }
+  }
+  
+  console.log("Could not load dataset from any source");
+  return null;
+}
 
 /**
  * Process a query locally using the provided data preview
@@ -432,14 +454,18 @@ function processQueryLocally(config: QueryConfig): QueryResult {
     
     // For aggregated charts like bar and pie, group by dimension
     // and aggregate the metric
-    if (chartType === 'bar' || chartType === 'pie') {
+    if (chartType === 'bar' || chartType === 'pie' || chartType === 'column' || chartType === 'donut') {
       console.log(`Aggregating data for ${chartType} chart`);
       const groupedData = filteredData.reduce((acc, row) => {
         const key = String(row[xField]);
         if (!acc[key]) {
           acc[key] = { [xField]: key, [yField]: 0, count: 0 };
         }
-        acc[key][yField] += Number(row[yField]) || 0;
+        // Only add numeric values
+        const numValue = Number(row[yField]);
+        if (!isNaN(numValue)) {
+          acc[key][yField] += numValue;
+        }
         acc[key].count += 1;
         return acc;
       }, {} as Record<string, any>);
@@ -463,7 +489,7 @@ function processQueryLocally(config: QueryConfig): QueryResult {
       max: numValues.length > 0 ? Math.max(...numValues) : 0
     };
     
-    console.log("Local processing complete");
+    console.log("Local processing complete with stats:", stats);
     return {
       data: filteredData,
       columns,

@@ -51,6 +51,42 @@ export const datasetUtils = {
         }
       }
       
+      // Get dataset metadata first to properly handle storage paths
+      const dataset = await dataService.getDataset(datasetId);
+      if (!dataset) {
+        throw new Error("Dataset not found");
+      }
+      
+      console.log("Dataset metadata loaded:", dataset);
+      
+      // Try direct access via the preview_key if it exists
+      if (dataset.preview_key) {
+        try {
+          const previewData = sessionStorage.getItem(dataset.preview_key);
+          if (previewData) {
+            const parsed = JSON.parse(previewData);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log(`Found ${parsed.length} rows using preview_key: ${dataset.preview_key}`);
+              
+              // Cache this data for future use
+              try {
+                sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsed));
+              } catch (e) {
+                console.warn("Could not cache dataset:", e);
+              }
+              
+              if (showToasts) {
+                toast.success(`Dataset loaded successfully: ${parsed.length} rows`);
+              }
+              
+              return parsed;
+            }
+          }
+        } catch (previewError) {
+          console.warn("Preview key access error:", previewError);
+        }
+      }
+      
       // Try loading with queryService (handles storage, DB and more)
       console.log("Trying queryService.loadDataset method");
       loadedData = await queryService.loadDataset(datasetId);
@@ -73,6 +109,66 @@ export const datasetUtils = {
         return loadedData;
       }
       
+      // Try direct storage access for CSV files - improved to handle file paths better
+      if (dataset.storage_path && dataset.storage_type) {
+        try {
+          console.log(`Trying direct storage access from ${dataset.storage_type}/${dataset.storage_path}`);
+          
+          const { data: fileData, error: storageError } = await supabase.storage
+            .from(dataset.storage_type)
+            .download(dataset.storage_path);
+            
+          if (storageError) {
+            console.error("Storage access error:", storageError);
+          } else if (fileData) {
+            const text = await fileData.text();
+            const rows = text.split('\n');
+            
+            if (rows.length > 1) {
+              const headers = rows[0].split(',').map(h => h.trim());
+              const parsedData = [];
+              
+              // Process up to limitRows rows
+              const maxRows = Math.min(rows.length, limitRows + 1); // +1 for header
+              
+              for (let i = 1; i < maxRows; i++) {
+                if (!rows[i].trim()) continue;
+                
+                const values = rows[i].split(',');
+                const row: Record<string, any> = {};
+                
+                headers.forEach((header, idx) => {
+                  if (header) {
+                    const value = values[idx]?.trim() || '';
+                    // Try to convert numerical values
+                    row[header] = !isNaN(Number(value)) ? Number(value) : value;
+                  }
+                });
+                
+                parsedData.push(row);
+              }
+              
+              console.log(`Successfully parsed ${parsedData.length} rows from direct storage access`);
+              
+              // Cache the result for future use
+              try {
+                sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsedData.slice(0, 1000)));
+              } catch (e) {
+                console.warn("Could not cache dataset:", e);
+              }
+              
+              if (showToasts) {
+                toast.success(`Dataset loaded: ${parsedData.length} rows`);
+              }
+              
+              return parsedData;
+            }
+          }
+        } catch (directAccessError) {
+          console.error("Error with direct storage access:", directAccessError);
+        }
+      }
+      
       // If the above fails, try dataService.previewDataset as fallback
       console.log("Trying dataService.previewDataset as fallback");
       loadedData = await dataService.previewDataset(datasetId);
@@ -88,30 +184,35 @@ export const datasetUtils = {
       }
       
       // Last resort - file might not actually exist or be accessible
-      // Use dataset info to generate appropriate sample data
-      if (!preventSampleFallback) {
+      // Use dataset info to generate appropriate sample data - only if not prevented
+      if (!preventSampleFallback && dataset) {
         console.log("All data fetching methods failed, generating sample data");
-        const dataset = await dataService.getDataset(datasetId);
         
-        if (!dataset) {
-          throw new Error("Dataset not found");
-        }
-        
-        console.log("Dataset found:", dataset);
-        
-        // Generate appropriate sample data based on filename or schema
-        if (dataset.file_name) {
-          console.log("Local storage dataset detected, generating appropriate sample data");
-          const sampleData = generateDatasetSample(dataset.file_name, dataset.column_schema, 100);
+        // Generate appropriate sample data based on dataset schema or filename
+        if (dataset.column_schema) {
+          const sampleData = generateSampleFromSchema(dataset.column_schema, 1000);
+          console.log("Generated sample data from schema:", sampleData.length, "rows");
           
           if (showToasts) {
             toast.warning("Using generated sample data", {
-              description: "Could not access the dataset file. Using sample data instead."
+              description: "Could not access the dataset file. Using sample data based on schema."
+            });
+          }
+          
+          return sampleData;
+        } else if (dataset.file_name) {
+          const sampleData = generateDatasetSample(dataset.file_name, dataset.column_schema, 1000);
+          
+          if (showToasts) {
+            toast.warning("Using generated sample data", {
+              description: "Could not access the dataset file. Using sample data based on filename."
             });
           }
           
           return sampleData;
         }
+      } else if (preventSampleFallback) {
+        throw new Error("Dataset content could not be accessed and sample data generation is disabled");
       }
       
       throw new Error("Could not load dataset from any source");
@@ -128,6 +229,45 @@ export const datasetUtils = {
     }
   }
 };
+
+/**
+ * Generate sample data based on schema
+ */
+function generateSampleFromSchema(schema: Record<string, string>, count: number = 100) {
+  console.log("Generating sample data from schema:", schema);
+  const data = [];
+  const fields = Object.keys(schema);
+  
+  for (let i = 0; i < count; i++) {
+    const row: Record<string, any> = {};
+    
+    fields.forEach(field => {
+      const type = schema[field];
+      
+      switch (type) {
+        case 'number':
+          row[field] = Math.floor(Math.random() * 1000);
+          break;
+        case 'boolean':
+          row[field] = Math.random() > 0.5;
+          break;
+        case 'date':
+          const date = new Date();
+          date.setDate(date.getDate() - Math.floor(Math.random() * 365));
+          row[field] = date.toISOString().split('T')[0];
+          break;
+        case 'string':
+        default:
+          row[field] = `Sample ${field} ${i + 1}`;
+          break;
+      }
+    });
+    
+    data.push(row);
+  }
+  
+  return data;
+}
 
 /**
  * Generate sample data based on a file name and optional schema
@@ -169,37 +309,7 @@ function generateDatasetSample(fileName: string, schema?: Record<string, string>
   
   // If schema is provided, use it to generate data
   if (schema && Object.keys(schema).length > 0) {
-    const schemaKeys = Object.keys(schema);
-    
-    for (let i = 0; i < count; i++) {
-      const row: Record<string, any> = {};
-      
-      schemaKeys.forEach(key => {
-        const type = schema[key];
-        
-        switch (type) {
-          case 'number':
-            row[key] = Math.floor(Math.random() * 1000);
-            break;
-          case 'boolean':
-            row[key] = Math.random() > 0.5;
-            break;
-          case 'date':
-            const date = new Date();
-            date.setDate(date.getDate() - Math.floor(Math.random() * 365));
-            row[key] = date.toISOString().split('T')[0];
-            break;
-          case 'string':
-          default:
-            row[key] = `Sample ${key} ${i + 1}`;
-            break;
-        }
-      });
-      
-      data.push(row);
-    }
-    
-    return data;
+    return generateSampleFromSchema(schema, count);
   }
   
   // Default generic dataset

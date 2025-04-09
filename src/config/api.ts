@@ -1,14 +1,21 @@
 
-// API URLs for Edge Functions and External Services
+/**
+ * API Configuration
+ * 
+ * This file contains configuration for API endpoints used in the application
+ */
 
-// Base URL for Supabase Edge Functions
-export const supabaseUrl = 'https://rehadpogugijylybwmoe.supabase.co';
+// URL for the data processor edge function
+export const dataProcessorUrl = import.meta.env.VITE_DATA_PROCESSOR_URL || '/api/data-processor';
 
-// Data processing function URL
-export const dataProcessorUrl = `${supabaseUrl}/functions/v1/data-processor`;
+// Default API timeout in milliseconds
+export const apiTimeout = 30000; // 30 seconds
 
-// Fallback data processor URL
-export const dataProcessorFallbackUrl = `${supabaseUrl}/functions/v1/data-processor-fallback`;
+// Maximum file size for uploads (in bytes)
+export const maxFileSize = 100 * 1024 * 1024; // 100 MB
 
-// Health check URL
-export const healthCheckUrl = `${supabaseUrl}/functions/v1/health`;
+// Retry configuration
+export const apiRetryConfig = {
+  maxRetries: 3,
+  retryDelay: 1000, // 1 second
+};

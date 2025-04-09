@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
 import { Dataset } from '@/services/types/datasetTypes';
@@ -124,14 +125,14 @@ export const performUpload = async (
     additionalProps.preview_key = previewKey;
     
     // Use system account if no valid user ID provided
-    const validUserId = userId || 'fe4ab121-d26c-486d-92ca-b5cc4d99e984';
+    const validUserId = validateUserId(userId);
     
     // Store preview data in session storage
     if (file.size > 0 && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
       try {
         console.log("Extracting schema and preview for file");
         const fileText = await file.text();
-        const previewData = await parseCSV(fileText, 1000); // Increased from 100 to 1000
+        const previewData = await parseCSV(fileText, 2000); // Increased from 1000 to 2000
         
         if (previewData && previewData.length > 0) {
           sessionStorage.setItem(previewKey, JSON.stringify(previewData));
@@ -149,6 +150,17 @@ export const performUpload = async (
             additionalProps.column_schema = schema;
             console.log("Extracted column schema for file");
           }
+          
+          // Cache data for direct access after upload
+          // This is critical - we store the data for immediate access after upload
+          const datasetCacheKey = `dataset_${timestamp}`;
+          try {
+            sessionStorage.setItem(datasetCacheKey, JSON.stringify(previewData));
+            console.log(`Data cached with key ${datasetCacheKey} for future dataset access`);
+            additionalProps.dataset_cache_key = datasetCacheKey;
+          } catch (cacheError) {
+            console.warn("Failed to cache dataset:", cacheError);
+          }
         }
       } catch (previewErr) {
         console.warn("Failed to extract preview/schema for file:", previewErr);
@@ -162,7 +174,8 @@ export const performUpload = async (
       description,
       null, // No existing dataset ID
       onProgress,
-      validUserId
+      validUserId,
+      additionalProps // Pass additional props including preview_key
     );
     
     return dataset;
