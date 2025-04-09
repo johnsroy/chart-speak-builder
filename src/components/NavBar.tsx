@@ -9,7 +9,7 @@ import {
   Database as DatabaseIcon,
   MessageSquare as MessageSquareIcon,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -92,79 +92,83 @@ const NavBar = () => {
   );
 
   return (
-    <nav className="backdrop-blur-lg bg-black/50 text-white py-4 px-6 flex items-center justify-between sticky top-0 z-50 border-b border-purple-500/20">
-      {/* Logo and Navigation Links */}
-      <div className="flex items-center">
-        <span className="text-xl font-bold mr-6 text-gradient">
-          GenBI
-        </span>
-        <ul className="hidden md:flex space-x-2">
-          {filteredNavItems.map((item) => (
-            <li key={item.name}>
-              <NavLink
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex items-center space-x-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-1 disabled:pointer-events-none ${isActive ? 'bg-purple-800/50 text-white' : 'text-gray-300'}`
-                }
-              >
-                {item.icon}
-                <span>{item.name}</span>
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </div>
+    <>
+      <nav className="backdrop-blur-lg bg-black/50 text-white py-4 px-6 flex items-center justify-between sticky top-0 z-50 border-b border-purple-500/20">
+        {/* Logo and Navigation Links */}
+        <div className="flex items-center">
+          <span className="text-xl font-bold mr-6 text-gradient">
+            GenBI
+          </span>
+          <ul className="hidden md:flex space-x-2">
+            {filteredNavItems.map((item) => (
+              <li key={item.name}>
+                <NavLink
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-1 disabled:pointer-events-none ${isActive ? 'bg-purple-800/50 text-white' : 'text-gray-300'}`
+                  }
+                >
+                  {item.icon}
+                  <span>{item.name}</span>
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </div>
 
-      {/* User Avatar and Dropdown or Login Button */}
-      <div>
-        {user ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                <Avatar className="h-8 w-8">
-                  {/* Fix the user_metadata access by using optional chaining */}
-                  <AvatarImage 
-                    src={user.email?.charAt(0).toUpperCase() || "U"} 
-                    alt={user.email || "User Avatar"} 
-                  />
-                  <AvatarFallback>{user.email?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
-                </Avatar>
+        {/* User Avatar and Dropdown or Login Button */}
+        <div>
+          {user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage 
+                      src={user.email?.charAt(0).toUpperCase() || "U"} 
+                      alt={user.email || "User Avatar"} 
+                    />
+                    <AvatarFallback>{user.email?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56 mr-2 bg-gray-900/90 backdrop-blur-md border border-purple-500/30">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate("/account")} className="hover:bg-purple-500/20">
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/settings")} className="hover:bg-purple-500/20">
+                  Preferences
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => signOut()} className="hover:bg-purple-500/20">
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <div className="flex gap-2">
+              <Button 
+                variant="ghost" 
+                onClick={() => navigate('/login')}
+                className="border border-purple-500/30 hover:bg-purple-500/20"
+              >
+                Login
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 mr-2 bg-gray-900/90 backdrop-blur-md border border-purple-500/30">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/account")} className="hover:bg-purple-500/20">
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/settings")} className="hover:bg-purple-500/20">
-                Preferences
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => signOut()} className="hover:bg-purple-500/20">
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <div className="flex gap-2">
-            <Button 
-              variant="ghost" 
-              onClick={() => navigate('/login')}
-              className="border border-purple-500/30 hover:bg-purple-500/20"
-            >
-              Login
-            </Button>
-            <Button 
-              onClick={() => navigate('/signup')}
-              className="purple-gradient"
-            >
-              Sign Up
-            </Button>
-          </div>
-        )}
-      </div>
-    </nav>
+              <Button 
+                onClick={() => navigate('/signup')}
+                className="purple-gradient"
+              >
+                Sign Up
+              </Button>
+            </div>
+          )}
+        </div>
+      </nav>
+      
+      {/* This is where child routes will be rendered */}
+      <Outlet />
+    </>
   );
 };
 

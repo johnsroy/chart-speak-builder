@@ -43,19 +43,21 @@ function App() {
         <Route path="/payment-success" element={<PaymentSuccessPage />} />
         <Route path="/payment-cancelled" element={<PaymentCanceledPage />} />
         
-        {/* Protected layout with NavBar */}
-        <Route element={<ProtectedRoute><NavBar /></ProtectedRoute>}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/upload" element={<Upload />} />
-          <Route path="/upload-old" element={<UploadPage />} />
-          <Route path="/visualize/:datasetId" element={<Visualize />} />
-          <Route path="/visualize" element={<VisualizePage />} />
-          <Route path="/analyze/:datasetId" element={<AnalyzePage />} />
-          <Route path="/analyze" element={<AnalyzePage />} />
-          <Route path="/dataset/:datasetId" element={<DatasetPage />} />
-          <Route path="/account" element={<AccountPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/test" element={<TestAnalysisTools />} />
+        {/* Protected routes with NavBar layout */}
+        <Route element={<NavBar />}>
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/upload" element={<Upload />} />
+            <Route path="/upload-old" element={<UploadPage />} />
+            <Route path="/visualize/:datasetId" element={<Visualize />} />
+            <Route path="/visualize" element={<VisualizePage />} />
+            <Route path="/analyze/:datasetId" element={<AnalyzePage />} />
+            <Route path="/analyze" element={<AnalyzePage />} />
+            <Route path="/dataset/:datasetId" element={<DatasetPage />} />
+            <Route path="/account" element={<AccountPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/test" element={<TestAnalysisTools />} />
+          </Route>
         </Route>
 
         {/* Fallback - redirect to home page */}

@@ -33,8 +33,8 @@ const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps)
     return <Navigate to="/" replace />;
   }
   
-  // Return either children OR Outlet, but not both
-  return children || <Outlet />;
+  // Return either the children OR the Outlet
+  return children ? <>{children}</> : <Outlet />;
 };
 
 export default ProtectedRoute;
