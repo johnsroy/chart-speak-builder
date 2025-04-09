@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 interface ChatContainerProps {
   messages: Message[];
   downloadVisualization: (result: QueryResult) => void;
-  datasetId?: string; // Add the datasetId prop as optional
+  datasetId?: string;
 }
 
 const ChatContainer: React.FC<ChatContainerProps> = ({ messages, downloadVisualization, datasetId }) => {
@@ -25,6 +25,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ messages, downloadVisuali
     }
   }, [messages]);
 
+  // Display a message when user isn't logged in and no messages are available
   if (!canUseAIFeatures && messages.length === 0) {
     return (
       <Card className="flex-1 overflow-hidden glass-card backdrop-blur-xl bg-gray-950/30 border border-purple-500/20 shadow-xl">

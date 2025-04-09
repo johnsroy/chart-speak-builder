@@ -1,14 +1,9 @@
 
 import React from 'react';
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Download } from 'lucide-react';
 import { Message } from './types';
 import { QueryResult } from '@/services/types/queryTypes';
-import EnhancedVisualization from '../EnhancedVisualization';
-import { getChartTypeIcon } from './ChatUtils';
+import ChartWrapper from '../visualization/ChartWrapper';
 
 interface ChatMessageProps {
   message: Message;
@@ -16,91 +11,60 @@ interface ChatMessageProps {
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualization }) => {
+  const { sender, content, result, isProcessing } = message;
+  
+  const renderVisualization = () => {
+    if (!result || !result.data || result.data.length === 0) return null;
+    
+    return (
+      <div className="mt-4 bg-gray-800/50 p-3 rounded-lg border border-gray-700/50">
+        <div className="mb-2">
+          <p className="text-sm text-gray-300">{result.explanation || 'Visualization'}</p>
+        </div>
+        
+        <div className="h-[300px] w-full">
+          <ChartWrapper
+            data={result.data}
+            chartType={result.chartType || 'bar'}
+            xAxisKey={result.xAxis || 'name'}
+            yAxisKey={result.yAxis || 'value'}
+            height="100%"
+            width="100%"
+          />
+        </div>
+        
+        <div className="mt-3 flex justify-end">
+          <button
+            className="text-xs px-2 py-1 bg-purple-900/30 hover:bg-purple-800/50 text-purple-300 rounded border border-purple-700/30 transition-colors"
+            onClick={() => downloadVisualization(result)}
+          >
+            Download Visualization
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] ${
-        message.sender === 'user' 
-          ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-t-xl rounded-bl-xl shadow-lg' 
-          : 'bg-gradient-to-r from-purple-900/80 to-purple-800/60 backdrop-blur-sm text-white rounded-t-xl rounded-br-xl shadow-lg'
-        } p-4`}>
+    <div className={`flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+      <div className={`flex gap-3 max-w-[85%] ${sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+        <Avatar className="h-8 w-8">
+          {sender === 'user' ? (
+            <>
+              <AvatarFallback>U</AvatarFallback>
+              <AvatarImage src="/user-avatar.png" />
+            </>
+          ) : (
+            <>
+              <AvatarFallback>AI</AvatarFallback>
+              <AvatarImage src="/ai-avatar.png" />
+            </>
+          )}
+        </Avatar>
         
-        {message.sender === 'ai' && (
-          <div className="flex items-center mb-2">
-            <Avatar className="h-6 w-6 mr-2">
-              <AvatarImage 
-                src={message.model === 'anthropic' 
-                  ? "https://upload.wikimedia.org/wikipedia/commons/2/28/Anthropic_Logo.png" 
-                  : "https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg"} 
-              />
-              <AvatarFallback>{message.model === 'anthropic' ? 'C' : 'G'}</AvatarFallback>
-            </Avatar>
-            <Badge variant="secondary" className="text-xs font-medium">
-              {message.model === 'anthropic' ? 'Claude 3.7' : 'GPT-4o'}
-            </Badge>
-          </div>
-        )}
-        
-        <p className="text-sm leading-relaxed whitespace-pre-line">{message.content}</p>
-        
-        {message.thinking && message.sender === 'ai' && (
-          <div className="mt-3 pt-3 border-t border-gray-600/30">
-            <p className="text-xs text-gray-300 font-mono whitespace-pre-line">{message.thinking}</p>
-          </div>
-        )}
-        
-        {message.result && (
-          <div className="mt-4 bg-black/20 rounded-lg p-2">
-            <div className="flex justify-between items-center mb-2">
-              <div className="flex items-center">
-                {getChartTypeIcon(message.result)}
-                <span className="ml-1 text-xs font-medium">
-                  {(message.result.chartType || message.result.chart_type || 'bar').charAt(0).toUpperCase() + 
-                   (message.result.chartType || message.result.chart_type || 'bar').slice(1)} Chart
-                </span>
-              </div>
-              
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => message.result && downloadVisualization(message.result)}>
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Download visualization</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            
-            {(!message.result.data || message.result.data.length === 0) && (
-              <div className="bg-red-900/30 p-2 rounded mb-2 text-xs">
-                <p>No data available for visualization.</p>
-                <p className="mt-1">Try refreshing or asking a different question.</p>
-              </div>
-            )}
-            
-            <EnhancedVisualization 
-              result={message.result} 
-              colorPalette={message.model === 'anthropic' ? 'professional' : 'vibrant'}
-              showTitle={false}
-            />
-            
-            {message.result.model_used && (
-              <div className="flex justify-end mt-2">
-                <Badge variant="outline" className="text-xs opacity-70">
-                  Generated by {message.result.model_used}
-                </Badge>
-              </div>
-            )}
-          </div>
-        )}
-        
-        <div className="text-xs opacity-70 mt-2 text-right">
-          {new Intl.DateTimeFormat('en-US', {
-            hour: '2-digit',
-            minute: '2-digit'
-          }).format(message.timestamp)}
+        <div className={`${sender === 'user' ? 'bg-purple-600/30 text-white' : 'bg-gray-800/50 text-gray-200'} ${isProcessing ? 'animate-pulse' : ''} p-3 rounded-lg`}>
+          <p className="whitespace-pre-wrap text-sm">{content}</p>
+          {result && renderVisualization()}
         </div>
       </div>
     </div>
