@@ -11,18 +11,19 @@ interface ChatMessageProps {
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualization }) => {
-  const { sender, content, result, isProcessing } = message;
+  const { sender, content, result, isProcessing, model } = message;
   
   const renderVisualization = () => {
     if (!result || !result.data || result.data.length === 0) return null;
     
     return (
-      <div className="mt-4 bg-gray-800/50 p-3 rounded-lg border border-gray-700/50">
-        <div className="mb-2">
+      <div className="mt-6 bg-gray-800/50 p-4 rounded-lg border border-gray-700/50 shadow-inner">
+        <div className="mb-3">
           <p className="text-sm text-gray-300">{result.explanation || 'Visualization'}</p>
         </div>
         
-        <div className="h-[600px] w-full">
+        {/* Increased height for better visualization display */}
+        <div className="h-[800px] w-full">
           <ChartWrapper
             data={result.data}
             chartType={result.chartType || 'bar'}
@@ -33,9 +34,16 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
           />
         </div>
         
-        <div className="mt-3 flex justify-end">
+        <div className="mt-4 flex justify-between items-center">
+          <div className="text-xs text-gray-400">
+            {result.model_used && (
+              <span className="px-2 py-1 bg-gray-800 rounded-full text-gray-400">
+                {result.model_used === 'openai' ? 'GPT-4o' : 'Claude 3.7'}
+              </span>
+            )}
+          </div>
           <button
-            className="text-xs px-2 py-1 bg-purple-900/30 hover:bg-purple-800/50 text-purple-300 rounded border border-purple-700/30 transition-colors"
+            className="text-xs px-3 py-1.5 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 rounded border border-purple-700/30 transition-colors"
             onClick={() => downloadVisualization(result)}
           >
             Download Visualization
@@ -62,8 +70,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
           )}
         </Avatar>
         
-        <div className={`${sender === 'user' ? 'bg-purple-600/30 text-white' : 'bg-gray-800/50 text-gray-200'} ${isProcessing ? 'animate-pulse' : ''} p-3 rounded-lg`}>
+        <div className={`${sender === 'user' ? 'bg-purple-600/30 text-white' : 'bg-gray-800/50 text-gray-200'} ${isProcessing ? 'animate-pulse' : ''} p-4 rounded-lg max-w-full`}>
           <p className="whitespace-pre-wrap text-sm">{content}</p>
+          {model && !isProcessing && (
+            <div className="mt-2">
+              <span className="text-xs text-gray-400">
+                {model === 'openai' ? 'GPT-4o' : 'Claude 3.7'}
+              </span>
+            </div>
+          )}
           {result && renderVisualization()}
         </div>
       </div>

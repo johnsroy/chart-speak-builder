@@ -28,20 +28,24 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
     
     setIsDeleting(true);
     try {
-      await dataService.deleteDataset(datasetId);
+      // Use the dataService to handle deletion - this ensures consistent deletion behavior
+      const success = await dataService.deleteDataset(datasetId);
+      
+      if (!success) {
+        throw new Error('Dataset deletion failed');
+      }
+      
       toast.success("Dataset deleted successfully");
       
       // Important: Close the dialog first to prevent UI blocking
       onOpenChange(false);
       
       // Dispatch custom event for dataset deletion with the datasetId in the detail
-      const event = new CustomEvent('dataset-deleted', {
+      window.dispatchEvent(new CustomEvent('dataset-deleted', {
         detail: { datasetId }
-      });
-      window.dispatchEvent(event);
+      }));
       
-      // Call the onDeleted callback after a delay to ensure UI updates properly
-      // This helps prevent UI blocking and state inconsistencies
+      // Call the onDeleted callback to ensure parent components refresh their data
       setTimeout(() => {
         onDeleted();
       }, 300);

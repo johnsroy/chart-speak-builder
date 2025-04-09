@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast } from 'sonner';
@@ -19,44 +18,46 @@ export const useDatasets = () => {
   const { toast: hookToast } = useToast();
   const { isAuthenticated, user } = useAuth();
 
-  // Extract loadDatasets as a useCallback to prevent recreation on each render
+  
+  
   const loadDatasets = useCallback(async () => {
     setIsLoading(true);
     try {
       console.log("Fetching all datasets...");
       
-      // Get all datasets
+      
       const data = await dataService.getDatasets();
       console.log(`Fetched ${data.length} datasets.`);
       
       if (data.length === 0 && retryCount < maxRetries) {
-        // If no datasets were found, increment retry count and try again after a delay
+        
         console.log(`No datasets found, retrying... (${retryCount + 1}/${maxRetries})`);
         setRetryCount(prev => prev + 1);
         setTimeout(() => loadDatasets(), 1000);
         return;
       }
       
-      // Get unique datasets (latest version of each file)
+      
       const filtered = getUniqueDatasetsByFilename(data);
       
       setDatasets(data);
       setUniqueDatasets(filtered);
 
-      // Select the first dataset by default if available and none is selected
+      
       if (filtered.length > 0 && !selectedDatasetId) {
         setSelectedDatasetId(filtered[0].id);
       } else if (selectedDatasetId && !filtered.find(d => d.id === selectedDatasetId)) {
-        // If the currently selected dataset was deleted, select the first one
+        
         setSelectedDatasetId(filtered.length > 0 ? filtered[0].id : null);
       }
       
+      
       console.log(`Loaded datasets: ${filtered.length} unique datasets available`);
       
-      // Reset retry count on success
+      
       setRetryCount(0);
       
-      // Preload dataset content for better performance
+      
       if (filtered.length > 0 && isAuthenticated) {
         const datasetToPreload = selectedDatasetId || filtered[0].id;
         setTimeout(() => {
@@ -67,9 +68,1818 @@ export const useDatasets = () => {
         }, 100);
       }
     } catch (error) {
-      console.error('Error loading datasets:', error);
       
-      // Show toast from either hook or direct toast
+      
+      const showErrorToast = () => {
+        try {
+          hookToast({
+            title: 'Error loading datasets',
+            description: error instanceof Error ? error.message : 'Failed to load datasets',
+            variant: 'destructive'
+          });
+        } catch (toastError) {
+          toast.error('Error loading datasets', {
+            description: error instanceof Error ? error.message : 'Failed to load datasets'
+          });
+        }
+      };
+      
+      if (retryCount < maxRetries) {
+        console.log(`Error loading datasets, retrying... (${retryCount + 1}/${maxRetries})`);
+        setRetryCount(prev => prev + 1);
+        setTimeout(() => loadDatasets(), 1000 * (retryCount + 1));
+      } else {
+        showErrorToast();
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedDatasetId, retryCount, maxRetries, isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadDatasets();
+    }
+  }, [isAuthenticated, loadDatasets]);
+  
+  
+  const deleteDataset = useCallback(async (datasetId: string) => {
+    if (!datasetId) return false;
+    
+    try {
+      console.log(`Deleting dataset with ID: ${datasetId}`);
+      
+      
+      const success = await dataService.deleteDataset(datasetId);
+      
+      if (!success) {
+        toast.error('Failed to delete dataset');
+        return false;
+      }
+      
+      
+      setDatasets(prev => prev.filter(d => d.id !== datasetId));
+      setUniqueDatasets(prev => prev.filter(d => d.id !== datasetId));
+      
+      
+      if (selectedDatasetId === datasetId) {
+        const remainingDatasets = datasets.filter(d => d.id !== datasetId);
+        if (remainingDatasets.length > 0) {
+          setSelectedDatasetId(remainingDatasets[0].id);
+        } else {
+          setSelectedDatasetId(null);
+        }
+      }
+      
+      
+      setTimeout(() => {
+        loadDatasets();
+      }, 500);
+      
+      toast.success('Dataset deleted successfully');
+      return true;
+    } catch (error) {
+      console.error('Error in deleteDataset:', error);
+      toast.error('Error deleting dataset', { 
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
+      return false;
+    }
+  }, [selectedDatasetId, datasets, loadDatasets]);
+  
+  
+  useEffect(() => {
+    const handleDatasetDeleted = (event: any) => {
+      console.log('Dataset deleted event received:', event.detail?.datasetId);
+      
+      if (!event.detail?.datasetId) return;
+      
+      
+      if (event.detail.datasetId === selectedDatasetId) {
+        
+        const remainingDatasets = datasets.filter(d => d.id !== event.detail.datasetId);
+        setSelectedDatasetId(remainingDatasets.length > 0 ? remainingDatasets[0].id : null);
+      }
+      
+      
+      setDatasets(prevDatasets => 
+        prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
+      );
+      
+      setUniqueDatasets(prevDatasets => 
+        prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
+      );
+      
+      
+      loadDatasets();
+    };
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+    
+    
+import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
+import { dataService } from '@/services/dataService';
+import { useAuth } from '@/hooks/useAuth';
+import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
+import { supabase } from '@/lib/supabase';
+import { datasetUtils } from '@/utils/datasetUtils';
+
+export const useDatasets = () => {
+  const [datasets, setDatasets] = useState<any[]>([]);
+  const [uniqueDatasets, setUniqueDatasets] = useState<any[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
+  
+  const { toast: hookToast } = useToast();
+  const { isAuthenticated, user } = useAuth();
+
+  
+  
+  const loadDatasets = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      console.log("Fetching all datasets...");
+      
+      
+      const data = await dataService.getDatasets();
+      console.log(`Fetched ${data.length} datasets.`);
+      
+      if (data.length === 0 && retryCount < maxRetries) {
+        
+        console.log(`No datasets found, retrying... (${retryCount + 1}/${maxRetries})`);
+        setRetryCount(prev => prev + 1);
+        setTimeout(() => loadDatasets(), 1000);
+        return;
+      }
+      
+      
+      const filtered = getUniqueDatasetsByFilename(data);
+      
+      setDatasets(data);
+      setUniqueDatasets(filtered);
+
+      
+      if (filtered.length > 0 && !selectedDatasetId) {
+        setSelectedDatasetId(filtered[0].id);
+      } else if (selectedDatasetId && !filtered.find(d => d.id === selectedDatasetId)) {
+        
+        setSelectedDatasetId(filtered.length > 0 ? filtered[0].id : null);
+      }
+      
+      
+      console.log(`Loaded datasets: ${filtered.length} unique datasets available`);
+      
+      
+      setRetryCount(0);
+      
+      
+      if (filtered.length > 0 && isAuthenticated) {
+        const datasetToPreload = selectedDatasetId || filtered[0].id;
+        setTimeout(() => {
+          datasetUtils.loadDatasetContent(datasetToPreload, {
+            preventSampleFallback: true,
+            showToasts: false
+          }).catch(err => console.warn("Preloading dataset failed:", err));
+        }, 100);
+      }
+    } catch (error) {
+      
+      
       const showErrorToast = () => {
         try {
           hookToast({
@@ -102,38 +1912,39 @@ export const useDatasets = () => {
     }
   }, [isAuthenticated, loadDatasets]);
   
-  // Handle dataset deletion
+  
   const deleteDataset = useCallback(async (datasetId: string) => {
     if (!datasetId) return false;
     
     try {
       console.log(`Deleting dataset with ID: ${datasetId}`);
-      const { error } = await supabase
-        .from('datasets')
-        .delete()
-        .eq('id', datasetId);
       
-      if (error) {
-        console.error('Error deleting dataset:', error);
-        toast.error('Failed to delete dataset', {
-          description: error.message
-        });
+      
+      const success = await dataService.deleteDataset(datasetId);
+      
+      if (!success) {
+        toast.error('Failed to delete dataset');
         return false;
       }
       
-      // Update datasets list after deletion
+      
       setDatasets(prev => prev.filter(d => d.id !== datasetId));
       setUniqueDatasets(prev => prev.filter(d => d.id !== datasetId));
       
-      // If the deleted dataset was selected, reset selection
+      
       if (selectedDatasetId === datasetId) {
-        setSelectedDatasetId(null);
+        const remainingDatasets = datasets.filter(d => d.id !== datasetId);
+        if (remainingDatasets.length > 0) {
+          setSelectedDatasetId(remainingDatasets[0].id);
+        } else {
+          setSelectedDatasetId(null);
+        }
       }
       
-      // Dispatch custom event for other components
-      window.dispatchEvent(new CustomEvent('dataset-deleted', { 
-        detail: { datasetId } 
-      }));
+      
+      setTimeout(() => {
+        loadDatasets();
+      }, 500);
       
       toast.success('Dataset deleted successfully');
       return true;
@@ -144,50 +1955,55 @@ export const useDatasets = () => {
       });
       return false;
     }
-  }, [selectedDatasetId]);
+  }, [selectedDatasetId, datasets, loadDatasets]);
   
-  // Listen for dataset events
+  
   useEffect(() => {
     const handleDatasetDeleted = (event: any) => {
       console.log('Dataset deleted event received:', event.detail?.datasetId);
       
-      // If the deleted dataset was selected, reset selection
-      if (event.detail?.datasetId && event.detail.datasetId === selectedDatasetId) {
-        setSelectedDatasetId(null);
+      if (!event.detail?.datasetId) return;
+      
+      
+      if (event.detail.datasetId === selectedDatasetId) {
+        
+        const remainingDatasets = datasets.filter(d => d.id !== event.detail.datasetId);
+        setSelectedDatasetId(remainingDatasets.length > 0 ? remainingDatasets[0].id : null);
       }
       
-      // Immediately update the UI by removing the deleted dataset
+      
       setDatasets(prevDatasets => 
-        prevDatasets.filter(dataset => dataset.id !== event.detail?.datasetId)
+        prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
       );
       
       setUniqueDatasets(prevDatasets => 
-        prevDatasets.filter(dataset => dataset.id !== event.detail?.datasetId)
+        prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
       );
       
-      // Also reload datasets to ensure we have the latest data
+      
       loadDatasets();
     };
+    
     
     const handleDatasetUploaded = () => {
       console.log('Dataset uploaded event received');
       loadDatasets();
     };
     
-    // Add event listeners
-    window.addEventListener('dataset-deleted', handleDatasetDeleted);
-    window.addEventListener('dataset-upload-success', handleDatasetUploaded);
-    window.addEventListener('upload:success', handleDatasetUploaded);
     
-    // Clean up
+    window.addEventListener('dataset-deleted', handleDatasetDeleted);
+    window.addEventListener('dataset-upload-success', loadDatasets);
+    window.addEventListener('upload:success', loadDatasets);
+    
+    
     return () => {
       window.removeEventListener('dataset-deleted', handleDatasetDeleted);
-      window.removeEventListener('dataset-upload-success', handleDatasetUploaded);
-      window.removeEventListener('upload:success', handleDatasetUploaded);
+      window.removeEventListener('dataset-upload-success', loadDatasets);
+      window.removeEventListener('upload:success', loadDatasets);
     };
-  }, [selectedDatasetId, loadDatasets]);
+  }, [selectedDatasetId, loadDatasets, datasets]);
 
-  // Force refresh method for external components
+  
   const forceRefresh = useCallback(() => {
     console.log("Force refreshing datasets...");
     setRetryCount(0);
@@ -195,8 +2011,8 @@ export const useDatasets = () => {
   }, [loadDatasets]);
 
   return {
-    datasets: uniqueDatasets, // Return only unique datasets by default
-    allDatasets: datasets, // Keep all datasets accessible if needed
+    datasets: uniqueDatasets, 
+    allDatasets: datasets, 
     selectedDatasetId,
     setSelectedDatasetId,
     isLoading,

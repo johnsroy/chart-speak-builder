@@ -88,7 +88,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       try {
         const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: false,
-          limitRows: 10000  // Increased to use much more data - up to 10,000 rows
+          limitRows: 10000
         });
         
         if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
@@ -228,7 +228,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: false,
           forceRefresh: true,
-          limitRows: 10000  // Increased to use much more data
+          limitRows: 10000
         });
         
         if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
@@ -277,8 +277,11 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         sender: 'ai',
         content: `Processing your query: "${newMessage}"...`,
         timestamp: new Date(),
-        isProcessing: true
+        isProcessing: true,
+        model: currentModel
       }]);
+      
+      console.log(`Processing query: "${newMessage}" for dataset ${datasetId} using model ${currentModel}`);
       
       // Use the NLP service to process the query with the dataset content
       const aiResponse = await nlpService.processQuery(newMessage, datasetId, currentModel, fullData);
@@ -365,7 +368,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             id: uuidv4(),
             sender: 'ai',
             content: `Sorry, I encountered an error processing your request: ${error.message || 'Unknown error'}. Please try again with a different question or check if your dataset is available.`,
-            timestamp: new Date()
+            timestamp: new Date(),
+            model: currentModel
           }
         ];
       });
@@ -492,7 +496,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   };
 
   return (
-    <div className={`flex flex-col w-full ${hasFullHeightLayout ? 'h-full' : 'h-[600px]'} rounded-xl overflow-hidden glass-card`}>
+    <div className={`flex flex-col w-full ${hasFullHeightLayout ? 'h-full' : 'h-[800px]'} rounded-xl overflow-hidden glass-card`}>
       <div className="p-4 border-b border-gray-700/30 flex justify-between items-center">
         <div>
           <h2 className="text-lg font-medium">{datasetName} Chat</h2>
