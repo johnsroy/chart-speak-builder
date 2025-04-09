@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -9,7 +8,7 @@ import ChatContainer from './chat/ChatContainer';
 import ModelSelector from './chat/ModelSelector';
 import ChatInput from './chat/ChatInput';
 import { AIModelType, ChatMessage, AIQueryResponse, Message } from './chat/types';
-import { Loader2, FileText } from 'lucide-react';
+import { Loader2, FileText, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ChatUtils } from './chat/ChatUtils';
@@ -22,13 +21,6 @@ interface DatasetChatInterfaceProps {
   onVisualizationChange?: (vizData: AIQueryResponse) => void;
   hasFullHeightLayout?: boolean;
 }
-
-const initialSystemMessage = (datasetName: string) => `
-You are a helpful AI assistant that helps analyze a dataset called ${datasetName}.
-I will provide you with the dataset, and you should answer any questions I have about it.
-You can perform calculations, aggregations, and groupings.
-Be as concise as possible.
-`;
 
 const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({ 
   datasetId,
@@ -51,6 +43,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     isLoading: false,
     message: ''
   });
+  const [datasetLoadFailed, setDatasetLoadFailed] = useState(false);
   const [recommendations, setRecommendations] = useState<string[]>([
     "What's the trend over time?",
     "Show me the top 5 values",
@@ -80,6 +73,21 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     setMessages(prevMessages => [...prevMessages, userMessage]);
 
     try {
+      // Ensure we have data to analyze
+      if (fullData.length === 0) {
+        // Try to load data one more time
+        const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
+          showToasts: false
+        });
+        
+        if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
+          setFullData(datasetRows);
+          toast.success(`Dataset loaded: ${datasetRows.length} rows available for analysis`);
+        } else {
+          throw new Error('No data available for analysis. Please check your dataset.');
+        }
+      }
+      
       const aiResponse = await ChatUtils.getAIQuery(datasetId, newMessage, currentModel, fullData);
 
       if (aiResponse) {
@@ -109,7 +117,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         {
           id: uuidv4(),
           sender: 'ai',
-          content: 'Sorry, I encountered an error processing your request.',
+          content: `Sorry, I encountered an error processing your request: ${error.message || 'Unknown error'}. Please try again or check if your dataset is available.`,
           timestamp: new Date()
         }
       ]);
@@ -123,99 +131,117 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     toast.info("Downloading visualization...");
   };
 
-  useEffect(() => {
+  const loadDataset = async () => {
     if (!datasetId) return;
 
-    const fetchFullDataset = async () => {
-      setLoadingState({
-        isLoading: true,
-        message: 'Loading dataset...'
+    setLoadingState({
+      isLoading: true,
+      message: 'Loading dataset...'
+    });
+    setDatasetLoadFailed(false);
+
+    try {
+      // Use enhanced datasetUtils to get the full dataset with multiple fallback strategies
+      const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
+        showToasts: false // Don't show toasts during initial load
       });
 
-      try {
-        // Use enhanced datasetUtils to get the full dataset with multiple fallback strategies
-        const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
-          showToasts: false // Don't show toasts during initial load
-        });
-
-        if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
-          setFullData(datasetRows);
-          console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
-          
-          // Update message to include row count
-          setMessages(prevMessages => {
-            return [
-              {
-                id: uuidv4(),
-                sender: 'ai',
-                content: `I'm analyzing the ${datasetName} dataset with ${datasetRows.length} rows. Ask me anything about it!`,
-                timestamp: new Date()
-              }
-            ];
-          });
-          
-          setLoadingState({
-            isLoading: false,
-            message: ''
-          });
-          
-          return;
-        }
+      if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
+        setFullData(datasetRows);
+        console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
         
-        // If datasetUtils failed, try to get dataset metadata to generate samples
-        const dataset = await dataService.getDataset(datasetId);
-        
-        if (dataset) {
-          console.log("Dataset found:", dataset.name);
-          
-          // Generate sample data based on schema
-          if (dataset.column_schema && Object.keys(dataset.column_schema).length > 0) {
-            console.log("Generating sample data based on schema");
-            const schemaSamples = generateSampleDataFromSchema(dataset.column_schema, 5000);
-            setFullData(schemaSamples);
-            
-            setMessages(prevMessages => [
-              {
-                id: uuidv4(),
-                sender: 'ai',
-                content: `I'm analyzing the ${datasetName} dataset with sample data. Ask me anything about it!`,
-                timestamp: new Date()
-              }
-            ]);
-          } else {
-            // No schema available, generate based on filename
-            console.log("Generating appropriate sample data based on filename:", dataset.file_name);
-            const filenameSamples = generateAppropriateDataFromFilename(dataset.file_name || '');
-            setFullData(filenameSamples);
-          }
-        }
+        // Update message to include row count
+        setMessages([{
+          id: uuidv4(),
+          sender: 'ai',
+          content: `I'm analyzing the ${datasetName} dataset with ${datasetRows.length} rows. Ask me anything about it!`,
+          timestamp: new Date()
+        }]);
         
         setLoadingState({
           isLoading: false,
           message: ''
         });
-
-      } catch (error) {
-        console.error('Error loading dataset:', error);
-        setLoadingState({
-          isLoading: false,
-          message: ''
-        });
         
-        toast.error('Could not load full dataset', {
-          description: 'Using sample data instead'
-        });
-        
-        // Set a minimal sample dataset for the chat to use
-        setFullData(generateGenericSampleData(100));
+        return;
       }
-    };
+      
+      // If datasetUtils failed, try to get dataset metadata to generate samples
+      const dataset = await dataService.getDataset(datasetId);
+      
+      if (dataset) {
+        console.log("Dataset found:", dataset.name);
+        
+        // Generate sample data based on schema
+        if (dataset.column_schema && Object.keys(dataset.column_schema).length > 0) {
+          console.log("Generating sample data based on schema");
+          const schemaSamples = generateSampleDataFromSchema(dataset.column_schema, 5000);
+          setFullData(schemaSamples);
+          
+          setMessages([{
+            id: uuidv4(),
+            sender: 'ai',
+            content: `I'm analyzing the ${datasetName} dataset with sample data. Ask me anything about it!`,
+            timestamp: new Date()
+          }]);
+          
+          toast.warning("Using generated sample data", {
+            description: "The actual dataset could not be loaded"
+          });
+        } else {
+          // No schema available, generate based on filename
+          console.log("Generating appropriate sample data based on filename:", dataset.file_name);
+          const filenameSamples = generateAppropriateDataFromFilename(dataset.file_name || '');
+          setFullData(filenameSamples);
+          
+          toast.warning("Using generated sample data", {
+            description: "The actual dataset could not be loaded"
+          });
+        }
+      } else {
+        throw new Error("Dataset not found");
+      }
+      
+      setLoadingState({
+        isLoading: false,
+        message: ''
+      });
 
-    fetchFullDataset();
+    } catch (error) {
+      console.error('Error loading dataset:', error);
+      setLoadingState({
+        isLoading: false,
+        message: ''
+      });
+      setDatasetLoadFailed(true);
+      
+      // Set a minimal sample dataset for the chat to use
+      const sampleData = generateGenericSampleData(100);
+      setFullData(sampleData);
+      
+      setMessages([{
+        id: uuidv4(),
+        sender: 'ai',
+        content: `I couldn't load the actual dataset, so I'm using sample data. Ask me anything, but be aware that responses will be based on generated data, not your actual dataset.`,
+        timestamp: new Date()
+      }]);
+      
+      toast.error('Could not load dataset', {
+        description: 'Using sample data instead'
+      });
+    }
+  };
+
+  useEffect(() => {
+    loadDataset();
   }, [datasetId, datasetName]);
 
   const handleModelChange = (model: AIModelType) => {
     setCurrentModel(model);
+  };
+  
+  const handleRetryLoading = () => {
+    loadDataset();
   };
   
   const generateSampleDataFromSchema = (schema: Record<string, string>, count: number) => {
@@ -254,53 +280,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   };
   
   const generateAppropriateDataFromFilename = (filename: string) => {
-    const lowerFilename = filename.toLowerCase();
-    let sampleData = [];
-    const rows = 50;
-    
-    if (lowerFilename.includes('vehicle') || lowerFilename.includes('car') || lowerFilename.includes('auto')) {
-      sampleData = Array.from({ length: rows }, (_, i) => ({
-        id: i + 1,
-        make: ['Toyota', 'Honda', 'Ford', 'Tesla', 'BMW', 'Mercedes', 'Audi'][i % 7],
-        model: ['Model 3', 'Corolla', 'F-150', 'Civic', 'X5', 'E-Class'][i % 6],
-        year: 2015 + (i % 8),
-        price: Math.floor(20000 + Math.random() * 50000),
-        color: ['Black', 'White', 'Red', 'Blue', 'Silver', 'Gray'][i % 6],
-        electric: [true, false, false, false, true][i % 5],
-        mileage: Math.floor(Math.random() * 100000)
-      }));
-    } else if (lowerFilename.includes('sales') || lowerFilename.includes('revenue')) {
-      sampleData = Array.from({ length: rows }, (_, i) => ({
-        id: i + 1,
-        product: `Product ${i % 10 + 1}`,
-        category: ['Electronics', 'Clothing', 'Food', 'Books', 'Home'][i % 5],
-        date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
-        quantity: Math.floor(1 + Math.random() * 50),
-        price: Math.floor(10 + Math.random() * 990),
-        revenue: Math.floor(100 + Math.random() * 9900),
-        region: ['North', 'South', 'East', 'West', 'Central'][i % 5]
-      }));
-    } else if (lowerFilename.includes('survey') || lowerFilename.includes('feedback')) {
-      sampleData = Array.from({ length: rows }, (_, i) => ({
-        id: i + 1,
-        question: `Survey Question ${i % 5 + 1}`,
-        response: ['Strongly Agree', 'Agree', 'Neutral', 'Disagree', 'Strongly Disagree'][i % 5],
-        age_group: ['18-24', '25-34', '35-44', '45-54', '55+'][i % 5],
-        gender: ['Male', 'Female', 'Non-binary', 'Prefer not to say'][i % 4],
-        date_submitted: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0]
-      }));
-    } else {
-      sampleData = Array.from({ length: rows }, (_, i) => ({
-        id: i + 1,
-        name: `Item ${i + 1}`,
-        value: Math.floor(Math.random() * 1000),
-        category: ['A', 'B', 'C', 'D', 'E'][i % 5],
-        date: new Date(2025, i % 12, (i % 28) + 1).toISOString().split('T')[0],
-        active: i % 3 === 0
-      }));
-    }
-    
-    return sampleData;
+    return generateGenericSampleData(50);
   };
   
   const generateGenericSampleData = (rows: number) => {
@@ -332,6 +312,17 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
               <p className="text-gray-400">{loadingState.message}</p>
             </div>
           </div>
+        ) : datasetLoadFailed ? (
+          <div className="flex flex-col justify-center items-center h-full p-4">
+            <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
+            <h3 className="text-lg font-medium mb-2">Dataset Load Failed</h3>
+            <p className="text-center text-gray-400 mb-4">
+              We couldn't load your dataset. This could be due to storage issues or because the dataset is unavailable.
+            </p>
+            <Button onClick={handleRetryLoading} variant="outline">
+              Retry Loading
+            </Button>
+          </div>
         ) : (
           <ChatContainer 
             messages={messages} 
@@ -345,6 +336,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           onSendMessage={handleSendMessage} 
           isLoading={isLoading} 
           recommendations={recommendations}
+          disabled={datasetLoadFailed && fullData.length === 0}
         />
       </div>
     </div>

@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
 import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
@@ -10,16 +11,29 @@ export const useDatasets = () => {
   const [uniqueDatasets, setUniqueDatasets] = useState<any[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
   
-  const { toast } = useToast();
-  const { isAuthenticated } = useAuth();
+  const { toast: hookToast } = useToast();
+  const { isAuthenticated, user } = useAuth();
 
   // Extract loadDatasets as a useCallback to prevent recreation on each render
   const loadDatasets = useCallback(async () => {
     setIsLoading(true);
     try {
+      console.log("Fetching all datasets...");
+      
       // Get all datasets
       const data = await dataService.getDatasets();
+      console.log(`Fetched ${data.length} datasets.`);
+      
+      if (data.length === 0 && retryCount < maxRetries) {
+        // If no datasets were found, increment retry count and try again after a delay
+        console.log(`No datasets found, retrying... (${retryCount + 1}/${maxRetries})`);
+        setRetryCount(prev => prev + 1);
+        setTimeout(() => loadDatasets(), 1000);
+        return;
+      }
       
       // Get unique datasets (latest version of each file)
       const filtered = getUniqueDatasetsByFilename(data);
@@ -34,17 +48,40 @@ export const useDatasets = () => {
         // If the currently selected dataset was deleted, select the first one
         setSelectedDatasetId(filtered.length > 0 ? filtered[0].id : null);
       }
+      
+      console.log(`Loaded datasets: ${filtered.length} unique datasets available`);
+      
+      // Reset retry count on success
+      setRetryCount(0);
     } catch (error) {
       console.error('Error loading datasets:', error);
-      toast({
-        title: 'Error loading datasets',
-        description: error instanceof Error ? error.message : 'Failed to load datasets',
-        variant: 'destructive'
-      });
+      
+      // Show toast from either hook or direct toast
+      const showErrorToast = () => {
+        try {
+          hookToast({
+            title: 'Error loading datasets',
+            description: error instanceof Error ? error.message : 'Failed to load datasets',
+            variant: 'destructive'
+          });
+        } catch (toastError) {
+          toast.error('Error loading datasets', {
+            description: error instanceof Error ? error.message : 'Failed to load datasets'
+          });
+        }
+      };
+      
+      if (retryCount < maxRetries) {
+        console.log(`Error loading datasets, retrying... (${retryCount + 1}/${maxRetries})`);
+        setRetryCount(prev => prev + 1);
+        setTimeout(() => loadDatasets(), 1000 * (retryCount + 1));
+      } else {
+        showErrorToast();
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDatasetId, toast]);
+  }, [selectedDatasetId, hookToast, retryCount, maxRetries]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -93,12 +130,20 @@ export const useDatasets = () => {
     };
   }, [selectedDatasetId, loadDatasets]);
 
+  // Force refresh method for external components
+  const forceRefresh = useCallback(() => {
+    console.log("Force refreshing datasets...");
+    setRetryCount(0);
+    loadDatasets();
+  }, [loadDatasets]);
+
   return {
     datasets: uniqueDatasets, // Return only unique datasets by default
     allDatasets: datasets, // Keep all datasets accessible if needed
     selectedDatasetId,
     setSelectedDatasetId,
     isLoading,
-    loadDatasets
+    loadDatasets,
+    forceRefresh
   };
 };

@@ -17,6 +17,9 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Input } from '@/components/ui/input';
 import { Pagination } from '@/components/ui/pagination';
 import { formatFileSize } from '@/services/utils/fileUtils';
+import { datasetUtils } from '@/utils/datasetUtils';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 export interface DataTableProps {
   dataset?: Dataset | null;
@@ -47,6 +50,8 @@ export const DataTable: React.FC<DataTableProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rowsPerPage] = useState(pageSize);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
   
   // Get data from dataset
   useEffect(() => {
@@ -77,6 +82,29 @@ export const DataTable: React.FC<DataTableProps> = ({
           return;
         }
         
+        console.log(`Loading data for dataset: ${id}`);
+        
+        // Try to get data using datasetUtils first (most robust)
+        try {
+          const datasetRows = await datasetUtils.loadDatasetContent(id, {
+            showToasts: false,
+            limitRows: 1000
+          });
+          
+          if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
+            console.log(`Successfully loaded ${datasetRows.length} rows using datasetUtils`);
+            setData(datasetRows);
+            setColumns(Object.keys(datasetRows[0] || {}));
+            setIsLoading(false);
+            setError(null);
+            return;
+          } else {
+            console.log("datasetUtils returned empty or invalid data");
+          }
+        } catch (datasetUtilsError) {
+          console.warn("Error using datasetUtils:", datasetUtilsError);
+        }
+        
         // Check if we have preview data in the dataset object
         let previewDataFound = false;
         
@@ -89,6 +117,7 @@ export const DataTable: React.FC<DataTableProps> = ({
               setColumns(Object.keys(previewData[0] || {}));
               previewDataFound = true;
               console.log("Using provided preview data from dataset object");
+              return;
             }
           } catch (err) {
             console.warn("Failed to use provided preview data:", err);
@@ -104,15 +133,16 @@ export const DataTable: React.FC<DataTableProps> = ({
             console.log(`Loaded ${result.length} rows from API`);
             setData(result);
             setColumns(result[0] ? Object.keys(result[0]) : []);
+            return;
           } else {
             throw new Error('Invalid data format received');
           }
         }
       } catch (err) {
-        setError(`Error loading data: ${err instanceof Error ? err.message : String(err)}`);
         console.error("Error loading dataset data:", err);
+        setError(`Error loading data: ${err instanceof Error ? err.message : String(err)}`);
         
-        // Check if we have a last uploaded dataset ID in session storage
+        // Try to recover using session storage
         try {
           const lastUploadedId = sessionStorage.getItem('last_uploaded_dataset');
           
@@ -146,10 +176,31 @@ export const DataTable: React.FC<DataTableProps> = ({
               setColumns(Object.keys(recoveredData[0] || {}));
               setError(null);
               console.log("Recovered using preview data from session storage");
+              return;
             }
           }
         } catch (recoveryErr) {
           console.error("Recovery attempt failed:", recoveryErr);
+        }
+        
+        // If still no data and we haven't exceeded retry count
+        if (retryCount < maxRetries) {
+          console.log(`Retrying data load (${retryCount + 1}/${maxRetries})...`);
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => loadData(), 1000 * (retryCount + 1));
+          return;
+        }
+        
+        // Create sample data as last resort
+        if (dataset) {
+          console.log("Generating sample data based on schema");
+          const sampleData = generateSampleDataFromSchema(dataset);
+          setData(sampleData);
+          setColumns(Object.keys(sampleData[0] || {}));
+          setError("Using sample data because the actual dataset could not be loaded.");
+          toast.warning("Using sample data", {
+            description: "The actual dataset could not be loaded"
+          });
         }
       } finally {
         setIsLoading(false);
@@ -157,7 +208,77 @@ export const DataTable: React.FC<DataTableProps> = ({
     };
     
     loadData();
-  }, [datasetId, dataset, externalData, externalLoading, externalError]);
+  }, [datasetId, dataset, externalData, externalLoading, externalError, retryCount]);
+  
+  // Generate sample data based on schema or filename
+  const generateSampleDataFromSchema = (dataset: Dataset) => {
+    const sampleRows = [];
+    const rowCount = 20;
+    
+    // Get schema from dataset if available
+    const schema = dataset?.column_schema || {};
+    const columns = Object.keys(schema);
+    
+    // If schema is available, use it
+    if (columns.length > 0) {
+      for (let i = 0; i < rowCount; i++) {
+        const row: Record<string, any> = {};
+        columns.forEach(col => {
+          const type = schema[col];
+          if (type === 'number') {
+            row[col] = Math.floor(Math.random() * 1000);
+          } else if (type === 'boolean') {
+            row[col] = Math.random() > 0.5;
+          } else if (type === 'date') {
+            const date = new Date();
+            date.setDate(date.getDate() - Math.floor(Math.random() * 365));
+            row[col] = date.toISOString().split('T')[0];
+          } else {
+            row[col] = `Sample ${col} ${i + 1}`;
+          }
+        });
+        sampleRows.push(row);
+      }
+    } else {
+      // If no schema, create generic data based on filename
+      const fileName = dataset?.file_name || 'dataset';
+      
+      if (fileName.toLowerCase().includes('sales')) {
+        for (let i = 0; i < rowCount; i++) {
+          sampleRows.push({
+            id: i + 1,
+            product: `Product ${i % 10 + 1}`,
+            quantity: Math.floor(Math.random() * 100),
+            price: Math.floor(Math.random() * 1000),
+            date: new Date(2025, i % 12, i % 28 + 1).toISOString().split('T')[0]
+          });
+        }
+      } else if (fileName.toLowerCase().includes('customer')) {
+        for (let i = 0; i < rowCount; i++) {
+          sampleRows.push({
+            id: i + 1,
+            name: `Customer ${i + 1}`,
+            email: `customer${i}@example.com`,
+            city: ['New York', 'London', 'Tokyo', 'Paris', 'Berlin'][i % 5],
+            age: 20 + Math.floor(Math.random() * 50)
+          });
+        }
+      } else {
+        // Generic dataset
+        for (let i = 0; i < rowCount; i++) {
+          sampleRows.push({
+            id: i + 1,
+            name: `Item ${i + 1}`,
+            value: Math.floor(Math.random() * 1000),
+            category: ['A', 'B', 'C', 'D', 'E'][i % 5],
+            active: i % 2 === 0
+          });
+        }
+      }
+    }
+    
+    return sampleRows;
+  };
   
   // Filter data based on search term
   const filteredData = data.filter(row => {
@@ -223,19 +344,47 @@ export const DataTable: React.FC<DataTableProps> = ({
   };
   
   const handleRefresh = async () => {
+    setRetryCount(0); // Reset retry count
+    
     if (onRefresh) {
       await onRefresh();
     } else if (datasetId) {
       setIsLoading(true);
       setError(null);
       try {
+        // Try using datasetUtils first
+        try {
+          const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
+            showToasts: false,
+            forceRefresh: true,  // Skip cache
+            limitRows: 1000
+          });
+          
+          if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
+            console.log(`Successfully loaded ${datasetRows.length} rows using datasetUtils`);
+            setData(datasetRows);
+            setColumns(Object.keys(datasetRows[0] || {}));
+            setIsLoading(false);
+            setError(null);
+            toast.success("Data refreshed successfully");
+            return;
+          }
+        } catch (datasetUtilsError) {
+          console.warn("Error using datasetUtils during refresh:", datasetUtilsError);
+        }
+        
+        // Fall back to direct API call
         const refreshedData = await dataService.previewDataset(datasetId);
         if (refreshedData && Array.isArray(refreshedData)) {
           setData(refreshedData);
           setColumns(refreshedData[0] ? Object.keys(refreshedData[0]) : []);
+          toast.success("Data refreshed successfully");
+        } else {
+          throw new Error("No data returned from refresh");
         }
       } catch (err) {
         setError(`Error refreshing data: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error("Failed to refresh data");
       } finally {
         setIsLoading(false);
       }
@@ -265,7 +414,9 @@ export const DataTable: React.FC<DataTableProps> = ({
                 variant="outline" 
                 size="sm" 
                 onClick={handleRefresh}
+                className="flex items-center gap-1"
               >
+                <RefreshCw className="h-3 w-3" />
                 Refresh
               </Button>
               <div className="text-sm text-muted-foreground">
@@ -277,10 +428,14 @@ export const DataTable: React.FC<DataTableProps> = ({
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="py-8 text-center">Loading data...</div>
+          <div className="py-8 text-center">
+            <div className="animate-spin h-8 w-8 border-t-2 border-primary rounded-full mx-auto mb-3"></div>
+            <div>Loading data...</div>
+          </div>
         ) : error ? (
-          <div className="py-8 text-center text-red-500">
-            <div className="mb-2">{error}</div>
+          <div className="py-8 text-center">
+            <AlertTriangle className="h-8 w-8 text-yellow-500 mx-auto mb-3" />
+            <div className="text-red-500 mb-2">{error}</div>
             <Button onClick={handleRefresh} variant="outline" size="sm">
               Retry
             </Button>
