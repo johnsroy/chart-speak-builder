@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -50,94 +49,30 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
         console.warn("Exception when getting dataset info:", infoErr);
       }
       
-      // Step 2: Delete visualizations first - this is critical
+      // Step 2: Use the force_delete_queries SQL function to clean up related data
       try {
-        // Get all queries related to this dataset
-        const { data: queries, error: queriesError } = await supabase
-          .from('queries')
-          .select('id')
-          .eq('dataset_id', datasetId);
-          
-        if (queriesError) {
-          console.warn("Error fetching queries for cleanup:", queriesError);
-          // Continue with the process anyway
-        } else if (queries && queries.length > 0) {
-          const queryIds = queries.map(q => q.id);
-          console.log(`Found ${queryIds.length} queries to clean up for dataset ${datasetId}`);
-          
-          if (queryIds.length > 0) {
-            // Delete all visualizations related to these queries
-            const { error: vizError } = await supabase
-              .from('visualizations')
-              .delete()
-              .in('query_id', queryIds);
-              
-            if (vizError) {
-              console.warn("Error deleting related visualizations:", vizError);
-              // We'll still continue with the deletion attempt
-            } else {
-              console.log(`Successfully deleted visualizations related to dataset ${datasetId}`);
-            }
-            
-            // Wait to ensure database processes deletion
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        }
-      } catch (vizErr) {
-        console.warn("Error during visualization cleanup:", vizErr);
-        // Continue with the process
-      }
-      
-      // Step 3: Now delete all queries for this dataset (one by one to ensure deletion)
-      try {
-        const { data: queries, error: queriesError } = await supabase
-          .from('queries')
-          .select('id')
-          .eq('dataset_id', datasetId);
+        console.log("Using SQL function to delete related queries and visualizations...");
+        const { error: rpcError } = await supabase.rpc('force_delete_queries', {
+          dataset_id_param: datasetId
+        });
         
-        if (queriesError) {
-          console.warn("Error fetching queries for deletion:", queriesError);
-        } else if (queries && queries.length > 0) {
-          console.log(`Found ${queries.length} queries to delete individually...`);
-          
-          // Delete each query one by one
-          for (const query of queries) {
-            const { error: deleteError } = await supabase
-              .from('queries')
-              .delete()
-              .eq('id', query.id);
-              
-            if (deleteError) {
-              console.warn(`Error deleting query ${query.id}:`, deleteError);
-            } else {
-              console.log(`Successfully deleted query ${query.id}`);
-            }
-            
-            // Short delay between deletions
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
+        if (rpcError) {
+          console.warn("SQL function call failed:", rpcError);
+          throw new Error(`RPC error: ${rpcError.message}`);
         }
         
-        // Double-check with a batch delete just to be sure
-        const { error: batchDeleteError } = await supabase
-          .from('queries')
-          .delete()
-          .eq('dataset_id', datasetId);
-        
-        if (batchDeleteError) {
-          console.warn("Error in batch delete of queries:", batchDeleteError);
-        } else {
-          console.log(`Successfully executed batch delete for dataset ${datasetId} queries`);
-        }
+        console.log("Successfully executed force_delete_queries function");
         
         // Wait to ensure database processes deletion
         await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (queryErr) {
-        console.warn("Error during query deletion:", queryErr);
-        // Still continue with the process
+      } catch (fnError) {
+        console.error("Error executing SQL function:", fnError);
+        toast.error("Error deleting related data. Please try again.");
+        setIsDeleting(false);
+        return;
       }
       
-      // Step 4: Verify all queries are deleted before proceeding
+      // Step 3: Verify all queries are deleted before proceeding
       try {
         const { count, error: countError } = await supabase
           .from('queries')
@@ -148,39 +83,18 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
           console.warn("Error checking if queries exist:", countError);
         } else if (count && count > 0) {
           console.warn(`WARNING: ${count} queries still exist for dataset ${datasetId}`);
-          
-          // Emergency cleanup: Try alternative approach to delete remaining queries
-          try {
-            // Try a different syntax for the delete
-            await supabase.rpc('force_delete_queries', {
-              dataset_id_param: datasetId
-            }).then(({ error }) => {
-              if (error) console.warn("RPC force delete failed:", error);
-              else console.log("RPC force delete attempted");
-            });
-          } catch (emergencyErr) {
-            console.warn("Emergency cleanup failed:", emergencyErr);
-          }
-          
-          // Final verification
-          const { count: finalCount } = await supabase
-            .from('queries')
-            .select('*', { count: 'exact', head: true })
-            .eq('dataset_id', datasetId);
-            
-          if (finalCount && finalCount > 0) {
-            toast.error(`Could not delete all queries for this dataset. Operation will be aborted.`);
-            throw new Error("Queries still exist for this dataset. Cannot safely delete.");
-          }
+          throw new Error(`Could not delete all queries for this dataset. Operation will be aborted.`);
         } else {
           console.log("All queries successfully verified as deleted.");
         }
       } catch (verifyErr) {
         console.error("Error during query verification:", verifyErr);
-        throw verifyErr;
+        toast.error("Failed to delete related data completely. Please try again.");
+        setIsDeleting(false);
+        return;
       }
       
-      // Step 5: Now it's safe to delete the dataset record
+      // Step 4: Now it's safe to delete the dataset record
       try {
         const { error: deleteError } = await supabase
           .from('datasets')
@@ -195,10 +109,12 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
         console.log("Successfully deleted dataset record");
       } catch (deleteErr) {
         console.error("Error deleting dataset record:", deleteErr);
-        throw deleteErr;
+        toast.error("Failed to delete dataset. Please try again.");
+        setIsDeleting(false);
+        return;
       }
       
-      // Step 6: Delete storage file if we have the info
+      // Step 5: Delete storage file if we have the info
       if (storageInfo && storageInfo.storage_path && storageInfo.storage_type) {
         try {
           console.log(`Removing file from storage: ${storageInfo.storage_type}/${storageInfo.storage_path}`);
@@ -217,7 +133,7 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
         }
       }
       
-      // Step 7: Clear any cached data for this dataset
+      // Step 6: Clear any cached data for this dataset
       try {
         // Clear all session storage items that might reference this dataset
         const keysToRemove = [];

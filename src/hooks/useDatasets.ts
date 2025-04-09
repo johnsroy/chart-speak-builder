@@ -119,61 +119,26 @@ export const useDatasets = () => {
         console.warn("Could not clear dataset cache:", e);
       }
 
-      const { data: queries, error: queriesError } = await supabase
-        .from('queries')
-        .select('id')
-        .eq('dataset_id', datasetId);
+      console.log("Attempting to delete queries using SQL function...");
+      try {
+        const { error: rpcError } = await supabase.rpc('force_delete_queries', {
+          dataset_id_param: datasetId
+        });
         
-      if (queriesError) {
-        console.warn("Error fetching queries for cleanup:", queriesError);
-      } else if (queries && queries.length > 0) {
-        const queryIds = queries.map(q => q.id);
-        console.log(`Found ${queryIds.length} queries to clean up for dataset ${datasetId}`);
-        
-        if (queryIds.length > 0) {
-          const { error: vizError } = await supabase
-            .from('visualizations')
-            .delete()
-            .in('query_id', queryIds);
-            
-          if (vizError) {
-            console.warn("Error deleting related visualizations:", vizError);
-          } else {
-            console.log(`Successfully deleted visualizations related to dataset ${datasetId}`);
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-      
-      for (const query of (queries || [])) {
-        const { error: deleteQueryError } = await supabase
-          .from('queries')
-          .delete()
-          .eq('id', query.id);
-          
-        if (deleteQueryError) {
-          console.warn(`Error deleting query ${query.id}:`, deleteQueryError);
+        if (rpcError) {
+          console.warn("SQL function call failed:", rpcError);
+          // Continue with fallback approach
         } else {
-          console.log(`Successfully deleted query ${query.id}`);
+          console.log("Successfully deleted queries with SQL function");
+          // Wait a moment to ensure database processed the deletion
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (sqlError) {
+        console.warn("Exception when calling SQL function:", sqlError);
+        // Continue with fallback approach
       }
       
-      const { error: deleteQueriesError } = await supabase
-        .from('queries')
-        .delete()
-        .eq('dataset_id', datasetId);
-      
-      if (deleteQueriesError) {
-        console.warn("Error in batch delete of queries:", deleteQueriesError);
-      } else {
-        console.log(`Successfully executed batch delete for all queries`);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      // Verify if queries were properly deleted
       const { count, error: countError } = await supabase
         .from('queries')
         .select('*', { count: 'exact', head: true })
@@ -184,30 +149,49 @@ export const useDatasets = () => {
       } else if (count && count > 0) {
         console.warn(`WARNING: ${count} queries still exist for dataset ${datasetId}`);
         
-        try {
-          await supabase.rpc('force_delete_queries', {
-            dataset_id_param: datasetId
-          }).then(({ error }) => {
-            if (error) console.error("RPC force delete failed:", error);
-            else console.log("RPC force delete succeeded");
-          });
+        // Fallback: delete queries and visualizations manually
+        const { data: queries } = await supabase
+          .from('queries')
+          .select('id')
+          .eq('dataset_id', datasetId);
+          
+        if (queries && queries.length > 0) {
+          const queryIds = queries.map(q => q.id);
+          console.log(`Found ${queryIds.length} queries to clean up manually for dataset ${datasetId}`);
+          
+          // Delete visualizations first
+          const { error: vizError } = await supabase
+            .from('visualizations')
+            .delete()
+            .in('query_id', queryIds);
+            
+          if (vizError) {
+            console.warn("Error deleting related visualizations:", vizError);
+          } else {
+            console.log(`Successfully deleted visualizations for dataset ${datasetId}`);
+          }
           
           await new Promise(resolve => setTimeout(resolve, 1000));
           
-          const { count: finalCount } = await supabase
-            .from('queries')
-            .select('*', { count: 'exact', head: true })
-            .eq('dataset_id', datasetId);
+          // Delete queries individually
+          for (const query of queries) {
+            const { error: deleteQueryError } = await supabase
+              .from('queries')
+              .delete()
+              .eq('id', query.id);
+              
+            if (deleteQueryError) {
+              console.warn(`Error deleting query ${query.id}:`, deleteQueryError);
+            } else {
+              console.log(`Successfully deleted query ${query.id}`);
+            }
             
-          if (finalCount && finalCount > 0) {
-            toast.error(`Could not delete all queries for this dataset. Please try again.`);
-            return false;
+            await new Promise(resolve => setTimeout(resolve, 200));
           }
-        } catch (e) {
-          console.error("Error with RPC call:", e);
         }
       }
       
+      // Now attempt to delete the dataset
       const success = await dataService.deleteDataset(datasetId);
       
       if (!success) {
