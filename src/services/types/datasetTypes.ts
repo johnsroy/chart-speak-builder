@@ -16,6 +16,7 @@ export interface Dataset {
   created_at?: string;
   updated_at?: string;
   preview_data?: any[]; // Use this for temporary preview data instead of relying on a key
+  preview_key?: string; // Add this missing property to fix the type error
 }
 
 /**

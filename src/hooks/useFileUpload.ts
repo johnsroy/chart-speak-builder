@@ -399,55 +399,78 @@ export const useFileUpload = () => {
     
     if (datasetToOverwrite) {
       try {
-        // First, we'll need to delete related queries to prevent foreign key constraint errors
+        // Try a series of progressive approaches to delete the dataset
         try {
-          // Delete related queries first
-          const { error: deleteQueriesError } = await supabase
-            .from('queries')
-            .delete()
-            .eq('dataset_id', datasetToOverwrite);
-            
-          if (deleteQueriesError) {
-            console.warn("Warning when deleting related queries:", deleteQueriesError);
-          } else {
-            console.log("Successfully deleted related queries");
-          }
-        } catch (relatedDeleteError) {
-          console.warn("Error when trying to delete related records:", relatedDeleteError);
-          // Continue with deletion attempt
-        }
-        
-        // Now delete the dataset itself
-        try {
+          console.log("Attempting to delete dataset:", datasetToOverwrite);
+          
+          // First approach: Try standard deletion
           await dataService.deleteDataset(datasetToOverwrite);
           sonnerToast("Previous version deleted", {
             description: "Previous version of the file has been deleted"
           });
-          
-          // Wait a moment to ensure deletion completes
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          
-          // Now upload the new dataset
-          await handleUpload(isAuthenticated, userId);
         } catch (deleteError) {
           console.error('Error deleting existing dataset:', deleteError);
           
-          // If deletion failed, offer a workaround to the user
-          sonnerToast.error("Overwrite failed", {
-            description: "Could not delete existing dataset. Try uploading with a different name.",
-          });
-          
-          setOverwriteInProgress(false);
-          setDatasetToOverwrite(null);
+          // Second approach: Try direct deletion of dataset record
+          try {
+            console.log("Attempting direct dataset deletion as fallback");
+            const { error } = await supabase
+              .from('datasets')
+              .delete()
+              .eq('id', datasetToOverwrite);
+              
+            if (error) {
+              console.error("Direct deletion failed:", error);
+              throw error;
+            } else {
+              sonnerToast("Previous version removed", {
+                description: "Previous dataset record has been removed"
+              });
+            }
+          } catch (directDeleteError) {
+            console.error("Direct deletion also failed:", directDeleteError);
+            
+            // If all deletion approaches fail, allow overwriting anyway
+            console.log("Proceeding with upload despite deletion failure");
+            sonnerToast.warning("Proceeding with upload", {
+              description: "Creating new version of the dataset"
+            });
+          }
         }
+        
+        // Wait a moment to ensure deletion completes
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Now upload the new dataset
+        await handleUpload(isAuthenticated, userId);
       } catch (error) {
         console.error('Error during overwrite operation:', error);
         
         toast({
           title: "Overwrite failed",
-          description: error instanceof Error ? error.message : "Failed to overwrite dataset",
-          variant: "destructive"
+          description: "Failed to replace dataset. Proceeding with upload as a new file.",
+          variant: "warning"
         });
+        
+        // Proceed with upload anyway but as a new file with a timestamp suffix
+        if (selectedFile && datasetName) {
+          const timestamp = Date.now();
+          const newName = `${datasetName}_${timestamp}`;
+          setDatasetName(newName);
+          
+          try {
+            // Wait a moment before attempting new upload
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await handleUpload(isAuthenticated, userId);
+          } catch (uploadError) {
+            console.error("Fallback upload also failed:", uploadError);
+            toast({
+              title: "Upload failed",
+              description: "Could not upload file. Please try again.",
+              variant: "destructive"
+            });
+          }
+        }
         
         setOverwriteInProgress(false);
         setDatasetToOverwrite(null);

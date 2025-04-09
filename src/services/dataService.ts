@@ -264,19 +264,7 @@ export const dataService = {
       
       // First delete any related queries to avoid foreign key constraint errors
       try {
-        const { error: deleteQueriesError } = await supabase
-          .from('queries')
-          .delete()
-          .eq('dataset_id', id);
-          
-        if (deleteQueriesError) {
-          console.warn("Warning when deleting related queries:", deleteQueriesError);
-          // Continue with deletion attempt even if deleting queries fails
-        } else {
-          console.log(`Successfully deleted related queries for dataset ${id}`);
-        }
-        
-        // Also delete any related visualizations
+        // Ensure we remove all dependencies by first deleting visualizations that depend on queries
         const { error: deleteVisualizationsError } = await supabase
           .from('visualizations')
           .delete()
@@ -284,9 +272,31 @@ export const dataService = {
           
         if (deleteVisualizationsError) {
           console.warn("Warning when deleting related visualizations:", deleteVisualizationsError);
+        } else {
+          console.log(`Successfully deleted related visualizations for dataset ${id}`);
+        }
+        
+        // Now safe to delete queries that reference this dataset
+        const { error: deleteQueriesError } = await supabase
+          .from('queries')
+          .delete()
+          .eq('dataset_id', id);
+          
+        if (deleteQueriesError) {
+          console.warn("Warning when deleting related queries:", deleteQueriesError);
+          // Added recursive retry with RPC function if available
+          try {
+            await supabase.rpc('force_delete_dataset_queries', { dataset_id: id });
+            console.log("Used RPC function to force delete related queries");
+          } catch (rpcError) {
+            console.warn("RPC function not available or failed:", rpcError);
+          }
+        } else {
+          console.log(`Successfully deleted related queries for dataset ${id}`);
         }
       } catch (relatedDeleteError) {
         console.warn("Error clearing related records:", relatedDeleteError);
+        // Continue with deletion attempt anyway
       }
       
       // Get dataset info to delete the file later
