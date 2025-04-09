@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { UserDatasetLibrary } from '@/components/upload/UserDatasetLibrary';
-import { UploadTabContent } from '@/components/upload/UploadTabContent';
+import UserDatasetLibrary from '@/components/upload/UserDatasetLibrary';
+import UploadTabContent from '@/components/upload/UploadTabContent';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from '@/components/ui/card';
 
