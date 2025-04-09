@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Table,
@@ -53,9 +52,7 @@ export const DataTable: React.FC<DataTableProps> = ({
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
   
-  // Get data from dataset
   useEffect(() => {
-    // If external data is provided, use that
     if (externalData) {
       setData(externalData);
       setColumns(externalData.length > 0 ? Object.keys(externalData[0]) : []);
@@ -73,7 +70,6 @@ export const DataTable: React.FC<DataTableProps> = ({
       }
       
       try {
-        // Try to get data for the dataset
         const id = datasetId || dataset?.id;
         
         if (!id) {
@@ -84,7 +80,6 @@ export const DataTable: React.FC<DataTableProps> = ({
         
         console.log(`Loading data for dataset: ${id}`);
         
-        // Try to get data using datasetUtils first (most robust)
         try {
           const datasetRows = await datasetUtils.loadDatasetContent(id, {
             showToasts: false,
@@ -105,10 +100,8 @@ export const DataTable: React.FC<DataTableProps> = ({
           console.warn("Error using datasetUtils:", datasetUtilsError);
         }
         
-        // Check if we have preview data in the dataset object
         let previewDataFound = false;
         
-        // Try to get preview data from dataset if available
         if (dataset && dataset.preview_data) {
           try {
             const previewData = dataset.preview_data;
@@ -124,7 +117,6 @@ export const DataTable: React.FC<DataTableProps> = ({
           }
         }
         
-        // If no preview data was found, load from the API
         if (!previewDataFound) {
           console.log("No preview data found, loading from API...");
           const result = await dataService.previewDataset(id);
@@ -142,12 +134,10 @@ export const DataTable: React.FC<DataTableProps> = ({
         console.error("Error loading dataset data:", err);
         setError(`Error loading data: ${err instanceof Error ? err.message : String(err)}`);
         
-        // Try to recover using session storage
         try {
           const lastUploadedId = sessionStorage.getItem('last_uploaded_dataset');
           
           if (lastUploadedId) {
-            // Try to load preview data from multiple possible storage keys
             const possibleKeys = [
               `preview_${lastUploadedId}`,
               `upload_preview_${lastUploadedId}`,
@@ -170,7 +160,6 @@ export const DataTable: React.FC<DataTableProps> = ({
               }
             }
             
-            // If we found data in any of the keys, use it
             if (recoveredData) {
               setData(recoveredData);
               setColumns(Object.keys(recoveredData[0] || {}));
@@ -183,7 +172,6 @@ export const DataTable: React.FC<DataTableProps> = ({
           console.error("Recovery attempt failed:", recoveryErr);
         }
         
-        // If still no data and we haven't exceeded retry count
         if (retryCount < maxRetries) {
           console.log(`Retrying data load (${retryCount + 1}/${maxRetries})...`);
           setRetryCount(prev => prev + 1);
@@ -191,7 +179,6 @@ export const DataTable: React.FC<DataTableProps> = ({
           return;
         }
         
-        // Create sample data as last resort
         if (dataset) {
           console.log("Generating sample data based on schema");
           const sampleData = generateSampleDataFromSchema(dataset);
@@ -210,16 +197,13 @@ export const DataTable: React.FC<DataTableProps> = ({
     loadData();
   }, [datasetId, dataset, externalData, externalLoading, externalError, retryCount]);
   
-  // Generate sample data based on schema or filename
   const generateSampleDataFromSchema = (dataset: Dataset) => {
     const sampleRows = [];
     const rowCount = 20;
     
-    // Get schema from dataset if available
     const schema = dataset?.column_schema || {};
     const columns = Object.keys(schema);
     
-    // If schema is available, use it
     if (columns.length > 0) {
       for (let i = 0; i < rowCount; i++) {
         const row: Record<string, any> = {};
@@ -240,7 +224,6 @@ export const DataTable: React.FC<DataTableProps> = ({
         sampleRows.push(row);
       }
     } else {
-      // If no schema, create generic data based on filename
       const fileName = dataset?.file_name || 'dataset';
       
       if (fileName.toLowerCase().includes('sales')) {
@@ -264,7 +247,6 @@ export const DataTable: React.FC<DataTableProps> = ({
           });
         }
       } else {
-        // Generic dataset
         for (let i = 0; i < rowCount; i++) {
           sampleRows.push({
             id: i + 1,
@@ -280,7 +262,6 @@ export const DataTable: React.FC<DataTableProps> = ({
     return sampleRows;
   };
   
-  // Filter data based on search term
   const filteredData = data.filter(row => {
     if (!searchTerm) return true;
     return Object.values(row).some(value => 
@@ -288,16 +269,13 @@ export const DataTable: React.FC<DataTableProps> = ({
     );
   });
   
-  // Paginate data
   const paginatedData = filteredData.slice(
     (currentPage - 1) * rowsPerPage,
     currentPage * rowsPerPage
   );
   
-  // Calculate total pages
   const totalPages = Math.ceil(filteredData.length / rowsPerPage);
   
-  // Helper to render pagination
   const renderPagination = () => {
     return (
       <div className="flex items-center justify-between mt-4">
@@ -344,7 +322,7 @@ export const DataTable: React.FC<DataTableProps> = ({
   };
   
   const handleRefresh = async () => {
-    setRetryCount(0); // Reset retry count
+    setRetryCount(0);
     
     if (onRefresh) {
       await onRefresh();
@@ -352,11 +330,10 @@ export const DataTable: React.FC<DataTableProps> = ({
       setIsLoading(true);
       setError(null);
       try {
-        // Try using datasetUtils first
         try {
           const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
             showToasts: false,
-            forceRefresh: true,  // Skip cache
+            forceRefresh: true,
             limitRows: 1000
           });
           
@@ -373,7 +350,6 @@ export const DataTable: React.FC<DataTableProps> = ({
           console.warn("Error using datasetUtils during refresh:", datasetUtilsError);
         }
         
-        // Fall back to direct API call
         const refreshedData = await dataService.previewDataset(datasetId);
         if (refreshedData && Array.isArray(refreshedData)) {
           setData(refreshedData);
