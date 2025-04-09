@@ -1,6 +1,12 @@
 
 import { QueryResult } from '@/services/types/queryTypes';
 
+export enum VisualizationType {
+  BarChart = 'bar',
+  LineChart = 'line',
+  PieChart = 'pie'
+}
+
 export interface Message {
   id: string;
   sender: 'user' | 'ai' | 'system';
@@ -11,6 +17,9 @@ export interface Message {
   isProcessing?: boolean;
   queryId?: string;
   thinking?: string;
+  visualization?: QueryResult;  // Added for visualization support
+  visualizationType?: VisualizationType; // Added for chart type
+  chartData?: any[]; // Added for direct chart data
 }
 
 export type AIModelType = 'openai' | 'anthropic';

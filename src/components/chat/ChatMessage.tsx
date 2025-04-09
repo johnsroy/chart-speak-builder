@@ -111,10 +111,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
         {message.visualization?.stats && (
           <div className="mt-3 text-sm text-gray-400">
             <p>Count: {message.visualization.stats.count} | 
-               Sum: {message.visualization.stats.sum.toLocaleString()} | 
-               Average: {message.visualization.stats.avg.toLocaleString()} | 
-               Min: {message.visualization.stats.min.toLocaleString()} | 
-               Max: {message.visualization.stats.max.toLocaleString()}
+               Sum: {message.visualization.stats.sum?.toLocaleString()} | 
+               Average: {message.visualization.stats.avg?.toLocaleString()} | 
+               Min: {message.visualization.stats.min?.toLocaleString()} | 
+               Max: {message.visualization.stats.max?.toLocaleString()}
             </p>
           </div>
         )}
