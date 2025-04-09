@@ -1,3 +1,4 @@
+
 import { QueryResult } from '@/services/types/queryTypes';
 
 export interface Message {
@@ -31,6 +32,7 @@ export interface AIQueryResponse {
   chart_type?: string;
   x_axis?: string;
   y_axis?: string;
+  model_used?: string;
 }
 
 export interface DataAnalysisResult {

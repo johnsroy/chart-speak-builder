@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -46,13 +45,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     message: ''
   });
   const [datasetLoadFailed, setDatasetLoadFailed] = useState(false);
-  const [recommendations, setRecommendations] = useState<string[]>([
-    "What's the trend over time?",
-    "Show me the top 5 values",
-    "Compare by category",
-    "Calculate average and sum"
-  ]);
+  const [recommendations, setRecommendations] = useState<string[]>([]);
   const [datasetInfo, setDatasetInfo] = useState<any>(null);
+  const [dataAnalysis, setDataAnalysis] = useState<Record<string, any>>({});
   const navigate = useNavigate();
 
   const handleSendMessage = async (newMessage: string) => {
@@ -92,6 +87,17 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         
         if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
           setFullData(datasetRows);
+          
+          // Analyze the dataset to update our recommendations
+          const analysis = nlpService.analyzeDataset(datasetRows);
+          setDataAnalysis(analysis);
+          
+          // Generate custom recommendations based on actual data
+          if (datasetInfo) {
+            const dynamicRecommendations = nlpService.getRecommendationsForDataset(datasetInfo, datasetRows);
+            setRecommendations(dynamicRecommendations);
+          }
+          
           toast.success(`Dataset loaded: ${datasetRows.length} rows available for analysis`);
         } else {
           // Fetch dataset info to generate sample data
@@ -99,6 +105,13 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           if (dataset && dataset.file_name) {
             const sampleData = generateAppropriateDataFromFilename(dataset.file_name, 1000);
             setFullData(sampleData);
+            
+            // Even with sample data, analyze and generate recommendations
+            const analysis = nlpService.analyzeDataset(sampleData);
+            setDataAnalysis(analysis);
+            const dynamicRecommendations = nlpService.getRecommendationsForDataset(dataset, sampleData);
+            setRecommendations(dynamicRecommendations);
+            
             toast.info("Using generated sample data for analysis");
           } else {
             throw new Error('No data available for analysis. Please check your dataset.');
@@ -123,6 +136,11 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       
       // Use the NLP service to process the query with the dataset content
       const aiResponse = await nlpService.processQuery(newMessage, datasetId, currentModel, fullData);
+      
+      // Add model information to the response
+      if (aiResponse) {
+        aiResponse.model_used = currentModel;
+      }
 
       if (aiResponse && (!aiResponse.data || aiResponse.data.length === 0)) {
         // Generate fallback visualization if no data was returned
@@ -138,7 +156,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         
         // Try using a simpler approach
         const dataset = await dataService.getDataset(datasetId);
-        const recommendations = nlpService.getRecommendationsForDataset(dataset);
+        const recommendations = nlpService.getRecommendationsForDataset(dataset, fullData);
         const fallbackQuery = recommendations[0] || "Show the distribution of values";
         
         // Try the fallback query
@@ -146,6 +164,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         
         if (fallbackResponse && fallbackResponse.data && fallbackResponse.data.length > 0) {
           fallbackResponse.explanation = `I couldn't visualize "${newMessage}" directly, so I'm showing ${fallbackResponse.explanation?.toLowerCase() || 'some basic statistics about your data'}.`;
+          fallbackResponse.model_used = currentModel;
           
           const aiMessage: Message = {
             id: uuidv4(),
@@ -221,6 +240,15 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       message: 'Loading dataset...'
     });
     setDatasetLoadFailed(false);
+    
+    // Start with default recommendations
+    setRecommendations([
+      "Show me a summary of this data",
+      "What are the main trends?",
+      "Find interesting patterns",
+      "Compare key metrics",
+      "Show data distribution"
+    ]);
 
     try {
       // First, get the dataset information
@@ -228,6 +256,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       setDatasetInfo(dataset);
       
       if (dataset) {
+        console.log("Dataset info:", dataset);
+        
         // Use enhanced datasetUtils to get the full dataset with multiple fallback strategies
         const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: false, // Don't show toasts during initial load
@@ -239,6 +269,11 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           setFullData(datasetRows);
           console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
           
+          // Analyze the dataset to get better understanding of its structure
+          const analysis = nlpService.analyzeDataset(datasetRows);
+          setDataAnalysis(analysis);
+          console.log("Dataset analysis:", analysis);
+          
           // Update message to include row count
           setMessages([{
             id: uuidv4(),
@@ -247,9 +282,10 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             timestamp: new Date()
           }]);
           
-          // Generate better recommendations
-          const customRecommendations = nlpService.getRecommendationsForDataset(dataset);
-          setRecommendations(customRecommendations);
+          // Generate smart, dynamic recommendations based on actual data structure
+          const dynamicRecommendations = nlpService.getRecommendationsForDataset(dataset, datasetRows);
+          setRecommendations(dynamicRecommendations);
+          console.log("Generated recommendations:", dynamicRecommendations);
           
           setLoadingState({
             isLoading: false,
@@ -266,6 +302,10 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           setFullData(alternateData);
           console.log(`Dataset loaded through queryService: ${alternateData.length} rows`);
           
+          // Analyze this data too
+          const analysis = nlpService.analyzeDataset(alternateData);
+          setDataAnalysis(analysis);
+          
           setMessages([{
             id: uuidv4(),
             sender: 'ai',
@@ -273,9 +313,9 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             timestamp: new Date()
           }]);
           
-          // Generate better recommendations
-          const customRecommendations = nlpService.getRecommendationsForDataset(dataset);
-          setRecommendations(customRecommendations);
+          // Generate dynamic recommendations
+          const dynamicRecommendations = nlpService.getRecommendationsForDataset(dataset, alternateData);
+          setRecommendations(dynamicRecommendations);
           
           setLoadingState({
             isLoading: false,
@@ -285,15 +325,19 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           return;
         }
       
-        // Generate appropriate recommendations
-        const customRecommendations = nlpService.getRecommendationsForDataset(dataset);
-        setRecommendations(customRecommendations);
-        
         // If all methods failed, generate sample data based on schema or filename
         if (dataset.column_schema && Object.keys(dataset.column_schema).length > 0) {
           console.log("Generating sample data based on schema");
-          const schemaSamples = generateSampleDataFromSchema(dataset.column_schema, 5000);
+          const schemaSamples = generateSampleDataFromSchema(dataset.column_schema, 1000);
           setFullData(schemaSamples);
+          
+          // Analyze the generated data
+          const analysis = nlpService.analyzeDataset(schemaSamples);
+          setDataAnalysis(analysis);
+          
+          // Generate recommendations based on schema and generated data
+          const schemaRecommendations = nlpService.getRecommendationsForDataset(dataset, schemaSamples);
+          setRecommendations(schemaRecommendations);
           
           setMessages([{
             id: uuidv4(),
@@ -310,6 +354,14 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           console.log("Generating appropriate sample data based on filename:", dataset.file_name);
           const filenameSamples = generateAppropriateDataFromFilename(dataset.file_name || '');
           setFullData(filenameSamples);
+          
+          // Analyze this generated data
+          const analysis = nlpService.analyzeDataset(filenameSamples);
+          setDataAnalysis(analysis);
+          
+          // Generate recommendations based on filename and generated data
+          const filenameRecommendations = nlpService.getRecommendationsForDataset(dataset, filenameSamples);
+          setRecommendations(filenameRecommendations);
           
           toast.warning("Using generated sample data", {
             description: "The actual dataset could not be loaded"
@@ -335,6 +387,18 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       // Set a minimal sample dataset for the chat to use
       const sampleData = generateGenericSampleData(100);
       setFullData(sampleData);
+      
+      // Still try to generate some recommendations from the generic data
+      const analysis = nlpService.analyzeDataset(sampleData);
+      setDataAnalysis(analysis);
+      const genericRecommendations = [
+        "Show me a summary of this data",
+        "What patterns can you find?",
+        "Compare the main values",
+        "Show the distribution of categories",
+        "Identify any outliers"
+      ];
+      setRecommendations(genericRecommendations);
       
       setMessages([{
         id: uuidv4(),
