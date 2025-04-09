@@ -1,9 +1,8 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useUser } from '@/hooks/useUser';
 import { toast } from 'sonner';
 import { extractDatasetNameFromFileName } from '@/utils/chartUtils';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 
 interface SchemaPreview {
   [columnName: string]: string;
@@ -76,8 +75,28 @@ const initialState: State = {
 
 export const useFileUpload = (): UseFileUploadResult => {
   const [state, setState] = useState<State>(initialState);
-  const { user } = useUser();
-	const router = useRouter();
+  const navigate = useNavigate();
+
+  const updateSelectedFile = useCallback(async (file: File) => {
+    setState(prevState => ({
+      ...prevState,
+      selectedFile: file,
+      datasetName: extractDatasetNameFromFileName(file.name),
+      uploadProgress: 0,
+      uploadError: null,
+    }));
+
+    try {
+      const preview = await previewFileSchema(file);
+      setState(prevState => ({ ...prevState, schemaPreview: preview }));
+    } catch (error) {
+      console.error("Error previewing file schema:", error);
+      toast.error("Could not preview file schema", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
+      setState(prevState => ({ ...prevState, schemaPreview: null }));
+    }
+  }, []);
 
   const handleDrag = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -124,27 +143,6 @@ export const useFileUpload = (): UseFileUploadResult => {
 
   const setSelectedStorage = useCallback((storage: string | null) => {
     setState(prevState => ({ ...prevState, selectedStorage: storage }));
-  }, []);
-
-  const updateSelectedFile = useCallback(async (file: File) => {
-    setState(prevState => ({
-      ...prevState,
-      selectedFile: file,
-      datasetName: extractDatasetNameFromFileName(file.name),
-      uploadProgress: 0,
-      uploadError: null,
-    }));
-
-    try {
-      const preview = await previewFileSchema(file);
-      setState(prevState => ({ ...prevState, schemaPreview: preview }));
-    } catch (error) {
-      console.error("Error previewing file schema:", error);
-      toast.error("Could not preview file schema", {
-        description: error instanceof Error ? error.message : "Unknown error"
-      });
-      setState(prevState => ({ ...prevState, schemaPreview: null }));
-    }
   }, []);
 
   const previewFileSchema = async (file: File): Promise<SchemaPreview> => {
@@ -210,7 +208,7 @@ export const useFileUpload = (): UseFileUploadResult => {
       return;
     }
 
-    const user_id = userId || user?.id || 'system_user';
+    const user_id = userId || 'system_user';
     const file = state.selectedFile;
     const datasetName = state.datasetName;
     const datasetDescription = state.datasetDescription;
@@ -227,7 +225,6 @@ export const useFileUpload = (): UseFileUploadResult => {
       const fileName = `${datasetName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${fileExt}`;
       const filePath = `uploads/${user_id}/${fileName}`;
 
-      // Check if a dataset with the same name already exists
       const { data: existingDataset, error: selectError } = await supabase
         .from('datasets')
         .select('*')
@@ -244,7 +241,6 @@ export const useFileUpload = (): UseFileUploadResult => {
         return;
       }
 
-      // Proceed with upload if no dataset exists or if it's a retry after confirmation
       const { data, error } = await supabase.storage
         .from('datasets')
         .upload(filePath, file, {
@@ -258,10 +254,8 @@ export const useFileUpload = (): UseFileUploadResult => {
 
       const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
 
-      // Extract file size
       const fileSizeInBytes = file.size;
 
-      // Insert dataset metadata
       const { data: datasetData, error: datasetError } = await supabase
         .from('datasets')
         .insert([
@@ -281,7 +275,6 @@ export const useFileUpload = (): UseFileUploadResult => {
         .single();
 
       if (datasetError) {
-        // Attempt to delete the file from storage if metadata insertion fails
         await supabase.storage.from('datasets').remove([filePath]);
         throw new Error(datasetError.message || 'Could not save dataset metadata');
       }
@@ -300,7 +293,8 @@ export const useFileUpload = (): UseFileUploadResult => {
         datasetDescription: '',
         schemaPreview: null,
       }));
-			router.refresh();
+      
+      navigate(0);
     } catch (uploadError: any) {
       console.error("Upload failed:", uploadError);
       toast.error("Upload failed", {
@@ -313,7 +307,7 @@ export const useFileUpload = (): UseFileUploadResult => {
         uploadProgress: 0,
       }));
     }
-  }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, user?.id, router]);
+  }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, navigate]);
 
   const retryUpload = useCallback(async (isRetry: boolean = false, userId?: string) => {
     await handleUpload(isRetry, userId);
@@ -336,12 +330,11 @@ export const useFileUpload = (): UseFileUploadResult => {
         return;
       }
 
-      const user_id = userId || user?.id || 'system_user';
+      const user_id = userId || 'system_user';
       const file = state.selectedFile;
       const datasetName = state.datasetName;
       const datasetDescription = state.datasetDescription;
 
-      // Fetch the existing dataset to get its storage path
       const { data: existingDataset, error: selectError } = await supabase
         .from('datasets')
         .select('storage_path, id')
@@ -356,7 +349,6 @@ export const useFileUpload = (): UseFileUploadResult => {
         throw new Error('Existing dataset has no storage path');
       }
 
-      // Delete the old file from storage
       const { error: deleteError } = await supabase.storage
         .from('datasets')
         .remove([existingDataset.storage_path]);
@@ -365,7 +357,6 @@ export const useFileUpload = (): UseFileUploadResult => {
         throw new Error(deleteError.message || 'Could not delete previous file version');
       }
 
-      // Upload the new file
       const fileExt = file.name.split('.').pop();
       const fileName = `${datasetName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${fileExt}`;
       const filePath = `uploads/${user_id}/${fileName}`;
@@ -384,7 +375,6 @@ export const useFileUpload = (): UseFileUploadResult => {
       const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
       const fileSizeInBytes = file.size;
 
-      // Update dataset metadata
       const { data: datasetData, error: datasetError } = await supabase
         .from('datasets')
         .update({
@@ -400,7 +390,6 @@ export const useFileUpload = (): UseFileUploadResult => {
         .single();
 
       if (datasetError) {
-        // Attempt to delete the newly uploaded file if metadata update fails
         await supabase.storage.from('datasets').remove([filePath]);
         throw new Error(datasetError.message || 'Could not update dataset metadata');
       }
@@ -421,7 +410,8 @@ export const useFileUpload = (): UseFileUploadResult => {
         datasetDescription: '',
         schemaPreview: null,
       }));
-			router.refresh();
+      
+      navigate(0);
     } catch (overwriteError: any) {
       console.error("Overwrite failed:", overwriteError);
       toast.error("Overwrite failed", {
@@ -436,7 +426,7 @@ export const useFileUpload = (): UseFileUploadResult => {
         showOverwriteConfirm: false,
       }));
     }
-  }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, user?.id, router]);
+  }, [state.selectedFile, state.datasetName, state.datasetDescription, state.schemaPreview, navigate]);
 
   const handleOverwriteCancel = useCallback(() => {
     setState(prevState => ({ ...prevState, showOverwriteConfirm: false }));

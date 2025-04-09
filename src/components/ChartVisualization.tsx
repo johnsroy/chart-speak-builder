@@ -140,7 +140,8 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
         style: {
           fontFamily: 'Inter, sans-serif',
           color: '#ffffff'
-        }
+        },
+        height: chartHeight || DEFAULT_HEIGHT,
       },
       title: {
         text: '',
@@ -213,8 +214,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'bar',
-            height: chartHeight || DEFAULT_HEIGHT
+            type: 'bar'
           },
           plotOptions: {
             bar: {
@@ -235,8 +235,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'column',
-            height: chartHeight || DEFAULT_HEIGHT
+            type: 'column'
           },
           plotOptions: {
             column: {
@@ -257,8 +256,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'line',
-            height: chartHeight || DEFAULT_HEIGHT
+            type: 'line'
           },
           plotOptions: {
             line: {
@@ -278,8 +276,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'area',
-            height: chartHeight || DEFAULT_HEIGHT
+            type: 'area'
           },
           plotOptions: {
             area: {
@@ -298,8 +295,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'pie',
-            height: chartHeight || DEFAULT_HEIGHT
+            type: 'pie'
           },
           plotOptions: {
             pie: {
@@ -329,8 +325,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'scatter',
-            height: chartHeight || DEFAULT_HEIGHT
+            type: 'scatter'
           },
           plotOptions: {
             scatter: {
@@ -366,8 +361,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'column',
-            height: chartHeight || DEFAULT_HEIGHT
+            type: 'column'
           },
           plotOptions: {
             column: {
@@ -392,8 +386,7 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
           ...baseOptions,
           chart: {
             ...baseOptions.chart,
-            type: 'column',
-            height: chartHeight || DEFAULT_HEIGHT
+            type: 'column'
           },
           series: [{
             name: y.field,
@@ -446,12 +439,15 @@ const ChartVisualization: React.FC<ChartVisualizationProps> = ({
 
   // Use Highcharts for visualization
   return (
-    <div className={`w-full max-w-6xl mx-auto ${heightClass} ${className}`}>
+    <div className={`w-full h-full flex justify-center items-center ${className}`}>
       {highchartsOptions && (
         <HighchartsReact
           highcharts={Highcharts}
           options={highchartsOptions}
-          containerProps={{ style: { height: '100%', width: '100%' } }}
+          containerProps={{ 
+            className: 'w-full h-full',
+            style: { height: '100%', width: '100%', display: 'flex', justifyContent: 'center' }
+          }}
         />
       )}
     </div>

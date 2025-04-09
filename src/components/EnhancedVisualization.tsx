@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Info, Percent, Hash, PieChart, BarChart as BarChartIcon, LineChart as LineChartIcon } from 'lucide-react';
@@ -28,7 +27,11 @@ import {
   ResponsiveContainer,
   Cell,
   LabelList,
-  Sector
+  Sector,
+  ScatterChart,
+  Scatter,
+  AreaChart,
+  Area
 } from 'recharts';
 import { COLOR_PALETTES, generateChartColors, formatChartValue, formatPercentage, getOptimalTickCount } from '@/utils/chartUtils';
 
@@ -49,14 +52,12 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   showTitle = true,
   colorPalette = 'professional'
 }) => {
-  // Use the color scheme provided by the AI if available
   const effectiveColorPalette = (result.color_scheme as keyof typeof COLOR_PALETTES) || colorPalette;
   const [displayMode, setDisplayMode] = useState<DisplayMode>('values');
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   
-  // Set up resize observer to get accurate container dimensions
   useEffect(() => {
     if (!containerRef.current) return;
     
@@ -82,14 +83,12 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
     );
   }
 
-  // Ensure we have valid data by preparing it here
   const chartData = useMemo(() => {
     if (!result.data || !Array.isArray(result.data) || result.data.length === 0) {
       console.error('Missing or empty data in visualization result', result);
       return [];
     }
     
-    // Make sure we're using valid data
     return prepareChartData(result);
   }, [result]);
   
@@ -107,7 +106,6 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
   const yAxis = result.yAxis || result.y_axis;
   
   if (!chartData || chartData.length === 0) {
-    // Debug information if no chart data
     console.error('No chart data after preparation', {
       result,
       originalData: result.data?.slice(0, 3),
@@ -131,11 +129,9 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
     containerSize.height || height
   );
 
-  // Choose chart icon based on type
   const ChartIcon = chartType === 'bar' ? BarChartIcon : 
                     chartType === 'line' ? LineChartIcon : PieChart;
 
-  // Display additional stats if available
   const stats = result.stats;
 
   return (
@@ -215,7 +211,6 @@ const EnhancedVisualization: React.FC<EnhancedVisualizationProps> = ({
           )}
         </div>
 
-        {/* Show statistics summary if available */}
         {stats && (
           <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
             {stats.min !== undefined && (
@@ -291,7 +286,7 @@ const renderChart = ({
 }: RenderChartProps) => {
   const colors = generateChartColors(chartData.length, colorPalette);
 
-  const onPieEnter = (_, index: number) => {
+  const onPieEnter = (_: any, index: number) => {
     setActiveIndex(index);
   };
   
@@ -299,118 +294,121 @@ const renderChart = ({
     setActiveIndex(null);
   };
 
-  // Add error handling for chart rendering
   try {
     switch (chartType) {
       case 'bar':
         return (
-          <BarChart
-            data={chartData}
-            margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
-            <XAxis 
-              dataKey="name" 
-              angle={-45} 
-              textAnchor="end" 
-              height={70}
-              tick={{ fill: '#ccc', fontSize: 12 }}
-              tickCount={xTicks}
-              interval={0}
-              tickMargin={8}
-            />
-            <YAxis 
-              tickCount={yTicks}
-              tick={{ fill: '#ccc' }} 
-              tickFormatter={(value) => {
-                return displayMode === 'percentages' 
-                  ? formatPercentage(value, total)
-                  : formatChartValue(value);
-              }}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent 
-                  formatter={(value: any) => {
-                    if (displayMode === 'percentages') {
-                      return formatPercentage(value, total);
-                    }
-                    return formatChartValue(value);
-                  }} 
-                />
-              }
-            />
-            <Legend 
-              verticalAlign="bottom" 
-              height={36} 
-              content={<ChartLegendContent />}
-            />
-            <Bar 
-              dataKey="value" 
-              name={yAxis} 
-              radius={[4, 4, 0, 0]}
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={chartData}
+              margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
             >
-              {chartData.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-              ))}
-              <LabelList 
-                dataKey="value" 
-                position="top" 
-                fill="#ccc"
-                formatter={(value: number) => {
-                  if (value < total * 0.03) return ''; // Don't show labels for small values
-                  return displayMode === 'percentages'
+              <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
+              <XAxis 
+                dataKey="name" 
+                angle={-45} 
+                textAnchor="end" 
+                height={70}
+                tick={{ fill: '#ccc', fontSize: 12 }}
+                tickCount={xTicks}
+                interval={0}
+                tickMargin={8}
+              />
+              <YAxis 
+                tickCount={yTicks}
+                tick={{ fill: '#ccc' }} 
+                tickFormatter={(value) => {
+                  return displayMode === 'percentages' 
                     ? formatPercentage(value, total)
                     : formatChartValue(value);
                 }}
               />
-            </Bar>
-          </BarChart>
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent 
+                    formatter={(value: any) => {
+                      if (displayMode === 'percentages') {
+                        return formatPercentage(value, total);
+                      }
+                      return formatChartValue(value);
+                    }} 
+                  />
+                }
+              />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36} 
+                content={<ChartLegendContent />}
+              />
+              <Bar 
+                dataKey="value" 
+                name={yAxis} 
+                radius={[4, 4, 0, 0]}
+              >
+                {chartData.map((_, index) => (
+                  <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                ))}
+                <LabelList 
+                  dataKey="value" 
+                  position="top" 
+                  fill="#ccc"
+                  formatter={(value: number) => {
+                    if (value < total * 0.03) return ''; // Don't show labels for small values
+                    return displayMode === 'percentages'
+                      ? formatPercentage(value, total)
+                      : formatChartValue(value);
+                  }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         );
       case 'line':
         return (
-          <LineChart
-            data={chartData}
-            margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
-            <XAxis 
-              dataKey="name" 
-              angle={-45} 
-              textAnchor="end" 
-              height={70}
-              tick={{ fill: '#ccc', fontSize: 12 }}
-              tickCount={xTicks}
-              interval={0}
-              tickMargin={8}
-            />
-            <YAxis 
-              tickCount={yTicks}
-              tick={{ fill: '#ccc' }} 
-              tickFormatter={(value) => formatChartValue(value)}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent 
-                  formatter={(value: any) => formatChartValue(value)} 
-                />
-              }
-            />
-            <Legend 
-              verticalAlign="bottom" 
-              height={36} 
-              content={<ChartLegendContent />}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="value" 
-              name={yAxis} 
-              stroke={colors[0]}
-              strokeWidth={2}
-              dot={{ fill: colors[0], r: 4, strokeWidth: 1 }}
-              activeDot={{ r: 6, fill: colors[0] }}
-            />
-          </LineChart>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={chartData}
+              margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
+              <XAxis 
+                dataKey="name" 
+                angle={-45} 
+                textAnchor="end" 
+                height={70}
+                tick={{ fill: '#ccc', fontSize: 12 }}
+                tickCount={xTicks}
+                interval={0}
+                tickMargin={8}
+              />
+              <YAxis 
+                tickCount={yTicks}
+                tick={{ fill: '#ccc' }} 
+                tickFormatter={(value) => formatChartValue(value)}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent 
+                    formatter={(value: any) => formatChartValue(value)} 
+                  />
+                }
+              />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36} 
+                content={<ChartLegendContent />}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="value" 
+                name={yAxis} 
+                stroke={colors[0]}
+                strokeWidth={2}
+                dot={{ fill: colors[0], r: 4, strokeWidth: 1 }}
+                activeDot={{ r: 6, fill: colors[0] }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         );
       case 'pie':
         const renderActiveShape = (props: any) => {
@@ -432,179 +430,187 @@ const renderChart = ({
         };
         
         return (
-          <RechartsPie 
-            margin={{ top: 5, right: 5, bottom: 5, left: 5 }}
-          >
-            <Pie
-              data={chartData}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={Math.min(height * 0.35, 120)}
-              label={(entry) => entry.name}
-              labelLine={true}
-              activeIndex={activeIndex !== null ? activeIndex : undefined}
-              activeShape={renderActiveShape}
-              onMouseEnter={onPieEnter}
-              onMouseLeave={onPieLeave}
+          <ResponsiveContainer width="100%" height="100%">
+            <RechartsPie 
+              margin={{ top: 5, right: 5, bottom: 5, left: 5 }}
             >
-              {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-              ))}
-            </Pie>
-            <ChartTooltip
-              content={
-                <ChartTooltipContent 
-                  formatter={(value: any) => {
-                    if (displayMode === 'percentages') {
-                      return formatPercentage(value, total);
-                    }
-                    return formatChartValue(value);
-                  }} 
-                />
-              }
-            />
-            <Legend 
-              layout="horizontal"
-              verticalAlign="bottom" 
-              align="center"
-              content={<ChartLegendContent />}
-            />
-          </RechartsPie>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={Math.min(height * 0.35, 120)}
+                label={(entry) => entry.name}
+                labelLine={true}
+                activeIndex={activeIndex !== null ? activeIndex : undefined}
+                activeShape={renderActiveShape}
+                onMouseEnter={onPieEnter}
+                onMouseLeave={onPieLeave}
+              >
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                ))}
+              </Pie>
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent 
+                    formatter={(value: any) => {
+                      if (displayMode === 'percentages') {
+                        return formatPercentage(value, total);
+                      }
+                      return formatChartValue(value);
+                    }} 
+                  />
+                }
+              />
+              <Legend 
+                layout="horizontal"
+                verticalAlign="bottom" 
+                align="center"
+                content={<ChartLegendContent />}
+              />
+            </RechartsPie>
+          </ResponsiveContainer>
         );
       case 'scatter':
         return (
-          <ScatterChart
-            margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
-            <XAxis 
-              dataKey="x" 
-              name={xAxis}
-              type="number" 
-              tick={{ fill: '#ccc' }} 
-              tickCount={xTicks}
-              tickFormatter={(value) => formatChartValue(value)}
-            />
-            <YAxis 
-              dataKey="value" 
-              name={yAxis}
-              type="number" 
-              tickCount={yTicks}
-              tick={{ fill: '#ccc' }} 
-              tickFormatter={(value) => formatChartValue(value)}
-            />
-            <ChartTooltip
-              cursor={{ strokeDasharray: '3 3' }}
-              content={
-                <ChartTooltipContent 
-                  formatter={(value: any) => formatChartValue(value)} 
-                />
-              }
-            />
-            <Legend 
-              verticalAlign="bottom" 
-              height={36} 
-              content={<ChartLegendContent />}
-            />
-            <Scatter 
-              name={yAxis} 
-              data={chartData} 
-              fill={colors[0]}
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart
+              margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
             >
-              {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-              ))}
-            </Scatter>
-          </ScatterChart>
+              <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
+              <XAxis 
+                dataKey="x" 
+                name={xAxis}
+                type="number" 
+                tick={{ fill: '#ccc' }} 
+                tickCount={xTicks}
+                tickFormatter={(value) => formatChartValue(value)}
+              />
+              <YAxis 
+                dataKey="value" 
+                name={yAxis}
+                type="number" 
+                tickCount={yTicks}
+                tick={{ fill: '#ccc' }} 
+                tickFormatter={(value) => formatChartValue(value)}
+              />
+              <ChartTooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                content={
+                  <ChartTooltipContent 
+                    formatter={(value: any) => formatChartValue(value)} 
+                  />
+                }
+              />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36} 
+                content={<ChartLegendContent />}
+              />
+              <Scatter 
+                name={yAxis} 
+                data={chartData} 
+                fill={colors[0]}
+              >
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                ))}
+              </Scatter>
+            </ScatterChart>
+          </ResponsiveContainer>
         );
       case 'area':
         return (
-          <AreaChart
-            data={chartData}
-            margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
-            <XAxis 
-              dataKey="name" 
-              angle={-45} 
-              textAnchor="end" 
-              height={70}
-              tick={{ fill: '#ccc', fontSize: 12 }}
-              tickCount={xTicks}
-              interval={0}
-              tickMargin={8}
-            />
-            <YAxis 
-              tickCount={yTicks}
-              tick={{ fill: '#ccc' }} 
-              tickFormatter={(value) => formatChartValue(value)}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent 
-                  formatter={(value: any) => formatChartValue(value)} 
-                />
-              }
-            />
-            <Legend 
-              verticalAlign="bottom" 
-              height={36} 
-              content={<ChartLegendContent />}
-            />
-            <Area 
-              type="monotone" 
-              dataKey="value" 
-              name={yAxis} 
-              stroke={colors[0]}
-              fill={colors[0]}
-              fillOpacity={0.3}
-              strokeWidth={2}
-            />
-          </AreaChart>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={chartData}
+              margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
+              <XAxis 
+                dataKey="name" 
+                angle={-45} 
+                textAnchor="end" 
+                height={70}
+                tick={{ fill: '#ccc', fontSize: 12 }}
+                tickCount={xTicks}
+                interval={0}
+                tickMargin={8}
+              />
+              <YAxis 
+                tickCount={yTicks}
+                tick={{ fill: '#ccc' }} 
+                tickFormatter={(value) => formatChartValue(value)}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent 
+                    formatter={(value: any) => formatChartValue(value)} 
+                  />
+                }
+              />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36} 
+                content={<ChartLegendContent />}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                name={yAxis} 
+                stroke={colors[0]}
+                fill={colors[0]}
+                fillOpacity={0.3}
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         );
       default:
         return (
-          <BarChart
-            data={chartData}
-            margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
-            <XAxis 
-              dataKey="name" 
-              angle={-45} 
-              textAnchor="end" 
-              height={70}
-              tick={{ fill: '#ccc', fontSize: 12 }}
-              tickCount={xTicks}
-              interval={0}
-              tickMargin={8}
-            />
-            <YAxis 
-              tickCount={yTicks}
-              tick={{ fill: '#ccc' }} 
-              tickFormatter={(value) => formatChartValue(value)}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent 
-                  formatter={(value: any) => formatChartValue(value)} 
-                />
-              }
-            />
-            <Legend 
-              verticalAlign="bottom" 
-              height={36} 
-              content={<ChartLegendContent />}
-            />
-            <Bar 
-              dataKey="value" 
-              name={yAxis || 'Value'} 
-              fill={colors[0]}
-              radius={[4, 4, 0, 0]}
-            />
-          </BarChart>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={chartData}
+              margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#555" opacity={0.2} />
+              <XAxis 
+                dataKey="name" 
+                angle={-45} 
+                textAnchor="end" 
+                height={70}
+                tick={{ fill: '#ccc', fontSize: 12 }}
+                tickCount={xTicks}
+                interval={0}
+                tickMargin={8}
+              />
+              <YAxis 
+                tickCount={yTicks}
+                tick={{ fill: '#ccc' }} 
+                tickFormatter={(value) => formatChartValue(value)}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent 
+                    formatter={(value: any) => formatChartValue(value)} 
+                  />
+                }
+              />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36} 
+                content={<ChartLegendContent />}
+              />
+              <Bar 
+                dataKey="value" 
+                name={yAxis || 'Value'} 
+                fill={colors[0]}
+                radius={[4, 4, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
         );
     }
   } catch (error) {
@@ -617,7 +623,6 @@ const renderChart = ({
   }
 };
 
-// Function to prepare chart data from various input formats
 const prepareChartData = (result: QueryResult) => {
   try {
     const { data } = result;
@@ -626,10 +631,7 @@ const prepareChartData = (result: QueryResult) => {
       return [];
     }
     
-    // Check if data already has the format we need
     if (data[0].name !== undefined && data[0].value !== undefined) {
-      // Already in the format we need
-      console.log("Data already in the right format");
       return data;
     }
     
@@ -638,11 +640,9 @@ const prepareChartData = (result: QueryResult) => {
     
     console.log("Using axes:", { xAxis, yAxis });
     
-    // Handle special case for AI results that might use different field names
     if (!data[0][xAxis] && !data[0][yAxis]) {
       console.log("Data does not contain expected axes properties:", xAxis, yAxis, data[0]);
       
-      // Try common field naming patterns
       const xField = Object.keys(data[0]).find(key => 
         key.toLowerCase().includes('name') || 
         key.toLowerCase().includes('category') || 
@@ -666,7 +666,6 @@ const prepareChartData = (result: QueryResult) => {
         }));
       }
       
-      // Last resort - use the first string field and first number field
       const firstStringField = Object.keys(data[0]).find(key => typeof data[0][key] === 'string');
       const firstNumberField = Object.keys(data[0]).find(key => typeof data[0][key] === 'number');
       
@@ -677,18 +676,8 @@ const prepareChartData = (result: QueryResult) => {
           value: Number(item[firstNumberField]) || 0
         }));
       }
-      
-      // If all else fails, convert the keys of the first object to name-value pairs
-      if (typeof data[0] === 'object') {
-        console.log("Converting keys to name-value pairs");
-        return Object.entries(data[0]).map(([key, value]) => ({
-          name: key,
-          value: typeof value === 'number' ? value : 0
-        }));
-      }
     }
     
-    // Standard conversion
     return data.map(item => ({
       name: String(item[xAxis]),
       value: Number(item[yAxis]) || 0
