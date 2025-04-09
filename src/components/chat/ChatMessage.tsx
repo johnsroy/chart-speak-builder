@@ -7,7 +7,7 @@ import ChartWrapper from '../visualization/ChartWrapper';
 import { Message, VisualizationType } from './types';
 import { QueryResult } from '@/services/types/queryTypes';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ReactMarkdown } from 'react-markdown';
+import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 
 interface ChatMessageProps {
