@@ -34,7 +34,7 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
   xAxisKey = 'name',
   yAxisKey = 'value',
   width = '100%',
-  height = 300,
+  height = 500, // Increased default height
   className = '',
 }) => {
   // Don't use ResponsiveContainer if exact dimensions are provided
@@ -48,6 +48,10 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
     fontSize: 12,
     tickLine: false,
     axisLine: true,
+    height: 60, // Increased height for x-axis
+    angle: data.length > 8 ? -45 : 0, // Angle labels if many data points
+    textAnchor: data.length > 8 ? 'end' : 'middle', // Align text based on angle
+    interval: 0, // Show all labels
   };
   
   const yAxisProps = {
@@ -55,7 +59,7 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
     fontSize: 12,
     tickLine: false,
     axisLine: true,
-    width: 80,
+    width: 100, // Increased width for y-axis
   };
 
   // Make sure data is valid before rendering
@@ -74,24 +78,29 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
     switch ((chartType || '').toLowerCase()) {
       case 'bar':
         return (
-          <BarChart data={validData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+          <BarChart data={validData} margin={{ top: 20, right: 50, left: 20, bottom: 70 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisProps} />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey={yAxisKey} fill={COLOR_PALETTES.professional[0]} radius={[4, 4, 0, 0]} />
+            <Tooltip wrapperStyle={{ maxWidth: '300px' }} />
+            <Legend wrapperStyle={{ marginTop: '10px' }} />
+            <Bar 
+              dataKey={yAxisKey} 
+              fill={COLOR_PALETTES.professional[0]} 
+              radius={[4, 4, 0, 0]} 
+              barSize={validData.length > 20 ? 6 : validData.length > 10 ? 10 : 30} // Adjust bar size based on data points
+            />
           </BarChart>
         );
         
       case 'line':
         return (
-          <LineChart data={validData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+          <LineChart data={validData} margin={{ top: 20, right: 50, left: 20, bottom: 70 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisProps} />
-            <Tooltip />
-            <Legend />
+            <Tooltip wrapperStyle={{ maxWidth: '300px' }} />
+            <Legend wrapperStyle={{ marginTop: '10px' }} />
             <Line 
               type="monotone" 
               dataKey={yAxisKey} 
@@ -105,13 +114,13 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
         
       case 'pie':
         return (
-          <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+          <PieChart margin={{ top: 20, right: 50, left: 20, bottom: 70 }}>
             <Pie
               data={validData}
               cx="50%"
               cy="50%"
               labelLine={false}
-              outerRadius={validData.length > 10 ? 120 : 150}
+              outerRadius={Math.min(200, validData.length > 15 ? 150 : 200)} // Adjusted for better visibility
               fill="#8884d8"
               dataKey={yAxisKey}
               nameKey={xAxisKey}
@@ -124,20 +133,25 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
                 />
               ))}
             </Pie>
-            <Tooltip />
-            <Legend />
+            <Tooltip wrapperStyle={{ maxWidth: '300px' }} />
+            <Legend wrapperStyle={{ marginTop: '10px' }} layout="horizontal" verticalAlign="bottom" align="center" />
           </PieChart>
         );
         
       default:
         return (
-          <BarChart data={validData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+          <BarChart data={validData} margin={{ top: 20, right: 50, left: 20, bottom: 70 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
             <XAxis {...xAxisProps} />
             <YAxis {...yAxisProps} />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey={yAxisKey} fill={COLOR_PALETTES.professional[0]} radius={[4, 4, 0, 0]} />
+            <Tooltip wrapperStyle={{ maxWidth: '300px' }} />
+            <Legend wrapperStyle={{ marginTop: '10px' }} />
+            <Bar 
+              dataKey={yAxisKey} 
+              fill={COLOR_PALETTES.professional[0]} 
+              radius={[4, 4, 0, 0]} 
+              barSize={validData.length > 20 ? 6 : validData.length > 10 ? 10 : 30}
+            />
           </BarChart>
         );
     }
@@ -153,11 +167,11 @@ const ChartWrapper: React.FC<ChartWrapperProps> = ({
   }
 
   // Make sure height is set to a reasonable value when using ResponsiveContainer
-  const containerHeight = height === '100%' ? '100%' : typeof height === 'number' ? height : 400;
+  const containerHeight = height === '100%' ? '100%' : typeof height === 'number' ? height : 500;
   
   return (
     <div className={`w-full h-full ${className}`}>
-      <ResponsiveContainer width="100%" height={containerHeight} minHeight={300}>
+      <ResponsiveContainer width="100%" height={containerHeight} minHeight={500}>
         {renderChart()}
       </ResponsiveContainer>
     </div>

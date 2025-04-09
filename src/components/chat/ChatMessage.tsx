@@ -1,87 +1,158 @@
 
 import React from 'react';
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Message } from './types';
-import { QueryResult } from '@/services/types/queryTypes';
+import { Avatar, AvatarImage } from '@/components/ui/avatar';
+import { BarChart, PieChart, LineChart, Download } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import ChartWrapper from '../visualization/ChartWrapper';
+import { Message, VisualizationType } from './types';
+import { QueryResult } from '@/services/types/queryTypes';
+import { Skeleton } from '@/components/ui/skeleton';
+import ReactMarkdown from 'react-markdown';
+import { cn } from '@/lib/utils';
 
 interface ChatMessageProps {
   message: Message;
-  downloadVisualization: (result: QueryResult) => void;
+  downloadVisualization?: (result: QueryResult) => void;
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualization }) => {
-  const { sender, content, result, isProcessing, model } = message;
-  
-  const renderVisualization = () => {
-    if (!result || !result.data || result.data.length === 0) return null;
-    
+  if (message.isProcessing) {
     return (
-      <div className="mt-6 bg-gray-800/50 p-4 rounded-lg border border-gray-700/50 shadow-inner">
-        <div className="mb-3">
-          <p className="text-sm text-gray-300">{result.explanation || 'Visualization'}</p>
+      <div className="flex gap-3 items-start">
+        <Avatar className="h-8 w-8 mr-2">
+          <AvatarImage src="/ai-avatar.png" alt="AI" />
+        </Avatar>
+        <div className="flex flex-col gap-2 w-full max-w-5xl">
+          <Skeleton className="h-4 w-[250px]" />
+          <Skeleton className="h-4 w-[400px]" />
+          <Skeleton className="h-4 w-[300px]" />
+        </div>
+      </div>
+    );
+  }
+
+  let chartType = 'bar';
+  if (message.visualization?.chartType) {
+    chartType = message.visualization.chartType;
+  } else if (message.visualizationType) {
+    switch (message.visualizationType) {
+      case VisualizationType.LineChart: 
+        chartType = 'line'; 
+        break;
+      case VisualizationType.PieChart: 
+        chartType = 'pie'; 
+        break;
+      case VisualizationType.BarChart: 
+      default: 
+        chartType = 'bar';
+    }
+  }
+
+  const renderVisualization = () => {
+    if (!message.visualization?.data && !message.chartData) {
+      return null;
+    }
+
+    const data = message.visualization?.data || message.chartData;
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return null;
+    }
+
+    let xAxisKey = message.visualization?.xAxis || 'name';
+    let yAxisKey = message.visualization?.yAxis || 'value';
+
+    // If xAxisKey/yAxisKey are not in the data, try to find appropriate keys
+    if (data.length > 0 && !data[0].hasOwnProperty(xAxisKey)) {
+      const keys = Object.keys(data[0]);
+      xAxisKey = keys[0]; // Use first key as fallback for x-axis
+    }
+
+    if (data.length > 0 && !data[0].hasOwnProperty(yAxisKey)) {
+      const keys = Object.keys(data[0]);
+      // Try to find a numeric key for y-axis
+      const numericKey = keys.find(k => typeof data[0][k] === 'number');
+      yAxisKey = numericKey || keys[keys.length > 1 ? 1 : 0]; // Use second key or first if only one exists
+    }
+
+    // Increased height for better visibility
+    return (
+      <div className="mt-4 w-full bg-gray-900/50 rounded-lg p-4 border border-gray-700/50">
+        <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center">
+            {chartType === 'bar' && <BarChart className="h-5 w-5 text-blue-400 mr-2" />}
+            {chartType === 'line' && <LineChart className="h-5 w-5 text-green-400 mr-2" />}
+            {chartType === 'pie' && <PieChart className="h-5 w-5 text-purple-400 mr-2" />}
+            <span className="font-medium">{message.visualization?.title || 'Data Visualization'}</span>
+          </div>
+          {downloadVisualization && message.visualization && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => downloadVisualization(message.visualization!)}
+              className="text-gray-400 hover:text-white"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Download
+            </Button>
+          )}
         </div>
         
-        {/* Increased height for better visualization display */}
-        <div className="h-[800px] w-full">
+        <div className="w-full h-[600px]"> {/* Increased height */}
           <ChartWrapper
-            data={result.data}
-            chartType={result.chartType || 'bar'}
-            xAxisKey={result.xAxis || 'name'}
-            yAxisKey={result.yAxis || 'value'}
-            height="100%"
-            width="100%"
+            data={data}
+            chartType={chartType}
+            xAxisKey={xAxisKey}
+            yAxisKey={yAxisKey}
+            height={550} // Increased height
+            className="w-full"
           />
         </div>
         
-        <div className="mt-4 flex justify-between items-center">
-          <div className="text-xs text-gray-400">
-            {result.model_used && (
-              <span className="px-2 py-1 bg-gray-800 rounded-full text-gray-400">
-                {result.model_used === 'openai' ? 'GPT-4o' : 'Claude 3.7'}
-              </span>
-            )}
+        {message.visualization?.stats && (
+          <div className="mt-3 text-sm text-gray-400">
+            <p>Count: {message.visualization.stats.count} | 
+               Sum: {message.visualization.stats.sum.toLocaleString()} | 
+               Average: {message.visualization.stats.avg.toLocaleString()} | 
+               Min: {message.visualization.stats.min.toLocaleString()} | 
+               Max: {message.visualization.stats.max.toLocaleString()}
+            </p>
           </div>
-          <button
-            className="text-xs px-3 py-1.5 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 rounded border border-purple-700/30 transition-colors"
-            onClick={() => downloadVisualization(result)}
-          >
-            Download Visualization
-          </button>
-        </div>
+        )}
       </div>
     );
   };
 
   return (
-    <div className={`flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex gap-3 max-w-[95%] ${sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-        <Avatar className="h-8 w-8">
-          {sender === 'user' ? (
-            <>
-              <AvatarFallback>U</AvatarFallback>
-              <AvatarImage src="/user-avatar.png" />
-            </>
-          ) : (
-            <>
-              <AvatarFallback>AI</AvatarFallback>
-              <AvatarImage src="/ai-avatar.png" />
-            </>
-          )}
+    <div className={cn("flex gap-3 items-start", 
+      message.sender === 'user' ? "justify-end" : "")}>
+      
+      {message.sender !== 'user' && (
+        <Avatar className="h-8 w-8 mr-2">
+          <AvatarImage src="/ai-avatar.png" alt="AI" />
         </Avatar>
+      )}
+      
+      <div className={cn("flex flex-col gap-2 w-full max-w-[90%] lg:max-w-[95%]",
+        message.sender === 'user' ? "items-end" : "")}>
         
-        <div className={`${sender === 'user' ? 'bg-purple-600/30 text-white' : 'bg-gray-800/50 text-gray-200'} ${isProcessing ? 'animate-pulse' : ''} p-4 rounded-lg max-w-full`}>
-          <p className="whitespace-pre-wrap text-sm">{content}</p>
-          {model && !isProcessing && (
-            <div className="mt-2">
-              <span className="text-xs text-gray-400">
-                {model === 'openai' ? 'GPT-4o' : 'Claude 3.7'}
-              </span>
-            </div>
-          )}
-          {result && renderVisualization()}
+        <div className={cn("px-4 py-3 rounded-lg",
+          message.sender === 'user' 
+            ? "bg-purple-600/30 border border-purple-500/30 text-white" 
+            : "bg-gray-800/50 border border-gray-700/30 text-gray-100"
+        )}>
+          <ReactMarkdown className="prose prose-invert max-w-none prose-p:leading-normal prose-pre:p-2">
+            {message.content}
+          </ReactMarkdown>
         </div>
+        
+        {renderVisualization()}
       </div>
+      
+      {message.sender === 'user' && (
+        <Avatar className="h-8 w-8 ml-2">
+          <AvatarImage src="/user-avatar.png" alt="User" />
+        </Avatar>
+      )}
     </div>
   );
 };

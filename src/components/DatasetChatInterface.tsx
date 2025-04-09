@@ -78,21 +78,22 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     
     setLoadingState({
       isLoading: true,
-      message: 'Loading dataset content...'
+      message: 'Loading complete dataset...'
     });
     
     try {
-      console.log("Loading dataset for chat:", datasetId);
+      console.log("Loading full dataset for chat analysis:", datasetId);
       
       // First attempt: Use datasetUtils with multiple fallback mechanisms
       try {
         const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: false,
-          limitRows: 10000
+          // Increase to maximum rows to load full dataset
+          limitRows: 50000 
         });
         
         if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
-          console.log(`Dataset loaded: ${datasetRows.length} rows available for chat`);
+          console.log(`Dataset loaded: ${datasetRows.length} rows available for chat analysis`);
           setFullData(datasetRows);
           
           // Analyze the dataset to understand structure
@@ -116,7 +117,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             }
           }
           
-          toast.success(`Dataset loaded: ${datasetRows.length} rows available for analysis`);
+          toast.success(`Full dataset loaded: ${datasetRows.length} rows available for analysis`);
           setDatasetLoadFailed(false);
           return;
         }
@@ -222,13 +223,13 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
         // Try to load data one more time
         setLoadingState({
           isLoading: true,
-          message: 'Loading dataset content...'
+          message: 'Loading full dataset...'
         });
         
         const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
           showToasts: false,
           forceRefresh: true,
-          limitRows: 10000
+          limitRows: 50000 // Increased to load all rows
         });
         
         if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
@@ -244,7 +245,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
             setRecommendations(dynamicRecommendations);
           }
           
-          toast.success(`Dataset loaded: ${datasetRows.length} rows available for analysis`);
+          toast.success(`Full dataset loaded: ${datasetRows.length} rows available for analysis`);
         } else {
           // Fetch dataset info to generate sample data
           const dataset = await dataService.getDataset(datasetId);
@@ -496,7 +497,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   };
 
   return (
-    <div className={`flex flex-col w-full ${hasFullHeightLayout ? 'h-full' : 'h-[800px]'} rounded-xl overflow-hidden glass-card`}>
+    <div className={`flex flex-col w-full ${hasFullHeightLayout ? 'h-full' : 'min-h-[700px]'}`}>
       <div className="p-4 border-b border-gray-700/30 flex justify-between items-center">
         <div>
           <h2 className="text-lg font-medium">{datasetName} Chat</h2>

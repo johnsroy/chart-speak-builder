@@ -42,10 +42,10 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ messages, downloadVisuali
   }
 
   return (
-    <Card className="flex-1 overflow-hidden glass-card backdrop-blur-xl bg-gray-950/30 border border-purple-500/20 shadow-xl">
+    <Card className="flex-1 overflow-hidden glass-card backdrop-blur-xl bg-gray-950/30 border border-purple-500/20 shadow-xl w-full">
       <ScrollArea className="h-full pr-4">
         <CardContent className="pt-6 pb-6">
-          <div className="flex flex-col space-y-8">
+          <div className="flex flex-col space-y-8 w-full max-w-[95%] md:max-w-[90%] mx-auto">
             {messages.map(message => (
               <ChatMessage 
                 key={message.id} 

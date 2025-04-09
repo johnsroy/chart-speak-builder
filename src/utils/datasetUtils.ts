@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { queryService } from '@/services/queryService';
@@ -18,7 +17,7 @@ export const datasetUtils = {
   loadDatasetContent: async (datasetId: string, options: LoadDatasetOptions = {}) => {
     const {
       showToasts = false,
-      limitRows = 10000,
+      limitRows = 50000,
       forceRefresh = false,
       preventSampleFallback = false,
     } = options;
@@ -87,24 +86,24 @@ export const datasetUtils = {
         }
       }
       
-      // Try loading with queryService (handles storage, DB and more)
-      console.log("Trying queryService.loadDataset method");
+      // Try loading with queryService (handles storage, DB and more) - Now with increased limit
+      console.log("Trying queryService.loadDataset method with increased row limit");
       try {
         loadedData = await queryService.loadDataset(datasetId);
         
         if (loadedData && Array.isArray(loadedData) && loadedData.length > 0) {
           console.log(`Successfully loaded ${loadedData.length} rows using queryService.loadDataset`);
           
-          // Cache result in session storage
+          // Cache result in session storage - cache up to 10,000 rows
           try {
-            sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(loadedData.slice(0, 1000)));
-            console.log("Dataset cached in session storage");
+            sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(loadedData.slice(0, 10000)));
+            console.log("Dataset cached in session storage (up to 10,000 rows)");
           } catch (e) {
             console.warn("Could not cache dataset:", e);
           }
           
           if (showToasts) {
-            toast.success(`Dataset loaded: ${loadedData.length} rows`);
+            toast.success(`Full dataset loaded: ${loadedData.length} rows`);
           }
           
           return loadedData;

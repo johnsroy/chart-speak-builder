@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { QueryResult } from './types/queryTypes';
 import { toast } from 'sonner';
@@ -31,7 +30,6 @@ export interface FilterCondition {
   value: string | number;
 }
 
-// Re-export QueryResult from types
 export type { QueryResult };
 
 export const queryService = {
@@ -78,7 +76,7 @@ export const queryService = {
             .from('dataset_data')
             .select('*')
             .eq('dataset_id', config.datasetId)
-            .limit(10000);
+            .limit(50000);
             
           if (!error && tableData && Array.isArray(tableData) && tableData.length > 0) {
             console.log(`Successfully loaded ${tableData.length} rows from dataset_data table`);
@@ -118,7 +116,7 @@ export const queryService = {
             } else {
               // Parse CSV content
               const text = await fileData.text();
-              const parsedData = await parseCSV(text, 10000); // Use our CSV parser utility
+              const parsedData = await parseCSV(text, 50000); // Use our CSV parser utility
               
               console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
               fullData = parsedData;
@@ -266,7 +264,7 @@ export const queryService = {
  * Helper function to get dataset data directly from multiple sources
  */
 async function getDatasetDirectly(datasetId: string): Promise<any[] | null> {
-  console.log(`Loading dataset ${datasetId} directly`);
+  console.log(`Loading complete dataset ${datasetId} directly`);
   
   // Try multiple approaches to get the full dataset
   let fullData: any[] | null = null;
@@ -331,22 +329,22 @@ async function getDatasetDirectly(datasetId: string): Promise<any[] | null> {
     console.error("Error loading dataset metadata:", datasetErr);
   }
   
-  // Try to get data from dataset_data table
+  // Try to get data from dataset_data table - increased row limit to 50,000
   try {
-    console.log("Attempting to get dataset from dataset_data table");
+    console.log("Attempting to get complete dataset from dataset_data table");
     const { data: tableData, error } = await supabase
       .from('dataset_data')
       .select('*')
       .eq('dataset_id', datasetId)
-      .limit(10000);
+      .limit(50000); // Increased limit to 50,000 rows
       
     if (!error && tableData && Array.isArray(tableData) && tableData.length > 0) {
       console.log(`Successfully loaded ${tableData.length} rows from dataset_data table`);
       fullData = tableData;
       
-      // Cache the result for future use
+      // Cache the result for future use (up to 10,000 rows to prevent storage issues)
       try {
-        sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(tableData.slice(0, 1000)));
+        sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(tableData.slice(0, 10000)));
       } catch (e) {
         console.warn("Could not cache dataset in session storage", e);
       }
@@ -362,7 +360,7 @@ async function getDatasetDirectly(datasetId: string): Promise<any[] | null> {
   // Try to get data directly from storage if we have dataset info
   if (dataset && dataset.storage_path) {
     try {
-      console.log(`Attempting to load dataset file from ${dataset.storage_type || 'datasets'}/${dataset.storage_path}`);
+      console.log(`Attempting to load complete dataset file from ${dataset.storage_type || 'datasets'}/${dataset.storage_path}`);
       
       // Try to download the file from storage
       const { data: fileData, error: storageError } = await supabase
@@ -373,15 +371,15 @@ async function getDatasetDirectly(datasetId: string): Promise<any[] | null> {
       if (storageError) {
         console.error("Error downloading dataset file:", storageError);
       } else if (fileData) {
-        // Parse CSV content
+        // Parse CSV content - increased limit to 50,000 rows
         const text = await fileData.text();
-        const parsedData = await parseCSV(text, 10000);
+        const parsedData = await parseCSV(text, 50000); // Increased to 50,000 rows
         
         console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
         
-        // Cache the result for future use
+        // Cache the result for future use (up to 10,000 rows)
         try {
-          sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsedData.slice(0, 1000)));
+          sessionStorage.setItem(`dataset_${datasetId}`, JSON.stringify(parsedData.slice(0, 10000)));
         } catch (e) {
           console.warn("Could not cache dataset in session storage", e);
         }
