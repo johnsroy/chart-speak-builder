@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,27 +9,13 @@ import { ChartType } from '@/utils/chartSuggestionUtils';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 
-// Import Highcharts modules
-// Note: We import them as-is without renaming
-import highchartsMore from 'highcharts/highcharts-more';
-import sankey from 'highcharts/modules/sankey';
-import heatmap from 'highcharts/modules/heatmap';
-import treemap from 'highcharts/modules/treemap';
-import funnel from 'highcharts/modules/funnel';
-import exporting from 'highcharts/modules/exporting';
-
-// Initialize Highcharts modules
-// We need to check if we're in a browser environment before initializing
-if (typeof Highcharts === 'object') {
-  // Apply the modules to Highcharts correctly
-  highchartsMore(Highcharts);
-  sankey(Highcharts);
-  heatmap(Highcharts);
-  treemap(Highcharts);
-  funnel(Highcharts);
-  exporting(Highcharts);
-  console.log('Highcharts modules initialized successfully');
-}
+// Import Highcharts modules directly without variable assignment
+import 'highcharts/highcharts-more';
+import 'highcharts/modules/sankey';
+import 'highcharts/modules/heatmap';
+import 'highcharts/modules/treemap';
+import 'highcharts/modules/funnel';
+import 'highcharts/modules/exporting';
 
 // Define the dark theme for Highcharts
 const darkTheme = {
