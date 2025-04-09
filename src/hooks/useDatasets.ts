@@ -19,10 +19,16 @@ export const useDatasets = () => {
   const { toast: hookToast } = useToast();
   const { isAuthenticated, user } = useAuth();
 
-  const loadDatasets = useCallback(async () => {
+  const loadDatasets = useCallback(async (forceRefresh = false) => {
     setIsLoading(true);
     try {
       console.log("Fetching all datasets...");
+      
+      // Clear any cached state if force refreshing
+      if (forceRefresh) {
+        setDatasets([]);
+        setUniqueDatasets([]);
+      }
       
       const data = await dataService.getDatasets();
       console.log(`Fetched ${data.length} datasets.`);
@@ -97,16 +103,11 @@ export const useDatasets = () => {
     try {
       console.log(`Deleting dataset with ID: ${datasetId}`);
       
-      const success = await dataService.deleteDataset(datasetId);
-      
-      if (!success) {
-        toast.error('Failed to delete dataset');
-        return false;
-      }
-      
+      // First remove from local state to update the UI immediately
       setDatasets(prev => prev.filter(d => d.id !== datasetId));
       setUniqueDatasets(prev => prev.filter(d => d.id !== datasetId));
       
+      // If the deleted dataset was selected, select another one
       if (selectedDatasetId === datasetId) {
         const remainingDatasets = datasets.filter(d => d.id !== datasetId);
         if (remainingDatasets.length > 0) {
@@ -116,17 +117,38 @@ export const useDatasets = () => {
         }
       }
       
-      setTimeout(() => {
-        loadDatasets();
-      }, 500);
+      // Clear cache for this dataset
+      try {
+        sessionStorage.removeItem(`dataset_${datasetId}`);
+      } catch (e) {
+        console.warn("Could not clear dataset cache:", e);
+      }
+      
+      // Execute actual deletion through the dataService
+      const success = await dataService.deleteDataset(datasetId);
+      
+      if (!success) {
+        toast.error('Failed to delete dataset');
+        // Reload data to restore state if deletion failed
+        loadDatasets(true);
+        return false;
+      }
       
       toast.success('Dataset deleted successfully');
+      
+      // Fully refresh the dataset list
+      setTimeout(() => {
+        loadDatasets(true);
+      }, 500);
+      
       return true;
     } catch (error) {
       console.error('Error in deleteDataset:', error);
       toast.error('Error deleting dataset', { 
         description: error instanceof Error ? error.message : 'Unknown error occurred'
       });
+      // Reload data to restore state if deletion failed
+      loadDatasets(true);
       return false;
     }
   }, [selectedDatasetId, datasets, loadDatasets]);
@@ -137,11 +159,7 @@ export const useDatasets = () => {
       
       if (!event.detail?.datasetId) return;
       
-      if (event.detail.datasetId === selectedDatasetId) {
-        const remainingDatasets = datasets.filter(d => d.id !== event.detail.datasetId);
-        setSelectedDatasetId(remainingDatasets.length > 0 ? remainingDatasets[0].id : null);
-      }
-      
+      // Remove the deleted dataset from state
       setDatasets(prevDatasets => 
         prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
       );
@@ -150,29 +168,36 @@ export const useDatasets = () => {
         prevDatasets.filter(dataset => dataset.id !== event.detail.datasetId)
       );
       
-      loadDatasets();
+      // If the deleted dataset was selected, select another one
+      if (event.detail.datasetId === selectedDatasetId) {
+        const remainingDatasets = datasets.filter(d => d.id !== event.detail.datasetId);
+        setSelectedDatasetId(remainingDatasets.length > 0 ? remainingDatasets[0].id : null);
+      }
+      
+      // Fully refresh the dataset list
+      loadDatasets(true);
     };
     
     const handleDatasetUploaded = () => {
       console.log('Dataset uploaded event received');
-      loadDatasets();
+      loadDatasets(true);
     };
     
     window.addEventListener('dataset-deleted', handleDatasetDeleted);
-    window.addEventListener('dataset-upload-success', loadDatasets);
-    window.addEventListener('upload:success', loadDatasets);
+    window.addEventListener('dataset-upload-success', handleDatasetUploaded);
+    window.addEventListener('upload:success', handleDatasetUploaded);
     
     return () => {
       window.removeEventListener('dataset-deleted', handleDatasetDeleted);
-      window.removeEventListener('dataset-upload-success', loadDatasets);
-      window.removeEventListener('upload:success', loadDatasets);
+      window.removeEventListener('dataset-upload-success', handleDatasetUploaded);
+      window.removeEventListener('upload:success', handleDatasetUploaded);
     };
   }, [selectedDatasetId, loadDatasets, datasets]);
 
   const forceRefresh = useCallback(() => {
     console.log("Force refreshing datasets...");
     setRetryCount(0);
-    loadDatasets();
+    loadDatasets(true);
   }, [loadDatasets]);
 
   return {

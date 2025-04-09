@@ -144,6 +144,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, downloadVisualizatio
           <ReactMarkdown>
             {message.content}
           </ReactMarkdown>
+          
+          {message.thinking && (
+            <div className="mt-3 pt-3 border-t border-gray-700/30 text-gray-400 text-sm">
+              <details>
+                <summary className="cursor-pointer">Chain of Thought</summary>
+                <div className="mt-2 pl-3 border-l-2 border-gray-700">
+                  <ReactMarkdown>
+                    {message.thinking}
+                  </ReactMarkdown>
+                </div>
+              </details>
+            </div>
+          )}
         </div>
         
         {renderVisualization()}

@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { dataService } from '@/services/dataService';
+import { supabase } from '@/lib/supabase';
 
 interface DeleteDatasetDialogProps {
   open: boolean;
@@ -28,24 +29,73 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
     
     setIsDeleting(true);
     try {
-      // Use the dataService to handle deletion - this ensures consistent deletion behavior
-      const success = await dataService.deleteDataset(datasetId);
+      console.log(`Deleting dataset with ID: ${datasetId}`);
       
-      if (!success) {
-        throw new Error('Dataset deletion failed');
+      // First, delete any dataset_data records (if the table exists)
+      try {
+        const { error: dataError } = await supabase
+          .from('dataset_data')
+          .delete()
+          .eq('dataset_id', datasetId);
+        
+        if (dataError && !dataError.message.includes('does not exist')) {
+          console.warn("Error deleting dataset data:", dataError);
+        }
+      } catch (dataErr) {
+        console.warn("Exception when deleting dataset data:", dataErr);
+      }
+      
+      // Delete the dataset from storage if needed
+      try {
+        const { data: dataset } = await supabase
+          .from('datasets')
+          .select('storage_type, storage_path')
+          .eq('id', datasetId)
+          .single();
+          
+        if (dataset && dataset.storage_path && dataset.storage_type) {
+          console.log(`Removing file from storage: ${dataset.storage_type}/${dataset.storage_path}`);
+          const { error: storageError } = await supabase
+            .storage
+            .from(dataset.storage_type)
+            .remove([dataset.storage_path]);
+            
+          if (storageError) {
+            console.warn("Error deleting file from storage:", storageError);
+          }
+        }
+      } catch (storageErr) {
+        console.warn("Exception when deleting from storage:", storageErr);
+      }
+      
+      // Delete the dataset record itself
+      const { error: deleteError } = await supabase
+        .from('datasets')
+        .delete()
+        .eq('id', datasetId);
+        
+      if (deleteError) {
+        throw new Error(deleteError.message || 'Failed to delete dataset');
+      }
+      
+      // Clear any cached data for this dataset
+      try {
+        sessionStorage.removeItem(`dataset_${datasetId}`);
+      } catch (cacheErr) {
+        console.warn("Error clearing dataset cache:", cacheErr);
       }
       
       toast.success("Dataset deleted successfully");
       
-      // Important: Close the dialog first to prevent UI blocking
+      // Close the dialog first
       onOpenChange(false);
       
-      // Dispatch custom event for dataset deletion with the datasetId in the detail
+      // Dispatch custom event for dataset deletion
       window.dispatchEvent(new CustomEvent('dataset-deleted', {
         detail: { datasetId }
       }));
       
-      // Call the onDeleted callback to ensure parent components refresh their data
+      // Call the onDeleted callback after a short delay
       setTimeout(() => {
         onDeleted();
       }, 300);
@@ -53,7 +103,6 @@ const DeleteDatasetDialog: React.FC<DeleteDatasetDialogProps> = ({
     } catch (error) {
       console.error("Failed to delete dataset:", error);
       toast.error("Failed to delete dataset. Please try again.");
-      onOpenChange(false);
     } finally {
       setIsDeleting(false);
     }

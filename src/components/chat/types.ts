@@ -17,9 +17,9 @@ export interface Message {
   isProcessing?: boolean;
   queryId?: string;
   thinking?: string;
-  visualization?: QueryResult;  // Added for visualization support
-  visualizationType?: VisualizationType; // Added for chart type
-  chartData?: any[]; // Added for direct chart data
+  visualization?: QueryResult;  // For visualization support
+  visualizationType?: VisualizationType; // For chart type
+  chartData?: any[]; // For direct chart data
 }
 
 export type AIModelType = 'openai' | 'anthropic';
