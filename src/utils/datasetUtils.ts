@@ -112,7 +112,7 @@ export const datasetUtils = {
     // Method 1: Try loading from dataset_data table if it exists
     try {
       console.log("Attempting to fetch data from dataset_data table");
-      await ensureDatasetDataTableExists();
+      await this.ensureDatasetDataTableExists();
       
       const { data: tableData, error: tableError } = await supabase
         .from('dataset_data')
