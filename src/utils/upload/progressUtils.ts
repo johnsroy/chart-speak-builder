@@ -25,7 +25,7 @@ export const simulateProgress = (
       // Move slowly to 90% to simulate upload
       if (newProgress < 90) {
         // Larger files should progress more slowly
-        const increment = totalSize > 5 * 1024 * 1024 ? 1 : 3;
+        const increment = totalSize > 5 * 1024 * 1024 ? 0.5 : 1;
         const updatedProgress = Math.min(90, newProgress + increment);
         lastProgress = updatedProgress;
         return updatedProgress;
@@ -37,7 +37,7 @@ export const simulateProgress = (
     if (lastProgress >= 90) {
       clearInterval(progressInterval);
     }
-  }, 500); // Slower updates for more stability
+  }, 800); // Slower updates for more stability
   
   return progressInterval;
 };

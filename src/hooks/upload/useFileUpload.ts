@@ -49,15 +49,16 @@ export const useFileUpload = (): UseFileUploadResult => {
     setState(prevState => ({
       ...prevState,
       isUploading: true,
-      uploadProgress: 0,
+      uploadProgress: 10,
       uploadError: null,
       overwriteInProgress: false,
     }));
 
-    let lastProgress = 0;
+    let lastProgress = 10;
     const progressInterval = setInterval(() => {
       setState(prevState => {
-        const newProgress = Math.min(85, prevState.uploadProgress + (Math.random() * 3) + 1);
+        const increment = Math.random() * 2 + 0.5;
+        const newProgress = Math.min(85, prevState.uploadProgress + increment);
         const finalProgress = Math.max(newProgress, lastProgress);
         lastProgress = finalProgress;
         return {
@@ -65,7 +66,7 @@ export const useFileUpload = (): UseFileUploadResult => {
           uploadProgress: finalProgress
         };
       });
-    }, 500);
+    }, 800);
 
     try {
       const fileExt = file.name.split('.').pop();
@@ -105,15 +106,22 @@ export const useFileUpload = (): UseFileUploadResult => {
         datasetDescription,
         user_id,
         (progress) => {
-          setState(prevState => ({ 
-            ...prevState, 
-            uploadProgress: Math.max(progress, prevState.uploadProgress)
-          }));
+          if (progress > lastProgress) {
+            lastProgress = progress;
+            setState(prevState => ({ 
+              ...prevState, 
+              uploadProgress: progress
+            }));
+          }
         },
         { column_schema: state.schemaPreview }
       );
 
       clearInterval(progressInterval);
+
+      if (!uploadResult || !uploadResult.id) {
+        throw new Error("Upload completed but returned invalid dataset data");
+      }
 
       toast.success("Dataset uploaded successfully", {
         description: "Your dataset is now ready for analysis."
@@ -142,7 +150,11 @@ export const useFileUpload = (): UseFileUploadResult => {
       if (uploadError instanceof Error) {
         errorMessage = uploadError.message;
       } else if (typeof uploadError === 'object') {
-        errorMessage = JSON.stringify(uploadError);
+        try {
+          errorMessage = JSON.stringify(uploadError);
+        } catch (e) {
+          errorMessage = "Could not parse error object";
+        }
       }
       
       toast.error("Upload failed", {

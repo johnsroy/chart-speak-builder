@@ -20,9 +20,9 @@ export const uploadFileToStorage = async (
   try {
     console.log(`Attempting to upload file to: datasets/${filePath}`);
     
-    // Set the chunk size to 100MB for better upload performance with large files
-    const CHUNK_SIZE = 100 * 1024 * 1024; // 100MB chunks
-    const MAX_DIRECT_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB threshold for direct upload
+    // Set the chunk size to 50MB for better upload performance with large files
+    const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks
+    const MAX_DIRECT_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB threshold for direct upload
     
     // First ensure we have proper permissions by creating bucket and policies
     await ensureStorageBuckets();
@@ -41,7 +41,23 @@ export const uploadFileToStorage = async (
       }
     } catch (uploadError) {
       console.error('File upload error:', uploadError);
-      throw new Error(`Upload failed: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
+      
+      // Try direct upload as fallback regardless of file size
+      try {
+        console.log('Trying direct upload as fallback');
+        const { data, error } = await supabase.storage
+          .from('datasets')
+          .upload(filePath, file, { upsert: true });
+          
+        if (error) {
+          throw new Error(`Direct upload fallback failed: ${error.message}`);
+        }
+        
+        uploadData = data;
+      } catch (directError) {
+        console.error('Direct upload fallback failed:', directError);
+        throw new Error(`Upload failed: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
+      }
     }
     
     // Create a fallback result if uploadData is missing or incomplete

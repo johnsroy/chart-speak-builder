@@ -25,7 +25,7 @@ export const createDatasetRecord = async (
   // Prepare dataset entry, handling optional fields
   const datasetEntry: any = {
     name: name,
-    description: description,
+    description: description || '',
     file_name: file.name,
     file_size: file.size,
     storage_path: storagePath,
@@ -115,11 +115,24 @@ export const createDatasetRecord = async (
         const { data: minimalData, error: minimalError } = await supabase
           .from('datasets')
           .insert([minimalDataset])
-          .select('id')
+          .select('*')
           .single();
           
         if (minimalError) {
-          throw new Error(`Minimal dataset creation failed: ${minimalError.message}`);
+          console.error("Minimal dataset creation failed:", minimalError);
+          
+          // If we still get an error, try one more time with maybeSingle
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('datasets')
+            .insert([minimalDataset])
+            .select('*')
+            .maybeSingle();
+            
+          if (fallbackError || !fallbackData) {
+            throw new Error(`Minimal dataset creation failed: ${fallbackError?.message || 'No data returned'}`);
+          }
+          
+          return fallbackData as Dataset;
         }
         
         return minimalData as Dataset;
@@ -130,7 +143,7 @@ export const createDatasetRecord = async (
         } catch (cleanupError) {
           console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
         }
-        throw new Error(`Could not save dataset metadata: ${datasetError.message}`);
+        throw new Error(`Could not save dataset metadata: ${fallbackError instanceof Error ? fallbackError.message : JSON.stringify(fallbackError)}`);
       }
     }
     
@@ -166,13 +179,12 @@ export const createDatasetRecord = async (
       const { data, error } = await supabase
         .from('datasets')
         .insert([minimalDataset])
-        .select('id')
-        .single();
+        .select('*')
+        .maybeSingle();
         
-      if (error) {
+      if (error || !data) {
         console.error("Final fallback creation error:", error);
-        const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-        throw new Error(`Could not create dataset record: ${errorMessage}`);
+        throw new Error(`Could not create dataset record: ${error?.message || 'No data returned'}`);
       }
       
       return data as Dataset;

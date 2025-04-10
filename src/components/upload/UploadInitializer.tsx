@@ -86,9 +86,12 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
         // If all approaches failed or succeeded, we proceed anyway
         if (!initialized) {
           console.warn("All storage initialization approaches failed but proceeding anyway");
+          // Still set as verified so the app can continue
+          setBucketsVerified(true);
+        } else {
+          setBucketsVerified(true);
         }
         
-        setBucketsVerified(true);
         toast.success("Storage connected", {
           description: "Ready for file uploads"
         });
