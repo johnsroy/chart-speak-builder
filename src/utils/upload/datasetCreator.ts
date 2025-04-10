@@ -40,68 +40,125 @@ export const createDatasetRecord = async (
     datasetEntry.column_schema = columnSchema;
   }
   
-  // Check if the storage_url column exists before trying to use it
+  // Try to add storageUrl but don't worry if it fails
   try {
-    const { error: urlColumnError } = await supabase.rpc('check_column_exists', { 
-      table_name: 'datasets',
-      column_name: 'storage_url'
-    });
-    
-    // If the function exists and doesn't return an error, add the storage_url field
-    if (!urlColumnError) {
-      datasetEntry.storage_url = storageUrl;
-    } else {
-      console.warn("Couldn't verify storage_url column, but continuing without it:", urlColumnError);
-    }
+    datasetEntry.storage_url = storageUrl;
   } catch (error) {
-    console.warn("Unable to check if storage_url column exists:", error);
-    // Continue without adding the field
+    console.warn("Could not add storage_url field, but continuing without it:", error);
   }
   
-  // Check if the is_large_file column exists before trying to use it
+  // Try to add isLargeFile but don't worry if it fails
   try {
-    const { error } = await supabase.rpc('check_column_exists', { 
-      table_name: 'datasets',
-      column_name: 'is_large_file'
-    });
-    
-    // If the function doesn't exist or returns an error, default behavior is to not include the field
-    if (!error && isLargeFile !== undefined) {
+    if (isLargeFile !== undefined) {
       datasetEntry.is_large_file = isLargeFile;
     }
   } catch (error) {
-    console.warn("Unable to check if is_large_file column exists:", error);
-    // Continue without adding the field
+    console.warn("Could not add is_large_file field, but continuing without it:", error);
   }
   
-  // Create dataset entry
-  const { data: datasetData, error: datasetError } = await supabase
-    .from('datasets')
-    .insert([datasetEntry])
-    .select('id')
-    .single();
-    
-  if (datasetError) {
-    // Clean up storage if metadata insertion fails
-    try {
-      await supabase.storage.from('datasets').remove([storagePath]);
-    } catch (cleanupError) {
-      console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
+  // Create dataset entry - use insert instead of upsert to avoid conflicts
+  console.log("Creating dataset record with data:", {
+    ...datasetEntry,
+    storage_url: storageUrl ? "Present" : "Missing",
+  });
+  
+  try {
+    const { data: datasetData, error: datasetError } = await supabase
+      .from('datasets')
+      .insert([datasetEntry])
+      .select('id')
+      .single();
+      
+    if (datasetError) {
+      console.error("Dataset creation error:", datasetError);
+      
+      // If storage_url column doesn't exist, try again without it
+      if (datasetError.message.includes('storage_url')) {
+        console.log("Retrying without storage_url field");
+        delete datasetEntry.storage_url;
+        
+        const { data: retryData, error: retryError } = await supabase
+          .from('datasets')
+          .insert([datasetEntry])
+          .select('id')
+          .single();
+          
+        if (retryError) {
+          // Clean up storage if metadata insertion fails again
+          try {
+            await supabase.storage.from('datasets').remove([storagePath]);
+          } catch (cleanupError) {
+            console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
+          }
+          throw new Error(`Could not save dataset metadata: ${retryError.message}`);
+        }
+        
+        // If retry succeeded, use that result
+        const { data: fullDataset, error: getDatasetError } = await supabase
+          .from('datasets')
+          .select('*')
+          .eq('id', retryData.id)
+          .single();
+          
+        if (getDatasetError) {
+          console.warn("Could not fetch complete dataset after creation:", getDatasetError);
+          return retryData as Dataset;
+        }
+        
+        return fullDataset as Dataset;
+      }
+      
+      // For other errors, clean up storage and throw
+      try {
+        await supabase.storage.from('datasets').remove([storagePath]);
+      } catch (cleanupError) {
+        console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
+      }
+      throw new Error(`Could not save dataset metadata: ${datasetError.message}`);
     }
-    throw new Error(`Could not save dataset metadata: ${datasetError.message}`);
-  }
-  
-  // Return complete dataset object
-  const { data: fullDataset, error: getDatasetError } = await supabase
-    .from('datasets')
-    .select('*')
-    .eq('id', datasetData.id)
-    .single();
     
-  if (getDatasetError) {
-    console.warn("Could not fetch complete dataset after creation:", getDatasetError);
-    return datasetData as Dataset;
+    // Return complete dataset object
+    const { data: fullDataset, error: getDatasetError } = await supabase
+      .from('datasets')
+      .select('*')
+      .eq('id', datasetData.id)
+      .single();
+      
+    if (getDatasetError) {
+      console.warn("Could not fetch complete dataset after creation:", getDatasetError);
+      return datasetData as Dataset;
+    }
+    
+    return fullDataset as Dataset;
+  } catch (error) {
+    console.error("Exception creating dataset:", error);
+    
+    // Final fallback - create a minimal dataset record
+    try {
+      const minimalDataset = {
+        name: name,
+        description: description || "",
+        file_name: file.name,
+        file_size: file.size,
+        storage_path: storagePath,
+        storage_type: 'datasets',
+        user_id: userId,
+      };
+      
+      const { data, error } = await supabase
+        .from('datasets')
+        .insert([minimalDataset])
+        .select('id')
+        .single();
+        
+      if (error) {
+        throw error;
+      }
+      
+      return data as Dataset;
+    } catch (finalError) {
+      console.error("Final attempt to create dataset failed:", finalError);
+      throw new Error(`Could not create dataset record: ${finalError instanceof Error ? finalError.message : String(finalError)}`);
+    }
   }
-  
-  return fullDataset as Dataset;
 };

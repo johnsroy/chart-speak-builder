@@ -48,18 +48,37 @@ const createStorageBuckets = async (): Promise<boolean> => {
   try {
     console.log("Creating storage buckets using edge function...");
     
-    const { data, error } = await supabase.functions.invoke('storage-setup', {
-      method: 'POST',
-      body: { action: 'create-buckets' }
-    });
-    
-    if (error) {
-      console.error("Error calling storage-setup function:", error);
-      return false;
+    // Try the direct API method first
+    try {
+      const { createStorageBucketsDirect } = await import('@/utils/storageUtils');
+      const success = await createStorageBucketsDirect();
+      
+      if (success) {
+        console.log("Storage buckets created directly");
+        return true;
+      }
+    } catch (directError) {
+      console.warn("Direct bucket creation failed:", directError);
     }
     
-    console.log("Storage buckets created:", data);
-    return data?.success || false;
+    // Fall back to edge function
+    try {
+      const { data, error } = await supabase.functions.invoke('storage-setup', {
+        method: 'POST',
+        body: { action: 'create-buckets' }
+      });
+      
+      if (error) {
+        console.error("Error calling storage-setup function:", error);
+        return false;
+      }
+      
+      console.log("Storage buckets created via edge function:", data);
+      return data?.success || false;
+    } catch (functionError) {
+      console.error("Error with edge function approach:", functionError);
+      return false;
+    }
   } catch (error) {
     console.error("Error creating storage buckets:", error);
     return false;
@@ -120,12 +139,70 @@ export const performUpload = async (
     const safeFileName = `${name.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.${fileExt}`;
     const filePath = `uploads/${validUserId}/${safeFileName}`;
     
-    // Upload file to storage
-    const { storageUrl, storagePath } = await uploadFileToStorage(
-      file, 
-      filePath, 
-      onProgress
-    );
+    // Upload file to storage - use more retries for larger files
+    const maxRetries = file.size > 50 * 1024 * 1024 ? 3 : 1;
+    let uploadError = null;
+    let storageResult = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        storageResult = await uploadFileToStorage(
+          file, 
+          filePath, 
+          onProgress
+        );
+        
+        // If we got here, upload succeeded
+        uploadError = null;
+        break;
+      } catch (error) {
+        console.warn(`Upload attempt ${attempt + 1}/${maxRetries} failed:`, error);
+        uploadError = error;
+        
+        // Add short delay between retries
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+    
+    // If all retries failed, try one last attempt with a fallback approach
+    if (uploadError) {
+      try {
+        console.log("All normal upload attempts failed, trying fallback approach");
+        
+        // Force bucket creation first
+        const { createStorageBucketsDirect } = await import('@/utils/storageUtils');
+        await createStorageBucketsDirect();
+        
+        // Try a direct upload as last resort
+        const uploadResult = await supabase.storage
+          .from('datasets')
+          .upload(filePath, file, { 
+            upsert: true,
+            cacheControl: '3600'
+          });
+          
+        if (uploadResult.error) {
+          console.error("Final fallback upload failed:", uploadResult.error);
+          throw uploadError; // Throw the original error
+        }
+        
+        // Create a URL manually
+        const supabaseUrl = 'https://rehadpogugijylybwmoe.supabase.co';
+        storageResult = {
+          storageUrl: `${supabaseUrl}/storage/v1/object/public/datasets/${filePath}`,
+          storagePath: filePath
+        };
+      } catch (fallbackError) {
+        console.error("Fallback upload approach failed:", fallbackError);
+        throw uploadError; // Throw the original error
+      }
+    }
+    
+    if (!storageResult) {
+      throw new Error("Upload failed: Could not upload file to storage");
+    }
     
     if (onProgress) {
       onProgress(90);
@@ -136,8 +213,8 @@ export const performUpload = async (
       name,
       description,
       file,
-      storagePath,
-      storageUrl,
+      storageResult.storagePath,
+      storageResult.storageUrl,
       validUserId,
       additionalProps.column_schema,
       file.size > 50 * 1024 * 1024

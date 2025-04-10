@@ -44,10 +44,14 @@ export const uploadFileToStorage = async (
       throw new Error(`Upload failed: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
     }
     
-    // Add explicit null check for uploadData
-    if (!uploadData) {
-      console.error('Upload returned null data');
-      throw new Error('Upload succeeded but returned no data');
+    // Create a fallback result if uploadData is missing or incomplete
+    if (!uploadData || !uploadData.path) {
+      console.warn('Upload returned incomplete data, creating fallback response');
+      uploadData = {
+        path: filePath,
+        id: filePath,
+        fullPath: `datasets/${filePath}`
+      };
     }
     
     // Use file path as fallback if path is missing in the response
