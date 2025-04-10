@@ -333,6 +333,15 @@ export const dataService = {
           console.warn("Could not clear dataset cache:", e);
         }
         
+        // Dispatch a single deletion event
+        try {
+          window.dispatchEvent(new CustomEvent('dataset-deleted', {
+            detail: { datasetId: id }
+          }));
+        } catch (eventError) {
+          console.warn("Could not dispatch deletion event:", eventError);
+        }
+        
         return true;
       } catch (clientError) {
         console.warn('Supabase client deletion failed, trying edge function:', clientError);

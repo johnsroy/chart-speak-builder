@@ -17,7 +17,15 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, adminLogin } = useAuth();
-  const { datasets, isLoading, loadDatasets, isRefreshing, hasError } = useDatasets();
+  const { 
+    datasets, 
+    isLoading, 
+    loadDatasets, 
+    isRefreshing, 
+    hasError, 
+    emptyStateConfirmed 
+  } = useDatasets();
+  
   const [filterType, setFilterType] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
@@ -74,6 +82,130 @@ const Dashboard = () => {
         return true;
       })
     : datasets;
+
+  const renderContent = () => {
+    if (isLoading && !emptyStateConfirmed) {
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => (
+            <Card key={i} className="glass-card animate-pulse">
+              <CardHeader>
+                <div className="h-5 bg-gray-700/50 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-700/30 rounded w-1/2 mt-2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-20 bg-gray-700/20 rounded"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      );
+    }
+
+    if (hasError) {
+      return (
+        <div className="text-center py-12">
+          <WifiOff className="h-12 w-12 mx-auto mb-4 text-red-400" />
+          <h3 className="text-xl font-medium mb-2">Network Connection Issue</h3>
+          <p className="text-gray-400 mb-6 max-w-md mx-auto">
+            Unable to load datasets due to connection issues. Will retry automatically.
+          </p>
+          <Button 
+            onClick={handleRefreshDatasets} 
+            disabled={isRefreshing}
+            className="bg-purple-700 hover:bg-purple-600"
+          >
+            {isRefreshing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Retry Now
+          </Button>
+        </div>
+      );
+    }
+
+    if (filteredDatasets && filteredDatasets.length > 0) {
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredDatasets.map(dataset => (
+            <Card key={dataset.id} className="glass-card hover:bg-white/5 transition-colors cursor-pointer overflow-hidden" onClick={() => navigate(`/visualize/${dataset.id}`)}>
+              <CardHeader className="relative pb-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
+                    <Button variant="ghost" size="icon" className="absolute right-4 top-4">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuLabel>Options</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={e => {
+                      e.stopPropagation();
+                      navigate(`/visualize/${dataset.id}`);
+                    }}>
+                      <BarChart2 className="mr-2 h-4 w-4" />
+                      Visualize
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={e => handleDeleteClick(dataset, e)} className="text-red-500">
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                
+                <CardTitle className="text-base truncate pr-10 max-w-full" title={dataset.name}>
+                  {dataset.name}
+                </CardTitle>
+                <CardDescription className="truncate text-xs max-w-full" title={dataset.file_name}>
+                  {dataset.file_name} • {(dataset.file_size / (1024 * 1024)).toFixed(2)} MB
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between">
+                  <div className="flex space-x-2 mb-2">
+                    <div className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-xs">
+                      {dataset.file_name.split('.').pop()?.toUpperCase()}
+                    </div>
+                    {dataset.row_count > 0 && (
+                      <div className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-xs">
+                        {dataset.row_count.toLocaleString()} rows
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <div className="w-8 h-8 rounded-full bg-purple-600/50 flex items-center justify-center">
+                    <BarChart2 className="h-4 w-4" />
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-blue-600/50 flex items-center justify-center">
+                    <LineChart className="h-4 w-4" />
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-green-600/50 flex items-center justify-center">
+                    <PieChart className="h-4 w-4" />
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="truncate pt-0">
+                <p className="text-xs text-gray-400">
+                  Last updated {formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}
+                </p>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      );
+    }
+    
+    // Empty state
+    return (
+      <div className="text-center py-12">
+        <Database className="h-12 w-12 mx-auto mb-4 text-gray-500" />
+        <h3 className="text-xl font-medium mb-2">No datasets found</h3>
+        <p className="text-gray-400 mb-6 max-w-md mx-auto">
+          Get started by uploading a dataset from your computer or connecting to an external data source.
+        </p>
+        <Button onClick={() => navigate("/upload")}>Upload a Dataset</Button>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-950 via-purple-900 to-blue-900 text-white">
@@ -150,119 +282,12 @@ const Dashboard = () => {
           </TabsList>
           
           <TabsContent value="all" className="space-y-4">
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3].map(i => (
-                  <Card key={i} className="glass-card animate-pulse">
-                    <CardHeader>
-                      <div className="h-5 bg-gray-700/50 rounded w-3/4"></div>
-                      <div className="h-4 bg-gray-700/30 rounded w-1/2 mt-2"></div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-20 bg-gray-700/20 rounded"></div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : hasError ? (
-              <div className="text-center py-12">
-                <WifiOff className="h-12 w-12 mx-auto mb-4 text-red-400" />
-                <h3 className="text-xl font-medium mb-2">Network Connection Issue</h3>
-                <p className="text-gray-400 mb-6 max-w-md mx-auto">
-                  Unable to load datasets due to connection issues. Will retry automatically.
-                </p>
-                <Button 
-                  onClick={handleRefreshDatasets} 
-                  disabled={isRefreshing}
-                  className="bg-purple-700 hover:bg-purple-600"
-                >
-                  {isRefreshing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                  Retry Now
-                </Button>
-              </div>
-            ) : filteredDatasets && filteredDatasets.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDatasets.map(dataset => (
-                  <Card key={dataset.id} className="glass-card hover:bg-white/5 transition-colors cursor-pointer overflow-hidden" onClick={() => navigate(`/visualize/${dataset.id}`)}>
-                    <CardHeader className="relative pb-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="absolute right-4 top-4">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuLabel>Options</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={e => {
-                            e.stopPropagation();
-                            navigate(`/visualize/${dataset.id}`);
-                          }}>
-                            <BarChart2 className="mr-2 h-4 w-4" />
-                            Visualize
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={e => handleDeleteClick(dataset, e)} className="text-red-500">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      
-                      <CardTitle className="text-base truncate pr-10 max-w-full" title={dataset.name}>
-                        {dataset.name}
-                      </CardTitle>
-                      <CardDescription className="truncate text-xs max-w-full" title={dataset.file_name}>
-                        {dataset.file_name} • {(dataset.file_size / (1024 * 1024)).toFixed(2)} MB
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex justify-between">
-                        <div className="flex space-x-2 mb-2">
-                          <div className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-xs">
-                            {dataset.file_name.split('.').pop()?.toUpperCase()}
-                          </div>
-                          {dataset.row_count > 0 && (
-                            <div className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-xs">
-                              {dataset.row_count.toLocaleString()} rows
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mt-4">
-                        <div className="w-8 h-8 rounded-full bg-purple-600/50 flex items-center justify-center">
-                          <BarChart2 className="h-4 w-4" />
-                        </div>
-                        <div className="w-8 h-8 rounded-full bg-blue-600/50 flex items-center justify-center">
-                          <LineChart className="h-4 w-4" />
-                        </div>
-                        <div className="w-8 h-8 rounded-full bg-green-600/50 flex items-center justify-center">
-                          <PieChart className="h-4 w-4" />
-                        </div>
-                      </div>
-                    </CardContent>
-                    <CardFooter className="truncate pt-0">
-                      <p className="text-xs text-gray-400">
-                        Last updated {formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}
-                      </p>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <Database className="h-12 w-12 mx-auto mb-4 text-gray-500" />
-                <h3 className="text-xl font-medium mb-2">No datasets found</h3>
-                <p className="text-gray-400 mb-6 max-w-md mx-auto">
-                  Get started by uploading a dataset from your computer or connecting to an external data source.
-                </p>
-                <Button onClick={() => navigate("/upload")}>Upload a Dataset</Button>
-              </div>
-            )}
+            {renderContent()}
           </TabsContent>
 
           {['csv', 'excel', 'json'].map(type => (
             <TabsContent key={type} value={type} className="space-y-4">
-              {/* Content is shared with the "all" tab through the filteredDatasets */}
+              {/* Content is shared with the "all" tab through renderContent() */}
             </TabsContent>
           ))}
         </Tabs>
@@ -282,4 +307,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-

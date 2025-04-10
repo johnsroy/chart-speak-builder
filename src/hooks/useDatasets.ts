@@ -16,7 +16,9 @@ export const useDatasets = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [emptyStateConfirmed, setEmptyStateConfirmed] = useState(false);
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialLoadDoneRef = useRef(false);
   const maxRetries = 2;
   
   const { toast: hookToast } = useToast();
@@ -33,6 +35,12 @@ export const useDatasets = () => {
     // Don't try to load datasets if already refreshing
     if (isRefreshing) return;
     
+    // Don't retry if we've confirmed there are no datasets (unless forced)
+    if (emptyStateConfirmed && !forceRefresh) {
+      setIsLoading(false);
+      return;
+    }
+    
     // Clear any existing fetch timer
     clearFetchTimer();
     
@@ -46,21 +54,33 @@ export const useDatasets = () => {
         // Clear state before refreshing
         setDatasets([]);
         setUniqueDatasets([]);
+        setEmptyStateConfirmed(false);
       }
       
       const data = await dataService.getDatasets();
       console.log(`Fetched ${data.length} datasets.`);
       
-      if (data.length === 0 && retryCount < maxRetries) {
-        console.log(`No datasets found, retrying... (${retryCount + 1}/${maxRetries})`);
-        setRetryCount(prev => prev + 1);
+      // If there are no datasets after initial load or max retries, mark as confirmed empty state
+      if (data.length === 0) {
+        if (initialLoadDoneRef.current || retryCount >= maxRetries - 1) {
+          console.log("No datasets found after retries, marking empty state as confirmed");
+          setEmptyStateConfirmed(true);
+        }
         
-        // Add a reasonable delay before retrying
-        fetchTimerRef.current = setTimeout(() => {
-          setIsRefreshing(false);
-          loadDatasets();
-        }, 2000); // Increased delay to reduce fetch frequency
-        return;
+        if (retryCount < maxRetries && !initialLoadDoneRef.current) {
+          console.log(`No datasets found, retrying... (${retryCount + 1}/${maxRetries})`);
+          setRetryCount(prev => prev + 1);
+          
+          // Add a reasonable delay before retrying
+          fetchTimerRef.current = setTimeout(() => {
+            setIsRefreshing(false);
+            loadDatasets();
+          }, 2000); // Increased delay to reduce fetch frequency
+          return;
+        }
+      } else {
+        // If we found datasets, reset empty state flag
+        setEmptyStateConfirmed(false);
       }
       
       const filtered = getUniqueDatasetsByFilename(data);
@@ -113,7 +133,7 @@ export const useDatasets = () => {
         }
       };
       
-      if (retryCount < maxRetries) {
+      if (retryCount < maxRetries && !initialLoadDoneRef.current) {
         console.log(`Error loading datasets, retrying... (${retryCount + 1}/${maxRetries})`);
         setRetryCount(prev => prev + 1);
         
@@ -128,21 +148,24 @@ export const useDatasets = () => {
         }
       } else {
         showErrorToast();
-        // After max retries, set a longer timeout before trying again
+        // After max retries, set a longer timeout before trying again and mark as confirmed empty
+        setEmptyStateConfirmed(true);
         fetchTimerRef.current = setTimeout(() => {
           setRetryCount(0);
           setIsRefreshing(false);
+          setEmptyStateConfirmed(false); // Reset for next try
           loadDatasets();
-        }, 10000); // 10 seconds before trying again after max retries
+        }, 30000); // 30 seconds before trying again after max retries
       }
     } finally {
+      initialLoadDoneRef.current = true;
       setIsLoading(false);
       // Allow a minimum time between refreshes
       setTimeout(() => {
         setIsRefreshing(false);
       }, 1000);
     }
-  }, [selectedDatasetId, hookToast, retryCount, maxRetries, isAuthenticated, isRefreshing]);
+  }, [selectedDatasetId, hookToast, retryCount, maxRetries, isAuthenticated, isRefreshing, emptyStateConfirmed]);
 
   // Clean up timers when component unmounts
   useEffect(() => {
@@ -279,6 +302,7 @@ export const useDatasets = () => {
     if (!isRefreshing) {
       clearFetchTimer();
       setRetryCount(0);
+      setEmptyStateConfirmed(false);
       loadDatasets(true);
     }
   }, [loadDatasets, isRefreshing]);
@@ -293,7 +317,7 @@ export const useDatasets = () => {
     forceRefresh,
     deleteDataset,
     isRefreshing,
-    hasError
+    hasError,
+    emptyStateConfirmed
   };
 };
-

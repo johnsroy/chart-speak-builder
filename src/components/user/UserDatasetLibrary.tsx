@@ -26,6 +26,7 @@ const UserDatasetLibrary = () => {
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
+  const [loadAttemptCompleted, setLoadAttemptCompleted] = useState(false);
   
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -53,6 +54,7 @@ const UserDatasetLibrary = () => {
       toast.error('Could not load your datasets');
     } finally {
       setIsLoading(false);
+      setLoadAttemptCompleted(true);
     }
   };
   
@@ -81,7 +83,7 @@ const UserDatasetLibrary = () => {
     navigate(`/visualize/${datasetId}`);
   };
 
-  if (isLoading) {
+  if (isLoading && !loadAttemptCompleted) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -231,4 +233,3 @@ const UserDatasetLibrary = () => {
 };
 
 export default UserDatasetLibrary;
-
