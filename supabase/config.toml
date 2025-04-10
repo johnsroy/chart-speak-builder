@@ -3,3 +3,6 @@ project_id = "rehadpogugijylybwmoe"
 
 [functions.storage-setup]
 verify_jwt = false
+
+[functions.storage-manager]
+verify_jwt = false

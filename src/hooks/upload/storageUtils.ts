@@ -61,6 +61,18 @@ export const createStorageBucketIfNeeded = async (): Promise<boolean> => {
     
     if (!data?.success) {
       console.warn("Storage setup function did not report success:", data);
+      
+      // Try direct bucket creation as a fallback
+      const { createStorageBucketsDirect } = await import('@/utils/storageUtils');
+      const directSuccess = await createStorageBucketsDirect();
+      
+      if (directSuccess) {
+        toast.success("Storage initialized successfully (direct method)", {
+          description: "The application is ready to handle file uploads"
+        });
+        return true;
+      }
+      
       return false;
     }
     
