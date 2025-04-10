@@ -115,13 +115,14 @@ async function createBuckets(supabase, corsHeaders) {
     const existingBucketNames = (existingBuckets || []).map(b => b.name);
     console.log("Existing bucket names:", existingBucketNames);
 
-    // Create each required bucket if it doesn't exist
+    // Create each required bucket if it doesn't exist - with fixed options
     for (const bucketName of requiredBuckets) {
       if (!existingBucketNames.includes(bucketName)) {
         try {
           console.log(`Creating bucket: ${bucketName}`);
+          // Only pass the minimal required options to avoid "object too large" errors
           const { data, error } = await supabase.storage.createBucket(bucketName, {
-            public: true,  // Make buckets public
+            public: true,
           });
 
           results.push({

@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { toast } from "sonner";
 import { Dataset, StorageStats } from '@/services/types/datasetTypes';
@@ -49,9 +50,9 @@ export const createStorageBuckets = async (): Promise<boolean> => {
     for (const bucketName of requiredBuckets) {
       if (!existingBuckets.includes(bucketName)) {
         try {
+          // Simplify bucket creation options to avoid "object too large" errors
           const { error } = await supabase.storage.createBucket(bucketName, {
-            public: true,
-            fileSizeLimit: 100 * 1024 * 1024 // 100MB limit
+            public: true
           });
           
           results.push({
@@ -116,17 +117,7 @@ export const setupStorageBuckets = async () => {
   try {
     console.log("Setting up storage buckets...");
     
-    // Try direct API approach first
-    const success = await createStorageBuckets();
-    
-    if (success) {
-      return {
-        success,
-        message: "Storage buckets created via API"
-      };
-    }
-    
-    // If direct creation fails, try edge function as fallback
+    // Try edge function approach first
     try {
       const result = await callStorageManager('force-create-buckets');
       
@@ -135,6 +126,16 @@ export const setupStorageBuckets = async () => {
       }
     } catch (edgeError) {
       console.warn("Edge function approach failed:", edgeError);
+    }
+    
+    // If edge function fails, try direct API approach as fallback
+    const success = await createStorageBuckets();
+    
+    if (success) {
+      return {
+        success,
+        message: "Storage buckets created via API"
+      };
     }
     
     console.log("All storage setup attempts failed. Proceeding without storage initialization.");
@@ -263,25 +264,42 @@ export const callStorageManager = async (action: string, options: any = {}) => {
   try {
     console.log(`Calling storage manager: ${action}`);
     
-    // Prepare the request body with proper JSON
-    const body = { action, ...options };
+    // Handle request timeout
+    const timeoutMs = 10000; // 10 seconds
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
-    // Make the request to the edge function with proper headers
-    const { data, error } = await supabase.functions.invoke('storage-manager', {
-      method: 'POST',
-      body, 
-      headers: {
-        'Content-Type': 'application/json'
+    try {
+      // Make the request to the edge function with proper headers
+      const { data, error } = await supabase.functions.invoke('storage-manager', {
+        method: 'POST',
+        body: { action, ...options },
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (error) {
+        console.error(`Storage manager ${action} failed:`, error);
+        return { success: false, message: error.message || "Unknown error" };
       }
-    });
-    
-    if (error) {
-      console.error(`Storage manager ${action} failed:`, error);
-      return { success: false, message: error.message || "Unknown error" };
+      
+      console.log(`Storage manager ${action} result:`, data);
+      return data || { success: true };
+    } catch (invokeError) {
+      clearTimeout(timeoutId);
+      
+      // Handle abort error specifically
+      if (invokeError.name === 'AbortError') {
+        console.error(`Storage manager ${action} timed out after ${timeoutMs}ms`);
+        return { success: false, message: "Request timed out" };
+      }
+      
+      throw invokeError;
     }
-    
-    console.log(`Storage manager ${action} result:`, data);
-    return data || { success: true };
   } catch (error) {
     console.error(`Storage manager ${action} failed:`, error);
     return { success: false, message: error instanceof Error ? error.message : "Unknown error" };

@@ -40,28 +40,8 @@ const initializeApp = async () => {
         console.warn("Error importing storage utilities:", importError);
       }
       
-      // If edge function failed, try direct API approach
-      try {
-        const { verifyStorageBuckets, createStorageBuckets } = await import('@/utils/storageUtils');
-        
-        // Check if buckets already exist
-        const bucketsExist = await verifyStorageBuckets().catch(() => false);
-        
-        if (bucketsExist) {
-          console.log("All required storage buckets already exist");
-        } else {
-          // Try direct bucket creation
-          const success = await createStorageBuckets().catch(() => false);
-          
-          if (success) {
-            console.log("Successfully created storage buckets via API");
-          } else {
-            console.warn("Could not create storage buckets, but continuing...");
-          }
-        }
-      } catch (storageError) {
-        console.warn("Error during storage setup:", storageError);
-      }
+      // Skip direct API approach as it's failing with "object too large"
+      // Just continue with the app initialization
       
       // Try to set up admin user regardless of storage setup
       try {
@@ -93,7 +73,7 @@ const initializeApp = async () => {
 };
 
 // Run initialization with retry mechanism
-const performInitialization = async (retries = 3, delay = 1000) => {
+const performInitialization = async (retries = 2, delay = 2000) => {
   let attempt = 0;
   
   while (attempt < retries) {
@@ -127,7 +107,7 @@ if (typeof window !== 'undefined') {
     performInitialization().catch(err => {
       console.warn("App initialization had some issues, but we'll continue:", err);
     });
-  }, 1000);
+  }, 2000);
 }
 
 // Expose these functions from the imported utilities to avoid breaking existing code
