@@ -73,6 +73,14 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
 
   // Determine if any operation is in progress that should disable UI
   const operationInProgress = isUploading || overwriteInProgress;
+  
+  // Format file size for display
+  const formatFileSize = (bytes: number) => {
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    if (bytes === 0) return '0 Byte';
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + ' ' + sizes[i];
+  };
 
   return (
     <div className="glass-card p-6">
@@ -92,6 +100,11 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
         <p className="text-lg font-medium mb-2">
           {selectedFile ? selectedFile.name : 'Drag & Drop Your File'}
         </p>
+        {selectedFile && (
+          <p className="text-sm mb-2 text-slate-100">
+            {formatFileSize(selectedFile.size)}
+          </p>
+        )}
         <p className="text-sm mb-4 text-slate-100">Supported formats: CSV, Excel, JSON</p>
         <input 
           type="file" 
@@ -207,6 +220,13 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
               'Upload Dataset'
             )}
           </Button>
+          
+          {selectedFile && selectedFile.size > 50 * 1024 * 1024 && !operationInProgress && (
+            <p className="text-xs text-amber-400 mt-2">
+              <AlertCircle className="h-3 w-3 inline mr-1" />
+              Large file detected ({formatFileSize(selectedFile.size)}). Upload may take some time, please be patient.
+            </p>
+          )}
         </div>
       )}
 
@@ -236,12 +256,20 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
         </AlertDialogContent>
       </AlertDialog>
       
-      {overwriteInProgress && (
+      {(isUploading || overwriteInProgress) && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center z-50 animate-fadeIn">
           <div className="glass-card max-w-md w-full p-8 rounded-lg flex flex-col items-center">
             <Loader2 className="h-12 w-12 text-purple-400 animate-spin mb-4" />
-            <h3 className="text-xl font-bold mb-2">Processing File Overwrite</h3>
-            <p className="text-center mb-6">Please wait while we process your file replacement...</p>
+            <h3 className="text-xl font-bold mb-2">
+              {overwriteInProgress ? 'Processing File Overwrite' : 'Uploading Dataset'}
+            </h3>
+            <p className="text-center mb-6">
+              {overwriteInProgress 
+                ? 'Please wait while we process your file replacement...'
+                : selectedFile && selectedFile.size > 50 * 1024 * 1024
+                  ? 'Uploading large file. This may take several minutes...'
+                  : 'Please wait while we upload your file...'}
+            </p>
             <Progress value={uploadProgress} className="h-2 w-full" />
             <p className="text-sm text-white/70 mt-2">{uploadProgress}% complete</p>
           </div>

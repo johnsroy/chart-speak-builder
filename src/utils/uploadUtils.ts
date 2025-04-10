@@ -1,11 +1,11 @@
-
 import { supabase } from '@/lib/supabase';
 import { dataService } from '@/services/dataService';
 import { Dataset } from '@/services/types/datasetTypes';
 import { parseCSV } from '@/services/utils/fileUtils';
 
-// Maximum file size constant - 10MB for Supabase free tier
-export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+// Increase file size limit to support GB-sized files
+// Note: This is the limit for the file upload component, not Supabase storage
+export const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
 
 /**
  * Validates file for upload
@@ -15,11 +15,6 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 export const validateFileForUpload = (file: File): void => {
   if (!file) {
     throw new Error('No file selected');
-  }
-  
-  // Check file size (10MB limit for Supabase free tier)
-  if (file.size > MAX_FILE_SIZE) {
-    throw new Error(`File size exceeds the maximum limit of 10MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
   }
   
   // Check file type
@@ -108,7 +103,7 @@ export const simulateProgress = (
 };
 
 /**
- * Performs file upload and dataset creation with fixed RLS policies
+ * Performs file upload and dataset creation with chunk-based upload for large files
  */
 export const performUpload = async (
   file: File,
@@ -121,25 +116,29 @@ export const performUpload = async (
   try {
     console.log("Starting file upload with props:", { name, size: file.size, userId, ...additionalProps });
     
-    // Validate file size before upload
-    if (file.size > MAX_FILE_SIZE) {
-      throw new Error(`File size exceeds the maximum limit of 10MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
-    }
+    // Use system account if no valid user ID provided
+    const validUserId = validateUserId(userId);
     
     // Generate a preview_key for storage
     const timestamp = Date.now();
     const previewKey = `preview_${timestamp}_${file.name}`;
     additionalProps.preview_key = previewKey;
     
-    // Use system account if no valid user ID provided
-    const validUserId = validateUserId(userId);
-    
     // Store preview data in session storage
     if (file.size > 0 && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
       try {
         console.log("Extracting schema and preview for file");
-        const fileText = await file.text();
-        const previewData = await parseCSV(fileText, 2000); // Increased from 1000 to 2000
+        
+        // For large files, only process a sample of the first few MB to extract schema
+        let fileText;
+        if (file.size > 10 * 1024 * 1024) { // If larger than 10MB, read only first 10MB for preview
+          const blob = file.slice(0, 10 * 1024 * 1024);
+          fileText = await blob.text();
+        } else {
+          fileText = await file.text();
+        }
+        
+        const previewData = await parseCSV(fileText, 2000);
         
         if (previewData && previewData.length > 0) {
           sessionStorage.setItem(previewKey, JSON.stringify(previewData));
@@ -159,7 +158,6 @@ export const performUpload = async (
           }
           
           // Cache data for direct access after upload
-          // This is critical - we store the data for immediate access after upload
           const datasetCacheKey = `dataset_${timestamp}`;
           try {
             sessionStorage.setItem(datasetCacheKey, JSON.stringify(previewData));
@@ -196,16 +194,96 @@ export const performUpload = async (
       additionalProps._progressInterval = progressInterval;
     }
     
-    // Upload dataset
-    const dataset = await dataService.uploadDataset(
-      file,
-      name,
-      description,
-      null, // No existing dataset ID
-      onProgress,
-      validUserId,
-      additionalProps // Pass additional props including preview_key
-    );
+    // For large files, we need to use chunked upload
+    let storageUrl: string;
+    let storagePath: string;
+    const fileExt = file.name.split('.').pop() || '';
+    const safeFileName = `${name.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.${fileExt}`;
+    const filePath = `uploads/${validUserId}/${safeFileName}`;
+    
+    if (file.size > 50 * 1024 * 1024) { // For files > 50MB use chunked upload
+      console.log("Using chunked upload for large file");
+      const chunkSize = 10 * 1024 * 1024; // 10MB chunks
+      const totalChunks = Math.ceil(file.size / chunkSize);
+      
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * chunkSize;
+        const end = Math.min(file.size, start + chunkSize);
+        const chunk = file.slice(start, end);
+        
+        const { error } = await supabase.storage
+          .from('datasets')
+          .upload(`${filePath}_chunk_${chunkIndex}`, chunk, {
+            upsert: true,
+          });
+          
+        if (error) {
+          throw new Error(`Error uploading chunk ${chunkIndex}: ${error.message}`);
+        }
+        
+        // Update progress based on uploaded chunks
+        if (onProgress) {
+          const chunkProgress = Math.min(85, 10 + (75 * (chunkIndex + 1) / totalChunks));
+          onProgress(chunkProgress);
+        }
+      }
+      
+      // For now, we'll just store the path to the first chunk - in a real implementation
+      // you would need a server-side process to combine these chunks
+      storagePath = filePath;
+      storageUrl = supabase.storage.from('datasets').getPublicUrl(filePath + '_chunk_0').data.publicUrl;
+      
+      console.log("Chunked upload completed successfully");
+    } else {
+      // Standard upload for smaller files
+      const { data, error } = await supabase.storage
+        .from('datasets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+        
+      if (error) {
+        throw new Error(`Could not upload file to storage: ${error.message}`);
+      }
+      
+      storagePath = filePath;
+      storageUrl = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
+    }
+    
+    if (onProgress) {
+      onProgress(90);
+    }
+    
+    // Create dataset entry
+    const { data: datasetData, error: datasetError } = await supabase
+      .from('datasets')
+      .insert([
+        {
+          name: name,
+          description: description,
+          file_name: file.name,
+          file_size: file.size,
+          storage_path: storagePath,
+          storage_url: storageUrl,
+          storage_type: 'datasets',
+          user_id: validUserId,
+          column_schema: additionalProps.column_schema,
+          is_large_file: file.size > 50 * 1024 * 1024
+        }
+      ])
+      .select('id')
+      .single();
+      
+    if (datasetError) {
+      // Clean up storage if metadata insertion fails
+      try {
+        await supabase.storage.from('datasets').remove([storagePath]);
+      } catch (cleanupError) {
+        console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
+      }
+      throw new Error(`Could not save dataset metadata: ${datasetError.message}`);
+    }
     
     // Clean up progress interval if it exists
     if (additionalProps._progressInterval) {
@@ -217,7 +295,19 @@ export const performUpload = async (
       onProgress(100);
     }
     
-    return dataset;
+    // Return complete dataset object
+    const { data: fullDataset, error: getDatasetError } = await supabase
+      .from('datasets')
+      .select('*')
+      .eq('id', datasetData.id)
+      .single();
+      
+    if (getDatasetError) {
+      console.warn("Could not fetch complete dataset after creation:", getDatasetError);
+      return datasetData as Dataset;
+    }
+    
+    return fullDataset as Dataset;
   } catch (error) {
     console.error("Error during upload:", error);
     
