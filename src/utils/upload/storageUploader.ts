@@ -27,19 +27,25 @@ export const uploadFileToStorage = async (
     }
     
     // For smaller files, upload directly
-    const { data, error } = await supabase.storage
+    let uploadData = null;
+    let uploadError = null;
+    
+    const uploadResult = await supabase.storage
       .from('datasets')
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: true // Use upsert to overwrite if exists
       });
       
-    if (error) {
-      console.error('Storage upload error:', error);
+    uploadData = uploadResult.data;
+    uploadError = uploadResult.error;
+      
+    if (uploadError) {
+      console.error('Storage upload error:', uploadError);
       
       // If we got a permission error, try to fix the policies
-      if (error.message.includes('row-level security') || 
-          error.message.includes('permission denied')) {
+      if (uploadError.message.includes('row-level security') || 
+          uploadError.message.includes('permission denied')) {
         console.warn("Permission error, attempting to fix policies...");
         const { updateAllStoragePolicies } = await import('@/utils/storageUtils');
         await updateAllStoragePolicies();
@@ -58,13 +64,13 @@ export const uploadFileToStorage = async (
         }
         
         // If retry succeeded, use this result
-        data = retryResult.data;
+        uploadData = retryResult.data;
       } else {
-        throw new Error(`File upload failed: ${error.message}`);
+        throw new Error(`File upload failed: ${uploadError.message}`);
       }
     }
     
-    if (!data || !data.path) {
+    if (!uploadData || !uploadData.path) {
       throw new Error('Upload succeeded but no path returned');
     }
     

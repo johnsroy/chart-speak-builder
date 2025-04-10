@@ -23,21 +23,25 @@ const initializeApp = async () => {
       
       // First try to call the edge function directly to create buckets
       try {
-        const { callStorageManager } = await import('@/utils/storageUtils');
-        
-        try {
-          console.log("Attempting to create buckets via edge function...");
-          const result = await callStorageManager('force-create-buckets');
-          
-          if (result && result.success) {
-            console.log("Successfully created storage buckets via edge function");
-            return;
+        console.log("Attempting to create buckets via edge function...");
+        const { data, error } = await supabase.functions.invoke('storage-setup', {
+          method: 'POST',
+          body: { action: 'create-buckets' },
+          headers: {
+            'Content-Type': 'application/json'
           }
-        } catch (edgeFunctionError) {
-          console.warn("Edge function approach failed:", edgeFunctionError);
+        });
+        
+        if (data && data.success) {
+          console.log("Successfully created storage buckets via edge function");
+          return;
         }
-      } catch (importError) {
-        console.warn("Error importing storage utilities:", importError);
+        
+        if (error) {
+          console.warn("Edge function approach had an issue:", error);
+        }
+      } catch (edgeFunctionError) {
+        console.warn("Edge function approach failed:", edgeFunctionError);
       }
       
       // Skip direct API approach as it's failing with "object too large"
@@ -110,18 +114,18 @@ if (typeof window !== 'undefined') {
   }, 2000);
 }
 
-// Expose these functions from the imported utilities to avoid breaking existing code
+// Expose these functions to avoid breaking existing code
 export const setupStorageBuckets = async () => {
-  const { setupStorageBuckets: setupBuckets } = await import('@/utils/storageUtils');
-  return await setupBuckets();
+  const { setupStorageBuckets } = await import('@/utils/storageUtils');
+  return await setupStorageBuckets();
 };
 
 export const verifyStorageBuckets = async () => {
-  const { verifyStorageBuckets: verifyBuckets } = await import('@/utils/storageUtils');
-  return await verifyBuckets();
+  const { verifyStorageBuckets } = await import('@/utils/storageUtils');
+  return await verifyStorageBuckets();
 };
 
 export const createStorageBuckets = async () => {
-  const { createStorageBuckets: createBuckets } = await import('@/utils/storageUtils');
-  return await createBuckets();
+  const { createStorageBuckets } = await import('@/utils/storageUtils');
+  return await createStorageBuckets();
 };

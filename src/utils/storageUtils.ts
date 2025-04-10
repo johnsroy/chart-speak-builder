@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { toast } from "sonner";
 
@@ -152,5 +151,114 @@ export const testBucketPermissions = async (bucketName: string): Promise<boolean
   } catch (error) {
     console.error(`Permission test error for ${bucketName}:`, error);
     return false;
+  }
+};
+
+/**
+ * Formats byte size into human-readable format
+ * @param bytes The size in bytes
+ * @returns Formatted string (KB, MB, etc.)
+ */
+export const formatByteSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+/**
+ * Gets unique datasets by filename to prevent duplicates
+ * @param datasets Array of datasets
+ * @returns Filtered array with unique filenames
+ */
+export const getUniqueDatasetsByFilename = (datasets: any[]): any[] => {
+  const uniqueMap = new Map();
+  datasets.forEach(dataset => {
+    const filename = dataset.filename || dataset.name;
+    if (!uniqueMap.has(filename) || new Date(dataset.created_at) > new Date(uniqueMap.get(filename).created_at)) {
+      uniqueMap.set(filename, dataset);
+    }
+  });
+  return Array.from(uniqueMap.values());
+};
+
+/**
+ * Sets up storage buckets for the application
+ * @returns Promise resolving to true if setup was successful
+ */
+export const setupStorageBuckets = async (): Promise<boolean> => {
+  try {
+    console.log("Setting up storage buckets...");
+    const { data, error } = await supabase.functions.invoke('storage-setup', {
+      method: 'POST',
+      body: { action: 'create-buckets' }
+    });
+    
+    if (error) {
+      console.error("Error calling storage-setup function:", error);
+      return false;
+    }
+    
+    return data?.success || false;
+  } catch (error) {
+    console.error("Error setting up storage buckets:", error);
+    return false;
+  }
+};
+
+/**
+ * Verifies that all required storage buckets exist
+ * @returns Promise resolving to true if all buckets exist
+ */
+export const verifyStorageBuckets = async (): Promise<boolean> => {
+  try {
+    console.log("Verifying storage buckets...");
+    const { data: buckets, error } = await supabase.storage.listBuckets();
+    
+    if (error) {
+      console.error("Error listing buckets:", error);
+      return false;
+    }
+    
+    const requiredBuckets = ['datasets', 'secure', 'cold_storage'];
+    const existingBuckets = buckets?.map(bucket => bucket.name) || [];
+    
+    return requiredBuckets.every(name => existingBuckets.includes(name));
+  } catch (error) {
+    console.error("Error verifying buckets:", error);
+    return false;
+  }
+};
+
+/**
+ * Creates required storage buckets if they don't exist
+ * @returns Promise resolving to true if buckets were created or already exist
+ */
+export const createStorageBuckets = async (): Promise<boolean> => {
+  return await setupStorageBuckets();
+};
+
+/**
+ * Calls the storage-manager edge function with a specific action
+ * @param action The action to perform
+ * @returns The response data or null if there was an error
+ */
+export const callStorageManager = async (action: string): Promise<any> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('storage-manager', {
+      method: 'POST',
+      body: { action }
+    });
+    
+    if (error) {
+      console.error(`Error calling storage-manager with action ${action}:`, error);
+      return null;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error(`Exception calling storage-manager with action ${action}:`, error);
+    return null;
   }
 };
