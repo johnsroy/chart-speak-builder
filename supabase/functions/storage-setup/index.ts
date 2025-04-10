@@ -18,10 +18,15 @@ serve(async (req) => {
     // Create a Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const supabase = createClient(supabaseUrl, supabaseServiceRole);
+    const supabase = createClient(supabaseUrl, supabaseServiceRole, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
     
     // Get the action from the request
-    const { action } = await req.json();
+    const { action, force = false } = await req.json();
     
     if (action === 'create-buckets') {
       // Create the necessary buckets
@@ -37,10 +42,13 @@ serve(async (req) => {
       
       const existingBucketNames = existingBuckets?.map(b => b.name) || [];
       
-      // Create missing buckets
+      // Create missing buckets or check existing ones
       for (const bucketName of requiredBuckets) {
-        if (!existingBucketNames.includes(bucketName)) {
+        const bucketExists = existingBucketNames.includes(bucketName);
+        
+        if (!bucketExists) {
           try {
+            console.log(`Creating bucket ${bucketName}...`);
             const { data, error } = await supabase.storage.createBucket(bucketName, {
               public: true, // Make buckets public for easier access
               fileSizeLimit: 100 * 1024 * 1024, // 100MB limit
@@ -62,78 +70,85 @@ serve(async (req) => {
             });
           }
         } else {
-          console.log(`Bucket ${bucketName} already exists`);
+          console.log(`Bucket ${bucketName} already exists ${force ? '(will update policies)' : ''}`);
           results.push({ bucketName, success: true, message: "Already exists" });
         }
         
-        // Create public policy for this bucket
-        // We'll try multiple approaches to create the policies
-        
-        // First approach: Call the create_storage_policy RPC function
+        // Try to create policies using direct SQL approach
         try {
-          console.log(`Creating storage policy for ${bucketName} using RPC...`);
-          const { data: policyData, error: policyError } = await supabase.rpc('create_storage_policy', { 
-            bucket_name: bucketName 
-          });
+          console.log(`Creating direct SQL policies for ${bucketName}...`);
           
-          if (policyError) {
-            console.error(`RPC error for ${bucketName}:`, policyError);
-            // Fall back to the second RPC function
-            try {
-              const { data: fallbackData, error: fallbackError } = await supabase.rpc('create_public_storage_policies', { 
-                bucket_name: bucketName 
-              });
-              
-              if (fallbackError) {
-                console.error(`Fallback RPC error for ${bucketName}:`, fallbackError);
-              } else {
-                console.log(`Created public policies for ${bucketName} using fallback RPC`);
-              }
-            } catch (fallbackRpcError) {
-              console.error(`Fallback RPC exception for ${bucketName}:`, fallbackRpcError);
+          // Simple array of policy operations to try
+          const policyOperations = [
+            {
+              name: `allow_public_select_${bucketName}`,
+              operation: 'SELECT',
+              permission: 'true', // Allow all reads
+              definition: "bucket_id = '" + bucketName + "'"
+            },
+            {
+              name: `allow_public_insert_${bucketName}`,
+              operation: 'INSERT',
+              permission: 'true', // Allow all writes
+              definition: "bucket_id = '" + bucketName + "'"
+            },
+            {
+              name: `allow_public_update_${bucketName}`,
+              operation: 'UPDATE',
+              permission: 'true', // Allow all updates
+              definition: "bucket_id = '" + bucketName + "'"
+            },
+            {
+              name: `allow_public_delete_${bucketName}`,
+              operation: 'DELETE',
+              permission: 'true', // Allow all deletes
+              definition: "bucket_id = '" + bucketName + "'"
             }
-          } else {
-            console.log(`Successfully created policies for ${bucketName}`);
-          }
-        } catch (rpcError) {
-          console.error(`RPC exception for ${bucketName}:`, rpcError);
-        }
-        
-        // Direct SQL approach: Insert policies directly
-        try {
-          console.log(`Creating direct policies for ${bucketName}...`);
+          ];
           
-          // Since the JavaScript client doesn't allow direct SQL, 
-          // we'll use a more direct approach with the storage.createPolicy API
-          
-          // Helper function to create a policy
-          const createDirectPolicy = async (action: 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE') => {
-            const policyName = `public_${action.toLowerCase()}_${bucketName}_direct`;
+          // Loop through each policy operation and create it
+          for (const policy of policyOperations) {
             try {
-              // Note: This is a simplified example. In practice, you might need to
-              // check if the policy exists first to avoid conflicts.
-              const { data, error } = await supabase.storage.from(bucketName).createPolicy(policyName, {
-                definition: 'true', // Allow all access
-                role: 'anon', // Public anonymous access
-                action: action
+              // Use a parameterized query to safely create the policy
+              const { error: policyError } = await supabase.rpc('create_storage_policy_custom', {
+                p_name: policy.name,
+                p_operation: policy.operation,
+                p_definition: policy.definition,
+                p_check: policy.permission
               });
               
-              if (error) {
-                console.error(`Error creating ${action} policy for ${bucketName}:`, error);
+              if (policyError) {
+                console.error(`Error creating ${policy.operation} policy for ${bucketName}:`, policyError);
+                
+                // Try alternative approach if the first one fails
+                try {
+                  // Alternative approach: Direct SQL for maximum compatibility
+                  const { error: fallbackError } = await supabase.rpc('execute_sql', {
+                    sql_command: `
+                      DROP POLICY IF EXISTS "${policy.name}" ON storage.objects;
+                      CREATE POLICY "${policy.name}" 
+                      ON storage.objects
+                      FOR ${policy.operation}
+                      USING (${policy.definition})
+                      WITH CHECK (${policy.permission});
+                    `
+                  });
+                  
+                  if (fallbackError) {
+                    console.error(`Fallback policy creation failed for ${bucketName} (${policy.operation}):`, fallbackError);
+                  } else {
+                    console.log(`Created ${policy.operation} policy for ${bucketName} using fallback method`);
+                  }
+                } catch (fallbackError) {
+                  console.error(`Fallback policy exception for ${bucketName} (${policy.operation}):`, fallbackError);
+                }
               } else {
-                console.log(`Created ${action} policy for ${bucketName}`);
+                console.log(`Created ${policy.operation} policy for ${bucketName}`);
               }
             } catch (policyError) {
-              console.error(`Exception creating ${action} policy for ${bucketName}:`, policyError);
+              console.error(`Exception creating ${policy.operation} policy for ${bucketName}:`, policyError);
             }
-          };
-          
-          // Create policies for all operations
-          await createDirectPolicy('SELECT');
-          await createDirectPolicy('INSERT');
-          await createDirectPolicy('UPDATE');
-          await createDirectPolicy('DELETE');
-          
+          }
         } catch (directPolicyError) {
           console.error(`Direct policy creation failed for ${bucketName}:`, directPolicyError);
         }
