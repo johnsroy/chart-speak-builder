@@ -8,7 +8,7 @@ import { Message, AIModelType, VisualizationType } from './chat/types';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from "sonner";
 import { useTheme } from "@/components/ThemeProvider";
-import { Settings } from 'lucide-react';
+import { datasetUtils } from '@/utils/datasetUtils';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import { generateAIQuery, generateDatasetSuggestions } from '@/utils/aiUtils';
 import ModelSelector from './chat/ModelSelector';
 import ChatInput from './chat/ChatInput';
 import { QueryResult } from '@/services/types/queryTypes';
+import { supabase } from '@/lib/supabase';
 
 export interface DatasetChatInterfaceProps {
   datasetId?: string;
@@ -33,9 +34,10 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [currentModel, setCurrentModel] = useState<AIModelType>('openai');
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [datasetInfo, setDatasetInfo] = useState<any>(null);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   const { user } = useAuth();
   const { theme } = useTheme();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -46,26 +48,75 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // Load dataset information to provide context for the AI
+  useEffect(() => {
+    const loadDatasetInfo = async () => {
+      if (!datasetId) return;
+      
+      setIsDataLoading(true);
+      
+      try {
+        // Get dataset metadata
+        const { data, error } = await supabase
+          .from('datasets')
+          .select('*')
+          .eq('id', datasetId)
+          .single();
+          
+        if (error) {
+          console.error("Error loading dataset info:", error);
+          return;
+        }
+        
+        if (data) {
+          setDatasetInfo(data);
+          console.log("Dataset info loaded:", data);
+        }
+      } catch (error) {
+        console.error("Error in loadDatasetInfo:", error);
+      } finally {
+        setIsDataLoading(false);
+      }
+    };
+    
+    loadDatasetInfo();
+  }, [datasetId]);
+
+  // Generate smart suggestions based on dataset content
   useEffect(() => {
     const loadSuggestions = async () => {
-      if (datasetId) {
-        try {
-          // Generate customized suggestions based on dataset content
-          const customSuggestions = await generateDatasetSuggestions(datasetId);
+      if (!datasetId) return;
+      
+      try {
+        // Try to get custom suggestions based on actual dataset content
+        if (datasetInfo) {
+          const customSuggestions = await generateDatasetSuggestions(datasetId, datasetInfo);
           setSuggestions(customSuggestions);
-        } catch (error) {
-          console.error("Error loading suggestions:", error);
-          setSuggestions([
-            `What are the key trends in this dataset?`,
-            `Give me a summary of the data.`,
-            `What are the top 5 insights?`
-          ]);
+          return;
         }
+        
+        // Fallback to basic suggestions if no dataset info
+        const basicSuggestions = [
+          `What are the key trends in this dataset?`,
+          `Summarize this dataset for me`,
+          `What insights can you provide from this data?`,
+          `Show me the top 5 insights`,
+          `What's interesting about this dataset?`
+        ];
+        
+        setSuggestions(basicSuggestions);
+      } catch (error) {
+        console.error("Error loading suggestions:", error);
+        setSuggestions([
+          `What are the key trends in this dataset?`,
+          `Give me a summary of the data`,
+          `What are the top 5 insights?`
+        ]);
       }
     };
     
     loadSuggestions();
-  }, [datasetId]);
+  }, [datasetId, datasetInfo]);
 
   const handleSuggestionSelect = async (query: string) => {
     await handleSendMessage(query);
@@ -88,7 +139,31 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
     setIsLoading(true);
 
     try {
-      const aiResponse = await generateAIQuery(content, datasetId, currentModel, user?.id);
+      // First try to load dataset content to provide to the AI
+      let datasetContent = null;
+      try {
+        // Try to get a sample of the dataset to provide as context
+        datasetContent = await datasetUtils.loadDatasetContent(datasetId, {
+          showToasts: false,
+          limitRows: 100 // Just get a sample for context
+        });
+        
+        if (datasetContent) {
+          console.log(`Loaded ${datasetContent.length} rows for AI context`);
+        }
+      } catch (contentError) {
+        console.warn("Could not load dataset content for AI context:", contentError);
+      }
+      
+      // Generate AI response with enhanced context
+      const aiResponse = await generateAIQuery(
+        content, 
+        datasetId, 
+        currentModel, 
+        user?.id,
+        datasetInfo, // Pass dataset metadata
+        datasetContent // Pass sample data
+      );
 
       if (aiResponse) {
         const aiMessage: Message = {
@@ -133,7 +208,7 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           {/* Chat Header */}
           <div className="flex items-center justify-between p-4 border-bottom border-gray-800 bg-black/20 backdrop-blur-sm">
             <h2 className="text-lg font-semibold text-white">
-              {datasetName ? `${datasetName} - Chat` : 'Data Chat'}
+              {datasetName ? `${datasetName} - Chat` : (datasetInfo?.name ? `${datasetInfo.name} - Chat` : 'Data Chat')}
             </h2>
             
             {/* Model Selector */}
@@ -147,8 +222,27 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
           <div className="flex-1 overflow-y-auto p-4">
             <ScrollArea className="h-full">
               {messages.length === 0 && !isLoading ? (
-                <div className="text-center text-gray-500 mt-4">
-                  Start the conversation by sending a message!
+                <div className="text-center space-y-4 py-8">
+                  <div className="text-gray-500 mb-4">
+                    Ask questions about your dataset to get insights!
+                  </div>
+                  {datasetInfo && (
+                    <div className="bg-purple-900/30 rounded-lg p-4 max-w-lg mx-auto text-left">
+                      <h3 className="font-medium mb-2">Dataset Information</h3>
+                      <p className="text-sm text-gray-300 mb-2">
+                        <strong>Name:</strong> {datasetInfo.name}
+                      </p>
+                      {datasetInfo.description && (
+                        <p className="text-sm text-gray-300 mb-2">
+                          <strong>Description:</strong> {datasetInfo.description}
+                        </p>
+                      )}
+                      <p className="text-sm text-gray-300">
+                        <strong>File:</strong> {datasetInfo.file_name}
+                        {datasetInfo.row_count > 0 && ` (${datasetInfo.row_count.toLocaleString()} rows)`}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : null}
 

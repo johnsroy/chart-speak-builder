@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { BarChart, CheckCircle } from 'lucide-react';
+import { BarChart, CheckCircle, Table } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface UploadSuccessDialogProps {
@@ -22,13 +22,22 @@ const UploadSuccessDialog: React.FC<UploadSuccessDialogProps> = ({
   const [countdown, setCountdown] = useState(3);
   
   useEffect(() => {
-    if (open) {
+    if (open && datasetId) {
+      // Store uploaded dataset ID in sessionStorage to help with recovery
+      try {
+        sessionStorage.setItem('last_uploaded_dataset', datasetId);
+      } catch (e) {
+        console.warn("Could not store last uploaded dataset ID:", e);
+      }
+      
+      // Set up countdown for auto-redirect
       const timer = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
             clearInterval(timer);
             setTimeout(() => {
-              navigate('/dashboard');
+              // Navigate to table view of the dataset
+              navigate(`/visualize/${datasetId}?view=table`);
             }, 500);
             return 0;
           }
@@ -41,7 +50,25 @@ const UploadSuccessDialog: React.FC<UploadSuccessDialogProps> = ({
       // Reset countdown when dialog closes
       setCountdown(3);
     }
-  }, [open, navigate]);
+  }, [open, navigate, datasetId]);
+  
+  const handleViewData = () => {
+    onOpenChange(false);
+    if (datasetId) {
+      navigate(`/visualize/${datasetId}?view=table`);
+    } else {
+      navigate('/dashboard');
+    }
+  };
+  
+  const handleVisualizeData = () => {
+    onOpenChange(false);
+    if (datasetId) {
+      navigate(`/visualize/${datasetId}`);
+    } else {
+      navigate('/dashboard');
+    }
+  };
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -56,7 +83,7 @@ const UploadSuccessDialog: React.FC<UploadSuccessDialogProps> = ({
         
         <p className="text-muted-foreground mb-6">
           {datasetName ? `"${datasetName}" has been uploaded.` : 'Your dataset has been uploaded.'} 
-          Redirecting to dashboard in {countdown}...
+          Redirecting to data view in {countdown}...
         </p>
         
         <div className="flex gap-4 justify-center">
@@ -64,8 +91,13 @@ const UploadSuccessDialog: React.FC<UploadSuccessDialogProps> = ({
             Stay Here
           </Button>
           
-          <Button onClick={() => navigate(datasetId ? `/visualize/${datasetId}` : '/dashboard')}>
-            <BarChart className="mr-2 h-4 w-4" />
+          <Button onClick={handleViewData} className="flex items-center gap-2">
+            <Table className="h-4 w-4" />
+            View Data
+          </Button>
+          
+          <Button variant="secondary" onClick={handleVisualizeData} className="flex items-center gap-2">
+            <BarChart className="h-4 w-4" />
             Visualize Now
           </Button>
         </div>

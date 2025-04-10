@@ -45,6 +45,14 @@ const RedirectDialog: React.FC<RedirectDialogProps> = ({
   useEffect(() => {
     if (open && datasetId) {
       console.log("Redirect dialog opened for dataset:", datasetId);
+      
+      // Store uploaded dataset ID in sessionStorage to help with recovery
+      try {
+        sessionStorage.setItem('last_uploaded_dataset', datasetId);
+      } catch (e) {
+        console.warn("Could not store last uploaded dataset ID:", e);
+      }
+      
       // Dispatch an event that can be captured elsewhere in the app
       const redirectEvent = new CustomEvent('dataset-redirect-ready', {
         detail: { datasetId }

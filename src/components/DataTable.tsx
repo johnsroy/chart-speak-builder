@@ -17,8 +17,10 @@ import { Input } from '@/components/ui/input';
 import { Pagination } from '@/components/ui/pagination';
 import { formatFileSize } from '@/services/utils/fileUtils';
 import { datasetUtils } from '@/utils/datasetUtils';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { parseCSV } from '@/services/utils/fileUtils';
+import { supabase } from '@/lib/supabase';
 
 export interface DataTableProps {
   dataset?: Dataset | null;
@@ -50,7 +52,8 @@ export const DataTable: React.FC<DataTableProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [rowsPerPage] = useState(pageSize);
   const [retryCount, setRetryCount] = useState(0);
-  const maxRetries = 3;
+  const [loadingMessage, setLoadingMessage] = useState("Loading data...");
+  const maxRetries = 5;
   
   useEffect(() => {
     if (externalData) {
@@ -69,128 +72,212 @@ export const DataTable: React.FC<DataTableProps> = ({
         return;
       }
       
+      const id = datasetId || dataset?.id;
+      
+      if (!id) {
+        setError('No dataset ID provided');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log(`Loading data for dataset: ${id}`);
+      setLoadingMessage(`Fetching dataset ${id}...`);
+      
       try {
-        const id = datasetId || dataset?.id;
-        
-        if (!id) {
-          setError('No dataset ID provided');
-          setIsLoading(false);
-          return;
+        // First, get the dataset metadata to check storage path
+        const { data: datasetInfo, error: datasetError } = await supabase
+          .from('datasets')
+          .select('*')
+          .eq('id', id)
+          .single();
+          
+        if (datasetError) {
+          console.error("Error fetching dataset metadata:", datasetError);
+          throw new Error(`Could not fetch dataset metadata: ${datasetError.message}`);
         }
         
-        console.log(`Loading data for dataset: ${id}`);
+        if (!datasetInfo) {
+          throw new Error("Dataset not found");
+        }
         
+        console.log("Dataset metadata:", datasetInfo);
+        
+        // Try multiple approaches to load the data
+        
+        // Approach 1: Try datasetUtils
         try {
+          setLoadingMessage("Loading dataset content...");
           const datasetRows = await datasetUtils.loadDatasetContent(id, {
             showToasts: false,
-            limitRows: 1000
+            limitRows: 5000
           });
           
           if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
             console.log(`Successfully loaded ${datasetRows.length} rows using datasetUtils`);
             setData(datasetRows);
             setColumns(Object.keys(datasetRows[0] || {}));
-            setIsLoading(false);
-            setError(null);
-            return;
-          } else {
-            console.log("datasetUtils returned empty or invalid data");
-          }
-        } catch (datasetUtilsError) {
-          console.warn("Error using datasetUtils:", datasetUtilsError);
-        }
-        
-        let previewDataFound = false;
-        
-        if (dataset && dataset.preview_data) {
-          try {
-            const previewData = dataset.preview_data;
-            if (Array.isArray(previewData) && previewData.length > 0) {
-              setData(previewData);
-              setColumns(Object.keys(previewData[0] || {}));
-              previewDataFound = true;
-              console.log("Using provided preview data from dataset object");
-              return;
-            }
-          } catch (err) {
-            console.warn("Failed to use provided preview data:", err);
-          }
-        }
-        
-        if (!previewDataFound) {
-          console.log("No preview data found, loading from API...");
-          const result = await dataService.previewDataset(id);
-          
-          if (result && Array.isArray(result)) {
-            console.log(`Loaded ${result.length} rows from API`);
-            setData(result);
-            setColumns(result[0] ? Object.keys(result[0]) : []);
-            return;
-          } else {
-            throw new Error('Invalid data format received');
-          }
-        }
-      } catch (err) {
-        console.error("Error loading dataset data:", err);
-        setError(`Error loading data: ${err instanceof Error ? err.message : String(err)}`);
-        
-        try {
-          const lastUploadedId = sessionStorage.getItem('last_uploaded_dataset');
-          
-          if (lastUploadedId) {
-            const possibleKeys = [
-              `preview_${lastUploadedId}`,
-              `upload_preview_${lastUploadedId}`,
-            ];
             
-            let recoveredData = null;
-            
-            for (const key of possibleKeys) {
-              const previewDataStr = sessionStorage.getItem(key);
-              if (previewDataStr) {
-                try {
-                  const previewData = JSON.parse(previewDataStr);
-                  if (Array.isArray(previewData) && previewData.length > 0) {
-                    recoveredData = previewData;
-                    break;
-                  }
-                } catch (parseErr) {
-                  console.warn(`Failed to parse preview data for key ${key}:`, parseErr);
-                }
+            // Update dataset column schema if it's missing or empty
+            if ((!datasetInfo.column_schema || Object.keys(datasetInfo.column_schema).length === 0) && datasetRows.length > 0) {
+              try {
+                const sampleRow = datasetRows[0];
+                const schema: Record<string, string> = {};
+                Object.entries(sampleRow).forEach(([key, value]) => {
+                  schema[key] = typeof value === 'number' ? 'number' : 
+                                typeof value === 'boolean' ? 'boolean' : 'string';
+                });
+                
+                // Update the dataset schema
+                await supabase
+                  .from('datasets')
+                  .update({ 
+                    column_schema: schema,
+                    row_count: datasetRows.length 
+                  })
+                  .eq('id', id);
+                  
+                console.log("Updated dataset schema and row count");
+              } catch (updateErr) {
+                console.warn("Failed to update dataset schema:", updateErr);
               }
             }
             
-            if (recoveredData) {
-              setData(recoveredData);
-              setColumns(Object.keys(recoveredData[0] || {}));
-              setError(null);
-              console.log("Recovered using preview data from session storage");
-              return;
-            }
+            setIsLoading(false);
+            setError(null);
+            return;
           }
-        } catch (recoveryErr) {
-          console.error("Recovery attempt failed:", recoveryErr);
+        } catch (utilsErr) {
+          console.warn("Error using datasetUtils:", utilsErr);
         }
         
+        // Approach 2: Direct storage access
+        if (datasetInfo && datasetInfo.storage_path) {
+          try {
+            setLoadingMessage("Accessing file from storage...");
+            const { data: fileData, error: storageError } = await supabase
+              .storage
+              .from(datasetInfo.storage_type || 'supabase')
+              .download(datasetInfo.storage_path);
+              
+            if (storageError) {
+              console.error("Storage access error:", storageError);
+              throw new Error(`Could not access storage: ${storageError.message}`);
+            }
+            
+            if (fileData) {
+              const text = await fileData.text();
+              const parsedData = await parseCSV(text, 5000);
+              
+              if (parsedData && parsedData.length > 0) {
+                console.log(`Successfully parsed ${parsedData.length} rows from storage file`);
+                setData(parsedData);
+                setColumns(Object.keys(parsedData[0] || {}));
+                
+                // Update dataset schema and row count
+                try {
+                  const sampleRow = parsedData[0];
+                  const schema: Record<string, string> = {};
+                  Object.entries(sampleRow).forEach(([key, value]) => {
+                    schema[key] = typeof value === 'number' ? 'number' : 
+                                  typeof value === 'boolean' ? 'boolean' : 'string';
+                  });
+                  
+                  // Update the dataset schema and row count
+                  await supabase
+                    .from('datasets')
+                    .update({ 
+                      column_schema: schema,
+                      row_count: parsedData.length 
+                    })
+                    .eq('id', id);
+                    
+                  console.log("Updated dataset schema and row count from parsed data");
+                } catch (updateErr) {
+                  console.warn("Failed to update dataset schema from parsed data:", updateErr);
+                }
+                
+                setIsLoading(false);
+                setError(null);
+                return;
+              }
+            }
+          } catch (storageErr) {
+            console.warn("Error accessing storage:", storageErr);
+          }
+        }
+        
+        // Approach 3: Preview data
+        if (datasetInfo && datasetInfo.preview_key) {
+          try {
+            setLoadingMessage("Loading preview data...");
+            const previewData = sessionStorage.getItem(datasetInfo.preview_key);
+            if (previewData) {
+              const parsed = JSON.parse(previewData);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                console.log(`Found ${parsed.length} rows using preview_key: ${datasetInfo.preview_key}`);
+                setData(parsed);
+                setColumns(Object.keys(parsed[0] || {}));
+                
+                // Also store in session storage for dataset_id key
+                try {
+                  sessionStorage.setItem(`dataset_${id}`, previewData);
+                } catch (e) {
+                  console.warn("Could not cache dataset:", e);
+                }
+                
+                setIsLoading(false);
+                setError(null);
+                return;
+              }
+            }
+          } catch (previewErr) {
+            console.warn("Error loading preview data:", previewErr);
+          }
+        }
+        
+        // Fall back to API
+        setLoadingMessage("Fetching from API...");
+        const result = await dataService.previewDataset(id);
+        
+        if (result && Array.isArray(result) && result.length > 0) {
+          console.log(`Loaded ${result.length} rows from API`);
+          setData(result);
+          setColumns(Object.keys(result[0] || {}));
+          setIsLoading(false);
+          setError(null);
+          return;
+        } else {
+          throw new Error("Empty or invalid data from API");
+        }
+      } catch (err) {
+        console.error("Error loading dataset data:", err);
+        
         if (retryCount < maxRetries) {
-          console.log(`Retrying data load (${retryCount + 1}/${maxRetries})...`);
+          // Exponential backoff for retries
+          const delay = Math.min(1000 * Math.pow(1.5, retryCount), 10000);
+          console.log(`Retrying data load in ${delay}ms (${retryCount + 1}/${maxRetries})...`);
+          setLoadingMessage(`Retrying data load (${retryCount + 1}/${maxRetries})...`);
+          
           setRetryCount(prev => prev + 1);
-          setTimeout(() => loadData(), 1000 * (retryCount + 1));
+          setTimeout(() => loadData(), delay);
           return;
         }
         
-        if (dataset) {
-          console.log("Generating sample data based on schema");
-          const sampleData = generateSampleDataFromSchema(dataset);
-          setData(sampleData);
-          setColumns(Object.keys(sampleData[0] || {}));
-          setError("Using sample data because the actual dataset could not be loaded.");
-          toast.warning("Using sample data", {
-            description: "The actual dataset could not be loaded"
-          });
-        }
-      } finally {
+        setError(`Error loading data: ${err instanceof Error ? err.message : String(err)}`);
         setIsLoading(false);
+        
+        // Generate fallback data if we couldn't load real data
+        if (dataset) {
+          console.log("Generating fallback data");
+          const sampleData = generateSampleDataFromSchema(dataset);
+          if (sampleData.length > 0) {
+            setData(sampleData);
+            setColumns(Object.keys(sampleData[0]));
+            toast.warning("Using sample data", {
+              description: "Could not load the actual dataset"
+            });
+          }
+        }
       }
     };
     
@@ -226,7 +313,23 @@ export const DataTable: React.FC<DataTableProps> = ({
     } else {
       const fileName = dataset?.file_name || 'dataset';
       
-      if (fileName.toLowerCase().includes('sales')) {
+      if (fileName.toLowerCase().includes('electric') || fileName.toLowerCase().includes('vehicle')) {
+        for (let i = 0; i < rowCount; i++) {
+          sampleRows.push({
+            'VIN': `EV${1000 + i}`,
+            'County': ['King', 'Pierce', 'Snohomish', 'Thurston', 'Clark'][i % 5],
+            'City': ['Seattle', 'Tacoma', 'Bellevue', 'Olympia', 'Vancouver'][i % 5],
+            'State': 'WA',
+            'Postal Code': 98000 + (i * 10),
+            'Model Year': 2018 + (i % 5),
+            'Make': ['Tesla', 'Nissan', 'Chevrolet', 'Ford', 'Toyota'][i % 5],
+            'Model': ['Model 3', 'Leaf', 'Bolt', 'Mustang Mach-E', 'Prius Prime'][i % 5],
+            'Electric Vehicle Type': i % 2 === 0 ? 'Battery Electric Vehicle (BEV)' : 'Plug-in Hybrid Electric Vehicle (PHEV)',
+            'Electric Range': 150 + (i * 10),
+            'Base MSRP': 35000 + (i * 1000)
+          });
+        }
+      } else if (fileName.toLowerCase().includes('sales')) {
         for (let i = 0; i < rowCount; i++) {
           sampleRows.push({
             id: i + 1,
@@ -234,16 +337,6 @@ export const DataTable: React.FC<DataTableProps> = ({
             quantity: Math.floor(Math.random() * 100),
             price: Math.floor(Math.random() * 1000),
             date: new Date(2025, i % 12, i % 28 + 1).toISOString().split('T')[0]
-          });
-        }
-      } else if (fileName.toLowerCase().includes('customer')) {
-        for (let i = 0; i < rowCount; i++) {
-          sampleRows.push({
-            id: i + 1,
-            name: `Customer ${i + 1}`,
-            email: `customer${i}@example.com`,
-            city: ['New York', 'London', 'Tokyo', 'Paris', 'Berlin'][i % 5],
-            age: 20 + Math.floor(Math.random() * 50)
           });
         }
       } else {
@@ -323,47 +416,52 @@ export const DataTable: React.FC<DataTableProps> = ({
   
   const handleRefresh = async () => {
     setRetryCount(0);
+    setIsLoading(true);
+    setError(null);
     
-    if (onRefresh) {
-      await onRefresh();
-    } else if (datasetId) {
-      setIsLoading(true);
-      setError(null);
-      try {
+    try {
+      if (onRefresh) {
+        await onRefresh();
+      } else if (datasetId) {
         try {
+          // Clear session storage cache to force fresh data load
+          try {
+            sessionStorage.removeItem(`dataset_${datasetId}`);
+          } catch (e) {
+            console.warn("Could not clear dataset cache:", e);
+          }
+          
           const datasetRows = await datasetUtils.loadDatasetContent(datasetId, {
             showToasts: false,
             forceRefresh: true,
-            limitRows: 1000
+            limitRows: 5000
           });
           
           if (datasetRows && Array.isArray(datasetRows) && datasetRows.length > 0) {
             console.log(`Successfully loaded ${datasetRows.length} rows using datasetUtils`);
             setData(datasetRows);
             setColumns(Object.keys(datasetRows[0] || {}));
-            setIsLoading(false);
-            setError(null);
             toast.success("Data refreshed successfully");
-            return;
+          } else {
+            throw new Error("No data returned from refresh");
           }
-        } catch (datasetUtilsError) {
-          console.warn("Error using datasetUtils during refresh:", datasetUtilsError);
+        } catch (utilsErr) {
+          console.warn("Error using datasetUtils during refresh:", utilsErr);
+          const refreshedData = await dataService.previewDataset(datasetId);
+          if (refreshedData && Array.isArray(refreshedData)) {
+            setData(refreshedData);
+            setColumns(refreshedData[0] ? Object.keys(refreshedData[0]) : []);
+            toast.success("Data refreshed successfully");
+          } else {
+            throw new Error("No data returned from refresh");
+          }
         }
-        
-        const refreshedData = await dataService.previewDataset(datasetId);
-        if (refreshedData && Array.isArray(refreshedData)) {
-          setData(refreshedData);
-          setColumns(refreshedData[0] ? Object.keys(refreshedData[0]) : []);
-          toast.success("Data refreshed successfully");
-        } else {
-          throw new Error("No data returned from refresh");
-        }
-      } catch (err) {
-        setError(`Error refreshing data: ${err instanceof Error ? err.message : String(err)}`);
-        toast.error("Failed to refresh data");
-      } finally {
-        setIsLoading(false);
       }
+    } catch (err) {
+      setError(`Error refreshing data: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error("Failed to refresh data");
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -376,6 +474,8 @@ export const DataTable: React.FC<DataTableProps> = ({
             <CardDescription>
               {dataset.name || 'Unnamed Dataset'} ({dataset.file_name || 'Unknown File'})
               {dataset.file_size && <span className="ml-2">Size: {formatFileSize(dataset.file_size)}</span>}
+              {dataset.row_count > 0 && <span className="ml-2">Rows: {dataset.row_count.toLocaleString()}</span>}
+              {dataset.column_schema && <span className="ml-2">Columns: {Object.keys(dataset.column_schema).length}</span>}
             </CardDescription>
           )}
           <div className="flex justify-between items-center mt-2">
@@ -391,12 +491,17 @@ export const DataTable: React.FC<DataTableProps> = ({
                 size="sm" 
                 onClick={handleRefresh}
                 className="flex items-center gap-1"
+                disabled={isLoading}
               >
-                <RefreshCw className="h-3 w-3" />
+                {isLoading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3" />
+                )}
                 Refresh
               </Button>
               <div className="text-sm text-muted-foreground">
-                Total rows: {filteredData.length}
+                {filteredData.length > 0 && `Total rows: ${filteredData.length}`}
               </div>
             </div>
           </div>
@@ -406,7 +511,7 @@ export const DataTable: React.FC<DataTableProps> = ({
         {isLoading ? (
           <div className="py-8 text-center">
             <div className="animate-spin h-8 w-8 border-t-2 border-primary rounded-full mx-auto mb-3"></div>
-            <div>Loading data...</div>
+            <div>{loadingMessage}</div>
           </div>
         ) : error ? (
           <div className="py-8 text-center">
