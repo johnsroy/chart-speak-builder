@@ -3,18 +3,20 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { dataService } from '@/services/dataService';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Database, HardDrive, PieChart, FileBarChart, RefreshCw, Trash2 } from 'lucide-react';
+import { Loader2, Database, HardDrive, PieChart, FileBarChart, RefreshCw, Trash2, WifiOff, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import { Dataset, StorageStats } from '@/services/types/datasetTypes';
 import { formatByteSize } from '@/utils/storageUtils';
 import DeleteDatasetDialog from '@/components/upload/DeleteDatasetDialog';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const UserDatasetLibrary = () => {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const [storageStats, setStorageStats] = useState<StorageStats>({ 
     totalSize: 0, 
     datasetCount: 0, 
@@ -34,6 +36,7 @@ const UserDatasetLibrary = () => {
   
   const loadData = async () => {
     setIsLoading(true);
+    setHasError(false);
     try {
       // Load unique datasets only (no duplicates)
       const userDatasets = await dataService.getUniqueDatasets();
@@ -46,6 +49,7 @@ const UserDatasetLibrary = () => {
       }
     } catch (error) {
       console.error('Error loading user library data:', error);
+      setHasError(true);
       toast.error('Could not load your datasets');
     } finally {
       setIsLoading(false);
@@ -87,6 +91,30 @@ const UserDatasetLibrary = () => {
 
   return (
     <div className="space-y-6">
+      {hasError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Connection Issue</AlertTitle>
+          <AlertDescription>
+            Unable to connect to the database. Please check your network connection and try again.
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="ml-2" 
+              onClick={handleRefreshData}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? (
+                <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-3 w-3" />
+              )}
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card className="glass-card border-none">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
@@ -129,7 +157,17 @@ const UserDatasetLibrary = () => {
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {datasets.length === 0 ? (
+        {hasError ? (
+          <div className="col-span-full text-center p-8">
+            <WifiOff className="h-12 w-12 mx-auto mb-4 text-destructive" />
+            <h3 className="text-xl font-medium mb-2">Connection Issue</h3>
+            <p className="text-muted-foreground mb-4">Unable to load your datasets due to a network issue</p>
+            <Button onClick={handleRefreshData} disabled={isRefreshing}>
+              {isRefreshing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Try Again
+            </Button>
+          </div>
+        ) : datasets.length === 0 ? (
           <div className="col-span-full text-center p-8">
             <Database className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
             <h3 className="text-xl font-medium mb-2">No datasets found</h3>
@@ -193,3 +231,4 @@ const UserDatasetLibrary = () => {
 };
 
 export default UserDatasetLibrary;
+

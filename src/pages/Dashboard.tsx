@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -6,16 +7,17 @@ import { useDatasets } from '@/hooks/useDatasets';
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, MoreHorizontal, BarChart2, LineChart, PieChart, Database, Home, Trash2, AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { dataService } from '@/services/dataService';
 import DeleteDatasetDialog from '@/components/upload/DeleteDatasetDialog';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, adminLogin } = useAuth();
-  const { datasets, isLoading, loadDatasets, isRefreshing } = useDatasets();
+  const { datasets, isLoading, loadDatasets, isRefreshing, hasError } = useDatasets();
   const [filterType, setFilterType] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
@@ -115,6 +117,30 @@ const Dashboard = () => {
           </div>
         </div>
         
+        {hasError && (
+          <Alert className="mb-6 bg-red-900/30 border-red-700 text-white">
+            <AlertCircle className="h-4 w-4 text-red-400" />
+            <AlertTitle className="text-white">Connection Issue</AlertTitle>
+            <AlertDescription className="text-white/80">
+              Unable to connect to the database. Please check your network connection and try again.
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="ml-2 mt-2 bg-red-800/30 hover:bg-red-800" 
+                onClick={handleRefreshDatasets}
+                disabled={isRefreshing}
+              >
+                {isRefreshing ? (
+                  <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-3 w-3" />
+                )}
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <Tabs defaultValue="all" className="space-y-4">
           <TabsList>
             <TabsTrigger value="all" onClick={() => setFilterType(null)}>All</TabsTrigger>
@@ -137,6 +163,22 @@ const Dashboard = () => {
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+            ) : hasError ? (
+              <div className="text-center py-12">
+                <WifiOff className="h-12 w-12 mx-auto mb-4 text-red-400" />
+                <h3 className="text-xl font-medium mb-2">Network Connection Issue</h3>
+                <p className="text-gray-400 mb-6 max-w-md mx-auto">
+                  Unable to load datasets due to connection issues. Will retry automatically.
+                </p>
+                <Button 
+                  onClick={handleRefreshDatasets} 
+                  disabled={isRefreshing}
+                  className="bg-purple-700 hover:bg-purple-600"
+                >
+                  {isRefreshing ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                  Retry Now
+                </Button>
               </div>
             ) : filteredDatasets && filteredDatasets.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -240,3 +282,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+

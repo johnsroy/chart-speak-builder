@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast } from 'sonner';
 import { dataService } from '@/services/dataService';
@@ -15,14 +15,26 @@ export const useDatasets = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const maxRetries = 3;
+  const [hasError, setHasError] = useState(false);
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxRetries = 2;
   
   const { toast: hookToast } = useToast();
   const { isAuthenticated, user } = useAuth();
 
+  const clearFetchTimer = () => {
+    if (fetchTimerRef.current) {
+      clearTimeout(fetchTimerRef.current);
+      fetchTimerRef.current = null;
+    }
+  };
+
   const loadDatasets = useCallback(async (forceRefresh = false) => {
     // Don't try to load datasets if already refreshing
     if (isRefreshing) return;
+    
+    // Clear any existing fetch timer
+    clearFetchTimer();
     
     setIsRefreshing(true);
     setIsLoading(true);
@@ -44,10 +56,10 @@ export const useDatasets = () => {
         setRetryCount(prev => prev + 1);
         
         // Add a reasonable delay before retrying
-        setTimeout(() => {
+        fetchTimerRef.current = setTimeout(() => {
           setIsRefreshing(false);
           loadDatasets();
-        }, 1000);
+        }, 2000); // Increased delay to reduce fetch frequency
         return;
       }
       
@@ -56,6 +68,7 @@ export const useDatasets = () => {
       // Update state atomically
       setDatasets(data);
       setUniqueDatasets(filtered);
+      setHasError(false);
 
       // Update selected dataset ID if necessary
       if (filtered.length > 0 && !selectedDatasetId) {
@@ -73,25 +86,30 @@ export const useDatasets = () => {
       // Preload dataset content if authenticated
       if (filtered.length > 0 && isAuthenticated) {
         const datasetToPreload = selectedDatasetId || filtered[0].id;
-        setTimeout(() => {
+        fetchTimerRef.current = setTimeout(() => {
           datasetUtils.loadDatasetContent(datasetToPreload, {
             preventSampleFallback: true,
             showToasts: false
           }).catch(err => console.warn("Preloading dataset failed:", err));
-        }, 200);
+        }, 500);
       }
     } catch (error) {
       const showErrorToast = () => {
-        try {
-          hookToast({
-            title: 'Error loading datasets',
-            description: error instanceof Error ? error.message : 'Failed to load datasets',
-            variant: 'destructive'
-          });
-        } catch (toastError) {
-          toast.error('Error loading datasets', {
-            description: error instanceof Error ? error.message : 'Failed to load datasets'
-          });
+        setHasError(true);
+        
+        // Show toast error only once, not repeatedly
+        if (retryCount === 0) {
+          try {
+            hookToast({
+              title: 'Error loading datasets',
+              description: 'Network connection issue. Will retry automatically.',
+              variant: 'destructive'
+            });
+          } catch (toastError) {
+            toast.error('Error loading datasets', {
+              description: 'Network connection issue. Will retry automatically.'
+            });
+          }
         }
       };
       
@@ -100,21 +118,38 @@ export const useDatasets = () => {
         setRetryCount(prev => prev + 1);
         
         // Add increasing delay for retries
-        setTimeout(() => {
+        fetchTimerRef.current = setTimeout(() => {
           setIsRefreshing(false);
           loadDatasets();
-        }, 1000 * (retryCount + 1));
+        }, 3000 * (retryCount + 1)); // Longer delay between retries
+        
+        if (retryCount === 1) {
+          showErrorToast();
+        }
       } else {
         showErrorToast();
+        // After max retries, set a longer timeout before trying again
+        fetchTimerRef.current = setTimeout(() => {
+          setRetryCount(0);
+          setIsRefreshing(false);
+          loadDatasets();
+        }, 10000); // 10 seconds before trying again after max retries
       }
     } finally {
       setIsLoading(false);
       // Allow a minimum time between refreshes
       setTimeout(() => {
         setIsRefreshing(false);
-      }, 500);
+      }, 1000);
     }
   }, [selectedDatasetId, hookToast, retryCount, maxRetries, isAuthenticated, isRefreshing]);
+
+  // Clean up timers when component unmounts
+  useEffect(() => {
+    return () => {
+      clearFetchTimer();
+    };
+  }, []);
 
   // Only load datasets once on initial authentication
   useEffect(() => {
@@ -158,16 +193,16 @@ export const useDatasets = () => {
         toast.error('Failed to delete dataset');
         
         // Restore state and reload data
-        setTimeout(() => loadDatasets(true), 500);
+        fetchTimerRef.current = setTimeout(() => loadDatasets(true), 1000);
         return false;
       }
       
       toast.success('Dataset deleted successfully');
       
       // Refresh dataset list, but not immediately to avoid UI flicker
-      setTimeout(() => {
+      fetchTimerRef.current = setTimeout(() => {
         loadDatasets(true);
-      }, 1000);
+      }, 1500);
       
       return true;
     } catch (error) {
@@ -177,7 +212,7 @@ export const useDatasets = () => {
       });
       
       // Restore state and reload data
-      setTimeout(() => loadDatasets(true), 500);
+      fetchTimerRef.current = setTimeout(() => loadDatasets(true), 1000);
       return false;
     }
   }, [selectedDatasetId, datasets, loadDatasets]);
@@ -205,22 +240,24 @@ export const useDatasets = () => {
       }
       
       // Debounce full refresh to avoid UI flicker
-      setTimeout(() => {
+      clearFetchTimer();
+      fetchTimerRef.current = setTimeout(() => {
         if (!isRefreshing) {
           loadDatasets(true);
         }
-      }, 1000);
+      }, 2000);
     };
     
     const handleDatasetUploaded = () => {
       console.log('Dataset uploaded event received');
       
       // Debounce refresh to avoid UI flicker
-      setTimeout(() => {
+      clearFetchTimer();
+      fetchTimerRef.current = setTimeout(() => {
         if (!isRefreshing) {
           loadDatasets(true);
         }
-      }, 500);
+      }, 1500);
     };
     
     // Set up event listeners
@@ -233,12 +270,14 @@ export const useDatasets = () => {
       window.removeEventListener('dataset-deleted', handleDatasetDeleted);
       window.removeEventListener('dataset-upload-success', handleDatasetUploaded);
       window.removeEventListener('upload:success', handleDatasetUploaded);
+      clearFetchTimer();
     };
   }, [selectedDatasetId, loadDatasets, datasets, isRefreshing]);
 
   const forceRefresh = useCallback(() => {
     console.log("Force refreshing datasets...");
     if (!isRefreshing) {
+      clearFetchTimer();
       setRetryCount(0);
       loadDatasets(true);
     }
@@ -253,6 +292,8 @@ export const useDatasets = () => {
     loadDatasets,
     forceRefresh,
     deleteDataset,
-    isRefreshing
+    isRefreshing,
+    hasError
   };
 };
+

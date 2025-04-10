@@ -6,22 +6,33 @@ import { getUniqueDatasetsByFilename } from '@/utils/storageUtils';
 
 export const dataService = {
   getDatasets: async () => {
+    const networkTimeout = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Network request timeout')), 5000);
+    });
+    
     try {
-      const { data, error } = await supabase
+      const dataPromise = supabase
         .from('datasets')
         .select('*')
         .order('created_at', { ascending: false });
+      
+      // Use Promise.race to implement a timeout
+      const { data, error } = await Promise.race([
+        dataPromise,
+        networkTimeout.then(() => { throw new Error('Network request timeout'); })
+      ]) as any;
       
       if (error) throw error;
       return data || [];
     } catch (error) {
       console.error('Error fetching datasets:', error);
-      toast.error('Failed to fetch datasets');
+      if (error instanceof Error && error.message.includes('timeout')) {
+        console.warn('Network request timed out');
+      }
       return [];
     }
   },
 
-  // New method to get unique datasets (no duplicates)
   getUniqueDatasets: async () => {
     try {
       const datasets = await dataService.getDatasets();
@@ -33,7 +44,6 @@ export const dataService = {
     }
   },
 
-  // New method to get storage statistics
   getStorageStats: async (userId: string): Promise<StorageStats> => {
     try {
       // Get all datasets for the user
@@ -76,7 +86,6 @@ export const dataService = {
     }
   },
 
-  // New method to upload datasets
   uploadDataset: async (
     file: File,
     name: string,
@@ -260,6 +269,21 @@ export const dataService = {
         
         if (queriesDeleteError) {
           console.warn("Error deleting related queries:", queriesDeleteError);
+          
+          // Try calling the force-delete RPC function
+          try {
+            console.log("Attempting force deletion via SQL function");
+            const { data: rpcResult, error: rpcError } = await supabase
+              .rpc('force_delete_queries', { dataset_id_param: id });
+              
+            if (rpcError) {
+              console.warn("Force delete RPC failed:", rpcError);
+            } else {
+              console.log("Force delete RPC succeeded:", rpcResult);
+            }
+          } catch (rpcCallError) {
+            console.warn("Error calling force delete RPC:", rpcCallError);
+          }
         } else {
           console.log("Successfully deleted related queries");
         }
