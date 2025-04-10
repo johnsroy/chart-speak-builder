@@ -1,4 +1,3 @@
-
 import React from "react";
 import {
   Home as HomeIcon,
@@ -7,7 +6,6 @@ import {
   User as UserIcon,
   Beaker as BeakerIcon,
   Database as DatabaseIcon,
-  MessageSquare as MessageSquareIcon,
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,7 +18,7 @@ const NavBar = () => {
   const { user, logout: signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  // Navigation items for authenticated users
+  // Modify navigation items for authenticated users
   const authenticatedNavItems = [
     {
       name: "Home",
@@ -40,13 +38,6 @@ const NavBar = () => {
       icon: <DatabaseIcon className="h-5 w-5" />,
       adminOnly: false,
     },
-    // Removed Visualizations tab as it overlaps with Data Explorer functionality
-    {
-      name: "Talk to me",
-      path: "/analyze",
-      icon: <MessageSquareIcon className="h-5 w-5" />,
-      adminOnly: false,
-    },
     {
       name: "Settings",
       path: "/settings",
@@ -61,7 +52,7 @@ const NavBar = () => {
     },
   ];
 
-  // Navigation items for non-authenticated users
+  // Public navigation items remain unchanged
   const publicNavItems = [
     {
       name: "Home",
