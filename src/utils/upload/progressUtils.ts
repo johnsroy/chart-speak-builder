@@ -13,7 +13,8 @@ export const simulateProgress = (
   totalSize: number, 
   setProgress: React.Dispatch<React.SetStateAction<number>>
 ): NodeJS.Timeout => {
-  setProgress(startPercent);
+  // Ensure we start at the provided percentage
+  setProgress(Math.max(startPercent, 0));
   
   let lastProgress = startPercent;
   

@@ -25,38 +25,76 @@ export const uploadFileToStorage = async (
     const MAX_DIRECT_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB threshold for direct upload
     
     // First ensure we have proper permissions by creating bucket and policies
-    await ensureStorageBuckets();
+    try {
+      await ensureStorageBuckets();
+    } catch (initError) {
+      console.warn("Storage initialization had issues but continuing with upload:", initError);
+      // Continue anyway as the bucket might still exist
+    }
     
     let uploadData = null;
+    let uploadAttempted = false;
     
+    // Try direct upload first for all file sizes as it's more reliable
     try {
-      if (file.size <= MAX_DIRECT_UPLOAD_SIZE) {
-        // For smaller files, upload directly
+      console.log('Trying direct upload first regardless of file size');
+      uploadAttempted = true;
+      
+      const { data, error } = await supabase.storage
+        .from('datasets')
+        .upload(filePath, file, { 
+          upsert: true,
+          cacheControl: '3600'
+        });
+        
+      if (error) {
+        console.warn('Direct upload had an issue, will try other methods:', error);
+      } else {
+        console.log('Direct upload succeeded');
+        uploadData = data;
+      }
+    } catch (directError) {
+      console.warn('Direct upload failed, will try other methods:', directError);
+    }
+    
+    // If direct upload didn't work or didn't return data, try the more complex methods
+    if (!uploadData && (!uploadAttempted || file.size <= MAX_DIRECT_UPLOAD_SIZE)) {
+      try {
+        console.log('Trying upload for smaller file');
         const result = await uploadSmallFile(file, filePath, onProgress);
         uploadData = result.data;
-      } else {
-        // For larger files, use chunked upload
+      } catch (smallError) {
+        console.warn('Small file upload method failed:', smallError);
+      }
+    }
+    
+    // For larger files or if small file upload didn't work, try chunked upload
+    if (!uploadData && (!uploadAttempted || file.size > MAX_DIRECT_UPLOAD_SIZE)) {
+      try {
+        console.log('Trying chunked upload for larger file');
         const result = await uploadLargeFile(file, filePath, CHUNK_SIZE, onProgress);
         uploadData = result.data;
+      } catch (chunkedError) {
+        console.warn('Chunked upload method failed:', chunkedError);
       }
-    } catch (uploadError) {
-      console.error('File upload error:', uploadError);
-      
-      // Try direct upload as fallback regardless of file size
+    }
+    
+    // Last resort - try a simpler direct upload without options
+    if (!uploadData) {
       try {
-        console.log('Trying direct upload as fallback');
+        console.log('Trying last resort direct upload with minimal options');
         const { data, error } = await supabase.storage
           .from('datasets')
-          .upload(filePath, file, { upsert: true });
+          .upload(filePath, file);
           
         if (error) {
-          throw new Error(`Direct upload fallback failed: ${error.message}`);
+          console.warn('Last resort upload failed:', error);
+        } else {
+          uploadData = data;
         }
-        
-        uploadData = data;
-      } catch (directError) {
-        console.error('Direct upload fallback failed:', directError);
-        throw new Error(`Upload failed: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
+      } catch (lastAttemptError) {
+        console.error('All upload methods failed:', lastAttemptError);
+        throw new Error(`Upload failed after trying all available methods`);
       }
     }
     

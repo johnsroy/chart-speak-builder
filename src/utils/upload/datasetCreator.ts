@@ -5,193 +5,117 @@ import { Dataset } from '@/services/types/datasetTypes';
 /**
  * Creates a dataset record in the database
  * @param name Dataset name
- * @param description Dataset description
- * @param file File details
+ * @param description Dataset description (optional)
+ * @param file Original file
  * @param storagePath Path in storage
- * @param storageUrl URL to access the file
+ * @param storageUrl Public URL to file
  * @param userId User ID
- * @param columnSchema Schema information
- * @returns Created dataset
+ * @param columnSchema Column schema for the dataset
+ * @returns Dataset record
  */
 export const createDatasetRecord = async (
   name: string,
   description: string | undefined,
-  file: { name: string; size: number },
+  file: File,
   storagePath: string,
   storageUrl: string,
   userId: string,
-  columnSchema?: Record<string, string>,
+  columnSchema?: Record<string, string>
 ): Promise<Dataset> => {
-  // Prepare dataset entry, handling optional fields
-  const datasetEntry: any = {
-    name: name,
-    description: description || '',
-    file_name: file.name,
-    file_size: file.size,
-    storage_path: storagePath,
-    storage_type: 'datasets',
-    user_id: userId,
-    row_count: 0, // Default value to satisfy not-null constraint
-  };
-  
-  // Only add non-null optional fields
-  if (columnSchema) {
-    datasetEntry.column_schema = columnSchema;
-  }
-  
-  // Try to add storageUrl but don't worry if it fails
   try {
-    datasetEntry.storage_url = storageUrl;
-  } catch (error) {
-    console.warn("Could not add storage_url field, but continuing without it:", error);
-  }
-  
-  // Create dataset entry - use insert instead of upsert to avoid conflicts
-  console.log("Creating dataset record with data:", {
-    ...datasetEntry,
-    storage_url: storageUrl ? "Present" : "Missing",
-  });
-  
-  try {
-    const { data: datasetData, error: datasetError } = await supabase
+    console.log(`Creating dataset record for: ${name}`);
+    
+    // Create a dataset object with all required fields
+    const dataset = {
+      name: name.trim() || file.name,
+      description: description?.trim(),
+      file_name: file.name,
+      file_size: file.size,
+      storage_path: storagePath,
+      storage_url: storageUrl,
+      storage_type: 'supabase',
+      user_id: userId,
+      // Provide default values for required fields to avoid errors
+      row_count: 0, // Will be updated by the data processor
+      column_schema: columnSchema || {}
+    };
+    
+    console.log("Dataset record data:", dataset);
+    
+    // Insert dataset into the database
+    const { data, error } = await supabase
       .from('datasets')
-      .insert([datasetEntry])
-      .select('id')
+      .insert(dataset)
+      .select()
       .single();
       
-    if (datasetError) {
-      console.error("Dataset creation error:", datasetError);
+    if (error) {
+      console.error("Error creating dataset record:", error);
       
-      // If storage_url column doesn't exist, try again without it
-      if (datasetError.message.includes('storage_url')) {
-        console.log("Retrying without storage_url field");
-        delete datasetEntry.storage_url;
-        
-        const { data: retryData, error: retryError } = await supabase
-          .from('datasets')
-          .insert([datasetEntry])
-          .select('id')
-          .single();
-          
-        if (retryError) {
-          // Clean up storage if metadata insertion fails again
-          try {
-            await supabase.storage.from('datasets').remove([storagePath]);
-          } catch (cleanupError) {
-            console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
-          }
-          throw new Error(`Could not save dataset metadata: ${retryError.message}`);
-        }
-        
-        // If retry succeeded, use that result
-        const { data: fullDataset, error: getDatasetError } = await supabase
-          .from('datasets')
-          .select('*')
-          .eq('id', retryData.id)
-          .single();
-          
-        if (getDatasetError) {
-          console.warn("Could not fetch complete dataset after creation:", getDatasetError);
-          return retryData as Dataset;
-        }
-        
-        return fullDataset as Dataset;
-      }
+      // Attempt to fix common issues like missing fields
+      const fixedDataset = {
+        ...dataset,
+        row_count: dataset.row_count || 0,
+        column_schema: dataset.column_schema || {}
+      };
       
-      // For other errors, try one more time with minimal fields
-      try {
-        console.log("Trying minimal dataset creation as last resort");
+      console.log("Retrying with fixed dataset:", fixedDataset);
+      
+      // Try insertion again with fixed dataset
+      const { data: retryData, error: retryError } = await supabase
+        .from('datasets')
+        .insert(fixedDataset)
+        .select()
+        .single();
+        
+      if (retryError) {
+        console.error("Retry also failed:", retryError);
+        
+        // Try one last approach - stripped down to minimum fields
         const minimalDataset = {
-          name: name,
-          description: description || "",
+          name: name.trim() || file.name,
           file_name: file.name,
           file_size: file.size,
           storage_path: storagePath,
-          storage_type: 'datasets',
+          storage_type: 'supabase',
           user_id: userId,
-          row_count: 0, // Required field
+          row_count: 0,
+          column_schema: {}
         };
         
-        const { data: minimalData, error: minimalError } = await supabase
+        console.log("Final attempt with minimal dataset:", minimalDataset);
+        
+        const { data: finalData, error: finalError } = await supabase
           .from('datasets')
-          .insert([minimalDataset])
-          .select('*')
+          .insert(minimalDataset)
+          .select()
           .single();
           
-        if (minimalError) {
-          console.error("Minimal dataset creation failed:", minimalError);
-          
-          // If we still get an error, try one more time with maybeSingle
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from('datasets')
-            .insert([minimalDataset])
-            .select('*')
-            .maybeSingle();
-            
-          if (fallbackError || !fallbackData) {
-            throw new Error(`Minimal dataset creation failed: ${fallbackError?.message || 'No data returned'}`);
-          }
-          
-          return fallbackData as Dataset;
+        if (finalError) {
+          console.error("All attempts failed:", finalError);
+          throw new Error(`Could not create dataset record: ${finalError.message}`);
         }
         
-        return minimalData as Dataset;
-      } catch (fallbackError) {
-        // Clean up storage if metadata insertion fails again
-        try {
-          await supabase.storage.from('datasets').remove([storagePath]);
-        } catch (cleanupError) {
-          console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
-        }
-        throw new Error(`Could not save dataset metadata: ${fallbackError instanceof Error ? fallbackError.message : JSON.stringify(fallbackError)}`);
+        return finalData as Dataset;
       }
-    }
-    
-    // Return complete dataset object
-    const { data: fullDataset, error: getDatasetError } = await supabase
-      .from('datasets')
-      .select('*')
-      .eq('id', datasetData.id)
-      .single();
       
-    if (getDatasetError) {
-      console.warn("Could not fetch complete dataset after creation:", getDatasetError);
-      return datasetData as Dataset;
+      return retryData as Dataset;
     }
     
-    return fullDataset as Dataset;
+    console.log("Dataset record created successfully:", data);
+    return data as Dataset;
   } catch (error) {
-    console.error("Exception creating dataset:", error);
+    console.error("Error in createDatasetRecord:", error);
     
-    // Final fallback - create a minimal dataset record
-    try {
-      const minimalDataset = {
-        name: name,
-        description: description || "",
-        file_name: file.name,
-        file_size: file.size,
-        storage_path: storagePath,
-        storage_type: 'datasets',
-        user_id: userId,
-        row_count: 0, // Required field
-      };
-      
-      const { data, error } = await supabase
-        .from('datasets')
-        .insert([minimalDataset])
-        .select('*')
-        .maybeSingle();
-        
-      if (error || !data) {
-        console.error("Final fallback creation error:", error);
-        throw new Error(`Could not create dataset record: ${error?.message || 'No data returned'}`);
+    // Improve error message for object errors
+    if (error && typeof error === 'object') {
+      if (error instanceof Error) {
+        throw error;
+      } else {
+        throw new Error(`Could not create dataset record: ${JSON.stringify(error)}`);
       }
-      
-      return data as Dataset;
-    } catch (finalError) {
-      console.error("Final attempt to create dataset failed:", finalError);
-      const errorMessage = finalError instanceof Error ? finalError.message : JSON.stringify(finalError);
-      throw new Error(`Could not create dataset record: ${errorMessage}`);
     }
+    
+    throw error;
   }
 };
