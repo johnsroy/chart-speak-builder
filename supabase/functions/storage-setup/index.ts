@@ -26,7 +26,16 @@ serve(async (req) => {
     });
     
     // Get the action from the request
-    const { action, force = false } = await req.json();
+    let requestBody;
+    
+    try {
+      requestBody = await req.json();
+    } catch (jsonError) {
+      console.error("Failed to parse request body as JSON:", jsonError);
+      requestBody = { action: 'create-buckets', force: true };
+    }
+    
+    const { action = 'create-buckets', force = false } = requestBody;
     
     if (action === 'create-buckets') {
       // Create the necessary buckets
@@ -51,7 +60,7 @@ serve(async (req) => {
             console.log(`Creating bucket ${bucketName}...`);
             const { data, error } = await supabase.storage.createBucket(bucketName, {
               public: true, // Make buckets public for easier access
-              fileSizeLimit: 100 * 1024 * 1024, // 100MB limit
+              fileSizeLimit: 500 * 1024 * 1024, // 500MB limit
             });
             
             if (error) {
@@ -109,7 +118,26 @@ serve(async (req) => {
           // Loop through each policy operation and create it
           for (const policy of policyOperations) {
             try {
-              // Use a parameterized query to safely create the policy
+              // First try the execute_sql method for maximum flexibility
+              try {
+                const { error: directError } = await supabase.rpc('execute_sql', {
+                  sql_command: `
+                    DROP POLICY IF EXISTS "${policy.name}" ON storage.objects;
+                    CREATE POLICY "${policy.name}" 
+                    ON storage.objects
+                    FOR ${policy.operation}
+                    USING (${policy.definition})
+                    WITH CHECK (${policy.permission});
+                  `
+                });
+                
+                if (!directError) {
+                  console.log(`Created ${policy.operation} policy for ${bucketName} using direct SQL`);
+                  continue;
+                }
+              } catch {}
+              
+              // Use a parameterized query as fallback
               const { error: policyError } = await supabase.rpc('create_storage_policy_custom', {
                 p_name: policy.name,
                 p_operation: policy.operation,
@@ -120,28 +148,17 @@ serve(async (req) => {
               if (policyError) {
                 console.error(`Error creating ${policy.operation} policy for ${bucketName}:`, policyError);
                 
-                // Try alternative approach if the first one fails
+                // Try yet another approach if both failed
                 try {
-                  // Alternative approach: Direct SQL for maximum compatibility
-                  const { error: fallbackError } = await supabase.rpc('execute_sql', {
-                    sql_command: `
-                      DROP POLICY IF EXISTS "${policy.name}" ON storage.objects;
-                      CREATE POLICY "${policy.name}" 
-                      ON storage.objects
-                      FOR ${policy.operation}
-                      USING (${policy.definition})
-                      WITH CHECK (${policy.permission});
-                    `
+                  const { error: fallbackError } = await supabase.rpc('create_public_storage_policies', { 
+                    bucket_name: bucketName 
                   });
                   
-                  if (fallbackError) {
-                    console.error(`Fallback policy creation failed for ${bucketName} (${policy.operation}):`, fallbackError);
-                  } else {
-                    console.log(`Created ${policy.operation} policy for ${bucketName} using fallback method`);
+                  if (!fallbackError) {
+                    console.log(`Created all policies for ${bucketName} using public_storage_policies function`);
+                    break; // Exit policy loop since this creates all policies at once
                   }
-                } catch (fallbackError) {
-                  console.error(`Fallback policy exception for ${bucketName} (${policy.operation}):`, fallbackError);
-                }
+                } catch {}
               } else {
                 console.log(`Created ${policy.operation} policy for ${bucketName}`);
               }
@@ -151,6 +168,17 @@ serve(async (req) => {
           }
         } catch (directPolicyError) {
           console.error(`Direct policy creation failed for ${bucketName}:`, directPolicyError);
+          
+          // Try another approach using a different function
+          try {
+            const { error: createPolicyError } = await supabase.rpc('create_storage_policy', { 
+              bucket_name: bucketName 
+            });
+            
+            if (!createPolicyError) {
+              console.log(`Created policies for ${bucketName} using create_storage_policy function`);
+            }
+          } catch {}
         }
       }
       

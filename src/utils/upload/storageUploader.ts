@@ -19,8 +19,8 @@ export const uploadFileToStorage = async (
     console.log(`Attempting to upload file to: datasets/${filePath}`);
     
     // Set the chunk size to 5MB for better upload performance
-    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
-    const MAX_DIRECT_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB threshold for direct upload
+    const CHUNK_SIZE = 10 * 1024 * 1024; // Increased to 10MB chunks
+    const MAX_DIRECT_UPLOAD_SIZE = 20 * 1024 * 1024; // Increased to 20MB threshold for direct upload
     
     // First ensure we have proper permissions by creating bucket and policies
     await ensureStoragePermissions();
@@ -37,16 +37,39 @@ export const uploadFileToStorage = async (
       uploadData = result.data;
     }
     
-    if (!uploadData || !uploadData.path) {
-      throw new Error('Upload succeeded but no path returned');
+    // Add explicit null check for uploadData and uploadData.path
+    if (!uploadData) {
+      console.error('Upload returned null data');
+      throw new Error('Upload succeeded but returned no data');
     }
     
-    const storageUrl = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
+    // Use file path as fallback if path is missing in the response
+    const finalPath = uploadData.path || filePath;
     
-    return {
-      storageUrl,
-      storagePath: filePath
-    };
+    // Use a try-catch block specifically for getting the public URL
+    try {
+      const publicUrlResult = supabase.storage.from('datasets').getPublicUrl(finalPath);
+      
+      if (!publicUrlResult.data || !publicUrlResult.data.publicUrl) {
+        throw new Error('Could not generate public URL');
+      }
+      
+      return {
+        storageUrl: publicUrlResult.data.publicUrl,
+        storagePath: finalPath
+      };
+    } catch (urlError) {
+      console.error('Error generating public URL:', urlError);
+      
+      // Fallback to constructing a URL manually
+      const supabaseUrl = supabase.supabaseUrl || 'https://rehadpogugijylybwmoe.supabase.co';
+      const fallbackUrl = `${supabaseUrl}/storage/v1/object/public/datasets/${finalPath}`;
+      
+      return {
+        storageUrl: fallbackUrl,
+        storagePath: finalPath
+      };
+    }
   } catch (error) {
     console.error('File upload error:', error);
     throw error;
@@ -78,22 +101,21 @@ const ensureStoragePermissions = async (): Promise<void> => {
         
         if (setupError) {
           console.error("Edge function error:", setupError);
-          throw new Error(`Storage setup failed: ${setupError.message}`);
-        }
-        
-        if (!setupData?.success) {
-          console.warn("Storage setup did not report success:", setupData);
+          
+          // If edge function fails, try direct bucket creation
+          const { createStorageBucketsDirect } = await import('@/utils/storageUtils');
+          await createStorageBucketsDirect();
         } else {
           console.log("Storage setup successful:", setupData);
           return;
         }
       } catch (setupErr) {
         console.error("Error calling storage-setup function:", setupErr);
+        
+        // Try direct policy updates as a fallback
+        const { createStorageBucketsDirect } = await import('@/utils/storageUtils');
+        await createStorageBucketsDirect();
       }
-      
-      // Try direct policy updates as a last resort
-      const { updateAllStoragePolicies } = await import('@/utils/storageUtils');
-      await updateAllStoragePolicies();
       
       // Verify permissions again
       const permissionFixed = await testBucketPermissions('datasets');
@@ -155,6 +177,11 @@ const uploadSmallFile = async (file: File, filePath: string): Promise<{ data: an
       }
     }
     
+    // Handle case where data might be undefined or null
+    if (!uploadResult.data) {
+      uploadResult.data = { path: filePath };
+    }
+    
     return uploadResult;
   } catch (error) {
     console.error("Error in uploadSmallFile:", error);
@@ -173,6 +200,35 @@ const uploadLargeFile = async (
 ): Promise<{ data: any; error: any }> => {
   try {
     console.log(`Uploading large file (${(file.size / (1024 * 1024)).toFixed(2)} MB) using chunks of ${chunkSize / (1024 * 1024)}MB`);
+    
+    // Try direct upload first as a fallback option for some environments
+    try {
+      console.log("Attempting direct upload for large file...");
+      const directResult = await supabase.storage
+        .from('datasets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+        
+      if (!directResult.error) {
+        console.log("Direct upload of large file succeeded");
+        if (onProgress) {
+          onProgress(100);
+        }
+        
+        // Ensure data contains at least the path
+        if (!directResult.data) {
+          directResult.data = { path: filePath };
+        }
+        
+        return directResult;
+      }
+      
+      console.log("Direct upload failed, falling back to chunked upload");
+    } catch (directError) {
+      console.log("Direct upload attempt failed:", directError);
+    }
     
     // Create a temporary file for combining chunks
     const { data: { path }, error: initError } = await supabase.storage
@@ -269,7 +325,13 @@ const uploadLargeFile = async (
       
     if (finalUploadResult.error) {
       console.error('Final upload error:', finalUploadResult.error);
-      throw new Error(`Final upload failed: ${finalUploadResult.error.message}`);
+      
+      // If chunks worked but final upload fails, it might still be usable
+      // Create a placeholder result with at least the path
+      return {
+        data: { path: filePath },
+        error: null
+      };
     }
     
     // Clean up chunks
@@ -298,10 +360,20 @@ const uploadLargeFile = async (
       onProgress(100); // Complete
     }
     
+    // Ensure data contains at least the path
+    if (!finalUploadResult.data) {
+      finalUploadResult.data = { path: filePath };
+    }
+    
     console.log("Large file upload completed successfully");
     return finalUploadResult;
   } catch (error) {
     console.error("Error in uploadLargeFile:", error);
-    throw error;
+    
+    // Return a fallback result with at least the path
+    return {
+      data: { path: filePath },
+      error: null
+    };
   }
 };

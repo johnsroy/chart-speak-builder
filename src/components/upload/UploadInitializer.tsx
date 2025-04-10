@@ -54,20 +54,26 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
           }
         }
         
-        // Final permission test
-        const finalPermissionTest = await testBucketPermissions('datasets');
-        
-        if (finalPermissionTest) {
-          console.log("Permission test passed after all approaches");
-          setBucketsVerified(true);
-          toast.success("Storage ready for uploads");
-        } else {
-          console.error("All storage initialization approaches failed");
-          setBucketsVerified(false);
-          toast.error("Could not initialize storage", {
-            description: "Please try again or contact support"
-          });
+        // Final permission test - even if all approaches failed, maybe permissions are somehow working
+        try {
+          const finalPermissionTest = await testBucketPermissions('datasets');
+          
+          if (finalPermissionTest) {
+            console.log("Permission test passed after all approaches");
+            setBucketsVerified(true);
+            toast.success("Storage ready for uploads");
+            return;
+          }
+        } catch (testError) {
+          console.error("Final permission test failed:", testError);
         }
+        
+        // If we get here, all approaches failed
+        console.error("All storage initialization approaches failed");
+        setBucketsVerified(false);
+        toast.error("Could not initialize storage", {
+          description: "Please try again or contact support"
+        });
       } catch (error) {
         console.error("Error initializing storage:", error);
         setBucketsVerified(false);
@@ -87,29 +93,59 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
     try {
       console.log("Calling storage-setup edge function...");
       
-      const { data, error } = await supabase.functions.invoke('storage-setup', {
+      // Use a more robust approach to call the edge function
+      const response = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/storage-setup', {
         method: 'POST',
-        body: { action: 'create-buckets', force: true },
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.getSession().then(res => res.data.session?.access_token || '')}`
+        },
+        body: JSON.stringify({ action: 'create-buckets', force: true })
       });
       
-      if (error) {
-        console.error("Edge function error:", error);
-        return false;
+      if (!response.ok) {
+        console.error("Edge function HTTP error:", response.status, response.statusText);
+        
+        // Fallback to supabase.functions.invoke
+        const { data, error } = await supabase.functions.invoke('storage-setup', {
+          method: 'POST',
+          body: { action: 'create-buckets', force: true },
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (error) {
+          console.error("Edge function invocation error:", error);
+          return false;
+        }
+        
+        if (!data?.success) {
+          console.warn("Edge function did not report success:", data);
+          return false;
+        }
+        
+        return true;
       }
       
-      if (!data?.success) {
-        console.warn("Edge function did not report success:", data);
-        return false;
-      }
-      
-      console.log("Edge function succeeded:", data);
-      return true;
+      // Process the direct fetch response
+      const responseData = await response.json();
+      console.log("Edge function direct fetch succeeded:", responseData);
+      return responseData?.success || false;
     } catch (error) {
       console.error("Error calling storage-setup function:", error);
-      return false;
+      
+      // Last resort fallback to supabase.functions.invoke without error throwing
+      try {
+        const { data } = await supabase.functions.invoke('storage-setup', {
+          method: 'POST',
+          body: { action: 'create-buckets', force: true }
+        });
+        
+        return data?.success || false;
+      } catch {
+        return false;
+      }
     }
   };
   
