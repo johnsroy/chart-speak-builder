@@ -15,25 +15,39 @@ export const simulateProgress = (
 ): NodeJS.Timeout => {
   setProgress(startPercent);
   
+  let lastProgress = startPercent;
+  
   const progressInterval = setInterval(() => {
-    let currentProgress = 0;
-    
     setProgress(prev => {
-      currentProgress = prev;
+      // Never go backwards in progress
+      const newProgress = Math.max(prev, lastProgress);
+      
       // Move slowly to 90% to simulate upload
-      if (prev < 90) {
+      if (newProgress < 90) {
         // Larger files should progress more slowly
         const increment = totalSize > 5 * 1024 * 1024 ? 1 : 3;
-        return Math.min(90, prev + increment);
+        const updatedProgress = Math.min(90, newProgress + increment);
+        lastProgress = updatedProgress;
+        return updatedProgress;
       }
-      return prev;
+      return newProgress;
     });
     
     // If we've reached or exceeded 90%, clear the interval
-    if (currentProgress >= 90) {
+    if (lastProgress >= 90) {
       clearInterval(progressInterval);
     }
-  }, 300); // Faster updates for more responsive UI
+  }, 500); // Slower updates for more stability
   
   return progressInterval;
+};
+
+/**
+ * Ensures progress only increases, never decreases
+ * @param currentValue Current progress value
+ * @param newValue New progress value to set
+ * @returns The higher of the two values
+ */
+export const ensureProgressIncreases = (currentValue: number, newValue: number): number => {
+  return Math.max(currentValue, newValue);
 };

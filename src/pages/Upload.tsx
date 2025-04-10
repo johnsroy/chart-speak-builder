@@ -98,8 +98,20 @@ const Upload = () => {
       loadDatasets();
     } catch (error) {
       console.error('Upload failed:', error);
+      let errorMessage = "Unknown error occurred";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object') {
+        try {
+          errorMessage = JSON.stringify(error);
+        } catch (e) {
+          errorMessage = "Could not stringify error object";
+        }
+      }
+      
       toast.error("Upload failed", {
-        description: error instanceof Error ? error.message : "Unknown error occurred"
+        description: errorMessage
       });
     }
   };

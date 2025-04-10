@@ -1,4 +1,3 @@
-
 import { Dataset } from '@/services/types/datasetTypes';
 import { validateFileForUpload, getDatasetNameFromFile, MAX_FILE_SIZE } from './fileValidator';
 import { validateUserId } from './userUtils';
@@ -114,10 +113,14 @@ export const performUpload = async (
     await createPreviewAndSchema(file, previewKey, additionalProps);
     
     // Setup progress tracking
+    let lastProgress = 0;
     if (onProgress) {
       const progressHandler = (progress: number) => {
-        console.log(`Upload progress: ${progress}%`);
-        onProgress(progress);
+        // Ensure progress never goes backward
+        const newProgress = Math.max(progress, lastProgress);
+        lastProgress = newProgress;
+        console.log(`Upload progress: ${newProgress}%`);
+        onProgress(newProgress);
       };
       
       // Start with 10% to show immediate feedback
@@ -125,8 +128,13 @@ export const performUpload = async (
       
       // Setup progress simulation
       const progressInterval = setInterval(() => {
-        progressHandler(Math.min(85, (Math.random() * 20) + 20));
-      }, 500);
+        const newProgress = Math.min(85, lastProgress + ((Math.random() * 5) + 1));
+        progressHandler(newProgress);
+        // Safety check to clear interval if it's been running too long
+        if (newProgress >= 85) {
+          clearInterval(progressInterval);
+        }
+      }, 800);
       
       // Clean up interval after upload completes or fails
       setTimeout(() => clearInterval(progressInterval), 30000); // Safety timeout
@@ -149,7 +157,12 @@ export const performUpload = async (
         storageResult = await uploadFileToStorage(
           file, 
           filePath, 
-          onProgress
+          onProgress ? (progress) => {
+            // Ensure progress doesn't go backward
+            const newProgress = Math.max(progress, lastProgress);
+            lastProgress = newProgress;
+            onProgress(newProgress);
+          } : undefined
         );
         
         // If we got here, upload succeeded
@@ -205,6 +218,7 @@ export const performUpload = async (
     }
     
     if (onProgress) {
+      // Ensure we're at 90% before creating the dataset
       onProgress(90);
     }
     
@@ -216,8 +230,7 @@ export const performUpload = async (
       storageResult.storagePath,
       storageResult.storageUrl,
       validUserId,
-      additionalProps.column_schema,
-      file.size > 50 * 1024 * 1024
+      additionalProps.column_schema
     );
     
     // Clean up progress interval if it exists
@@ -237,6 +250,11 @@ export const performUpload = async (
     // Set progress to 0 to indicate failure
     if (onProgress) {
       onProgress(0);
+    }
+    
+    // Improve error messages from objects
+    if (error && typeof error === 'object' && !(error instanceof Error)) {
+      throw new Error(`Upload failed: ${JSON.stringify(error)}`);
     }
     
     throw error;

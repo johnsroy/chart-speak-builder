@@ -11,7 +11,6 @@ import { Dataset } from '@/services/types/datasetTypes';
  * @param storageUrl URL to access the file
  * @param userId User ID
  * @param columnSchema Schema information
- * @param isLargeFile Whether this is a large file
  * @returns Created dataset
  */
 export const createDatasetRecord = async (
@@ -22,7 +21,6 @@ export const createDatasetRecord = async (
   storageUrl: string,
   userId: string,
   columnSchema?: Record<string, string>,
-  isLargeFile?: boolean
 ): Promise<Dataset> => {
   // Prepare dataset entry, handling optional fields
   const datasetEntry: any = {
@@ -33,6 +31,7 @@ export const createDatasetRecord = async (
     storage_path: storagePath,
     storage_type: 'datasets',
     user_id: userId,
+    row_count: 0, // Default value to satisfy not-null constraint
   };
   
   // Only add non-null optional fields
@@ -45,15 +44,6 @@ export const createDatasetRecord = async (
     datasetEntry.storage_url = storageUrl;
   } catch (error) {
     console.warn("Could not add storage_url field, but continuing without it:", error);
-  }
-  
-  // Try to add isLargeFile but don't worry if it fails
-  try {
-    if (isLargeFile !== undefined) {
-      datasetEntry.is_large_file = isLargeFile;
-    }
-  } catch (error) {
-    console.warn("Could not add is_large_file field, but continuing without it:", error);
   }
   
   // Create dataset entry - use insert instead of upsert to avoid conflicts
@@ -108,13 +98,40 @@ export const createDatasetRecord = async (
         return fullDataset as Dataset;
       }
       
-      // For other errors, clean up storage and throw
+      // For other errors, try one more time with minimal fields
       try {
-        await supabase.storage.from('datasets').remove([storagePath]);
-      } catch (cleanupError) {
-        console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
+        console.log("Trying minimal dataset creation as last resort");
+        const minimalDataset = {
+          name: name,
+          description: description || "",
+          file_name: file.name,
+          file_size: file.size,
+          storage_path: storagePath,
+          storage_type: 'datasets',
+          user_id: userId,
+          row_count: 0, // Required field
+        };
+        
+        const { data: minimalData, error: minimalError } = await supabase
+          .from('datasets')
+          .insert([minimalDataset])
+          .select('id')
+          .single();
+          
+        if (minimalError) {
+          throw new Error(`Minimal dataset creation failed: ${minimalError.message}`);
+        }
+        
+        return minimalData as Dataset;
+      } catch (fallbackError) {
+        // Clean up storage if metadata insertion fails again
+        try {
+          await supabase.storage.from('datasets').remove([storagePath]);
+        } catch (cleanupError) {
+          console.error("Error cleaning up storage after failed dataset creation:", cleanupError);
+        }
+        throw new Error(`Could not save dataset metadata: ${datasetError.message}`);
       }
-      throw new Error(`Could not save dataset metadata: ${datasetError.message}`);
     }
     
     // Return complete dataset object
@@ -143,6 +160,7 @@ export const createDatasetRecord = async (
         storage_path: storagePath,
         storage_type: 'datasets',
         user_id: userId,
+        row_count: 0, // Required field
       };
       
       const { data, error } = await supabase
@@ -152,13 +170,16 @@ export const createDatasetRecord = async (
         .single();
         
       if (error) {
-        throw error;
+        console.error("Final fallback creation error:", error);
+        const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+        throw new Error(`Could not create dataset record: ${errorMessage}`);
       }
       
       return data as Dataset;
     } catch (finalError) {
       console.error("Final attempt to create dataset failed:", finalError);
-      throw new Error(`Could not create dataset record: ${finalError instanceof Error ? finalError.message : String(finalError)}`);
+      const errorMessage = finalError instanceof Error ? finalError.message : JSON.stringify(finalError);
+      throw new Error(`Could not create dataset record: ${errorMessage}`);
     }
   }
 };

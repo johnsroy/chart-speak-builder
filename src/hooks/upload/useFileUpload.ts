@@ -1,4 +1,3 @@
-
 import { useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -55,12 +54,18 @@ export const useFileUpload = (): UseFileUploadResult => {
       overwriteInProgress: false,
     }));
 
+    let lastProgress = 0;
     const progressInterval = setInterval(() => {
-      setState(prevState => ({
-        ...prevState,
-        uploadProgress: Math.min(90, prevState.uploadProgress + (Math.random() * 5) + 1)
-      }));
-    }, 300);
+      setState(prevState => {
+        const newProgress = Math.min(85, prevState.uploadProgress + (Math.random() * 3) + 1);
+        const finalProgress = Math.max(newProgress, lastProgress);
+        lastProgress = finalProgress;
+        return {
+          ...prevState,
+          uploadProgress: finalProgress
+        };
+      });
+    }, 500);
 
     try {
       const fileExt = file.name.split('.').pop();
@@ -71,7 +76,7 @@ export const useFileUpload = (): UseFileUploadResult => {
         .from('datasets')
         .select('*')
         .eq('name', datasetName)
-        .single();
+        .maybeSingle();
 
       if (selectError && selectError.code !== 'PGRST116') {
         throw new Error(selectError.message || 'Could not check existing datasets');
@@ -89,7 +94,10 @@ export const useFileUpload = (): UseFileUploadResult => {
         return;
       }
       
-      setState(prevState => ({ ...prevState, uploadProgress: 20 }));
+      setState(prevState => ({ 
+        ...prevState, 
+        uploadProgress: Math.max(20, prevState.uploadProgress) 
+      }));
 
       const uploadResult = await performUpload(
         file,
@@ -97,7 +105,10 @@ export const useFileUpload = (): UseFileUploadResult => {
         datasetDescription,
         user_id,
         (progress) => {
-          setState(prevState => ({ ...prevState, uploadProgress: progress }));
+          setState(prevState => ({ 
+            ...prevState, 
+            uploadProgress: Math.max(progress, prevState.uploadProgress)
+          }));
         },
         { column_schema: state.schemaPreview }
       );
@@ -126,13 +137,22 @@ export const useFileUpload = (): UseFileUploadResult => {
     } catch (uploadError: any) {
       clearInterval(progressInterval);
       console.error("Upload failed:", uploadError);
+      
+      let errorMessage = "An unexpected error occurred during upload.";
+      if (uploadError instanceof Error) {
+        errorMessage = uploadError.message;
+      } else if (typeof uploadError === 'object') {
+        errorMessage = JSON.stringify(uploadError);
+      }
+      
       toast.error("Upload failed", {
-        description: uploadError.message || "An unexpected error occurred during upload."
+        description: errorMessage
       });
+      
       setState(prevState => ({
         ...prevState,
         isUploading: false,
-        uploadError: uploadError.message || 'Upload failed',
+        uploadError: errorMessage,
         uploadProgress: 0,
       }));
     }
