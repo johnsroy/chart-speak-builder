@@ -4,7 +4,7 @@ import { validateFileForUpload, getDatasetNameFromFile, MAX_FILE_SIZE } from './
 import { validateUserId } from './userUtils';
 import { simulateProgress } from './progressUtils';
 import { createPreviewAndSchema } from './previewUtils';
-import { uploadFileToStorage } from './storageUploader';
+import { uploadFileToStorage } from './storage/uploader';
 import { createDatasetRecord } from './datasetCreator';
 import { supabase } from '@/lib/supabase';
 
@@ -171,5 +171,8 @@ export * from './fileValidator';
 export * from './userUtils';
 export * from './progressUtils';
 export * from './previewUtils';
-export * from './storageUploader';
+export * from './storage/uploader';
+export * from './storage/directUploader';
+export * from './storage/chunkedUploader';
+export * from './storage/storageInit';
 export * from './datasetCreator';
