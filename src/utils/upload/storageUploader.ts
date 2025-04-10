@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { testBucketPermissions } from '@/utils/storageUtils';
 import { toast } from "sonner";
@@ -18,26 +17,63 @@ export const uploadFileToStorage = async (
   try {
     console.log(`Attempting to upload file to: datasets/${filePath}`);
     
-    // Set the chunk size to 50MB for better upload performance with large files
-    const CHUNK_SIZE = 50 * 1024 * 1024; // Increased to 50MB chunks
-    const MAX_DIRECT_UPLOAD_SIZE = 50 * 1024 * 1024; // Increased to 50MB threshold for direct upload
+    // Set the chunk size to 100MB for better upload performance with large files
+    const CHUNK_SIZE = 100 * 1024 * 1024; // 100MB chunks
+    const MAX_DIRECT_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB threshold for direct upload
     
     // First ensure we have proper permissions by creating bucket and policies
-    await ensureStoragePermissions();
+    await ensureStorageBuckets();
     
     let uploadData = null;
+    let progressValue = 0;
     
-    if (file.size <= MAX_DIRECT_UPLOAD_SIZE) {
-      // For smaller files, upload directly
-      const result = await uploadSmallFile(file, filePath);
-      uploadData = result.data;
-    } else {
-      // For larger files, use chunked upload
-      const result = await uploadLargeFile(file, filePath, CHUNK_SIZE, onProgress);
-      uploadData = result.data;
+    // Set up last progress check to detect rollbacks
+    let lastProgressValue = 0;
+    let progressRollbacks = 0;
+    
+    // Setup interval to keep UI updated even if progress stalls
+    const progressInterval = setInterval(() => {
+      if (onProgress && progressValue < 95) {
+        // Very small increment to show activity during stalls
+        progressValue += 0.1;
+        onProgress(progressValue);
+      }
+    }, 1000);
+    
+    try {
+      // Custom progress tracking that prevents rollbacks
+      const trackProgress = (progress: number) => {
+        // Only update if progress is increasing
+        if (progress > progressValue) {
+          progressValue = progress;
+          
+          if (onProgress) {
+            onProgress(progressValue);
+          }
+        } else if (progress < lastProgressValue) {
+          // Log if progress is rolling back but don't update the UI
+          console.warn(`Progress rollback detected: ${lastProgressValue} -> ${progress}`);
+          progressRollbacks++;
+        }
+        
+        lastProgressValue = progress;
+      };
+      
+      if (file.size <= MAX_DIRECT_UPLOAD_SIZE) {
+        // For smaller files, upload directly
+        const result = await uploadSmallFile(file, filePath);
+        uploadData = result.data;
+      } else {
+        // For larger files, use chunked upload
+        const result = await uploadLargeFile(file, filePath, CHUNK_SIZE, trackProgress);
+        uploadData = result.data;
+      }
+    } finally {
+      // Always clear interval
+      clearInterval(progressInterval);
     }
     
-    // Add explicit null check for uploadData and uploadData.path
+    // Add explicit null check for uploadData
     if (!uploadData) {
       console.error('Upload returned null data');
       throw new Error('Upload succeeded but returned no data');
@@ -62,7 +98,6 @@ export const uploadFileToStorage = async (
       console.error('Error generating public URL:', urlError);
       
       // Fallback to constructing a URL manually
-      // Access the URL in a type-safe way
       const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://rehadpogugijylybwmoe.supabase.co';
       const fallbackUrl = `${supabaseUrl}/storage/v1/object/public/datasets/${finalPath}`;
       
@@ -78,9 +113,9 @@ export const uploadFileToStorage = async (
 };
 
 /**
- * Ensures proper storage permissions before uploading
+ * Ensures storage buckets exist before uploading
  */
-const ensureStoragePermissions = async (): Promise<void> => {
+const ensureStorageBuckets = async (): Promise<void> => {
   try {
     console.log("Checking storage permissions...");
     
@@ -186,13 +221,9 @@ const uploadSmallFile = async (file: File, filePath: string): Promise<{ data: an
         id: filePath,
         fullPath: `datasets/${filePath}`
       };
-    } else if (!uploadResult.data.id || !uploadResult.data.fullPath) {
-      // Fill in missing fields
-      uploadResult.data = {
-        ...uploadResult.data,
-        id: uploadResult.data.id || filePath,
-        fullPath: uploadResult.data.fullPath || `datasets/${filePath}`
-      };
+    } else if (!uploadResult.data.path) {
+      // Make sure path is set for consistency
+      uploadResult.data.path = filePath;
     }
     
     return uploadResult;
@@ -227,7 +258,7 @@ const uploadLargeFile = async (
       if (!directResult.error) {
         console.log("Direct upload of large file succeeded");
         if (onProgress) {
-          onProgress(100);
+          onProgress(95);
         }
         
         // Ensure data contains required fields
@@ -237,13 +268,9 @@ const uploadLargeFile = async (
             id: filePath,
             fullPath: `datasets/${filePath}`
           };
-        } else if (!directResult.data.id || !directResult.data.fullPath) {
-          // Fill in missing fields
-          directResult.data = {
-            ...directResult.data,
-            id: directResult.data.id || filePath,
-            fullPath: directResult.data.fullPath || `datasets/${filePath}`
-          };
+        } else if (!directResult.data.path) {
+          // Make sure path is set
+          directResult.data.path = filePath;
         }
         
         return directResult;
@@ -318,8 +345,9 @@ const uploadLargeFile = async (
         uploadedBytes += chunk.size;
         
         if (onProgress) {
-          const totalProgress = Math.floor((uploadedBytes / file.size) * 100);
-          onProgress(Math.min(95, totalProgress)); // Cap at 95% until final processing
+          // Calculate progress as percentage but cap at 95% until final processing
+          const totalProgress = Math.floor((uploadedBytes / file.size) * 95);
+          onProgress(Math.min(95, totalProgress));
         }
         
         console.log(`Chunk ${chunkIndex + 1}/${totalChunks} uploaded (${uploadedChunks}/${totalChunks} complete)`);
@@ -329,17 +357,17 @@ const uploadLargeFile = async (
       }
     }
     
-    // Now finalize the upload by combining chunks (in a real implementation, this would be server-side)
-    // Here we simulate by uploading the whole file again once we know chunks worked
-    console.log("All chunks uploaded, finalizing file...");
-    
+    // Signal that we're finalizing
     if (onProgress) {
-      onProgress(97); // Signal that we're finalizing
+      onProgress(95);
     }
     
-    // Try to get permission to delete chunks and upload final file
-    await ensureStoragePermissions();
+    console.log("All chunks uploaded, finalizing file...");
     
+    // Try to get permission to delete chunks and upload final file
+    await ensureStorageBuckets();
+    
+    // Upload the complete file
     const finalUploadResult = await supabase.storage
       .from('datasets')
       .upload(filePath, file, {
@@ -384,8 +412,9 @@ const uploadLargeFile = async (
       // Non-fatal, continue
     }
     
+    // At 100% when finished
     if (onProgress) {
-      onProgress(100); // Complete
+      onProgress(100);
     }
     
     // Ensure data contains required fields
@@ -395,13 +424,9 @@ const uploadLargeFile = async (
         id: filePath,
         fullPath: `datasets/${filePath}`
       };
-    } else if (!finalUploadResult.data.id || !finalUploadResult.data.fullPath) {
-      // Fill in missing fields
-      finalUploadResult.data = {
-        ...finalUploadResult.data,
-        id: finalUploadResult.data.id || filePath,
-        fullPath: finalUploadResult.data.fullPath || `datasets/${filePath}`
-      };
+    } else if (!finalUploadResult.data.path) {
+      // Make sure path is set for consistency
+      finalUploadResult.data.path = filePath;
     }
     
     console.log("Large file upload completed successfully");

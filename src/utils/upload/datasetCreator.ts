@@ -31,7 +31,6 @@ export const createDatasetRecord = async (
     file_name: file.name,
     file_size: file.size,
     storage_path: storagePath,
-    storage_url: storageUrl,
     storage_type: 'datasets',
     user_id: userId,
   };
@@ -39,6 +38,24 @@ export const createDatasetRecord = async (
   // Only add non-null optional fields
   if (columnSchema) {
     datasetEntry.column_schema = columnSchema;
+  }
+  
+  // Check if the storage_url column exists before trying to use it
+  try {
+    const { error: urlColumnError } = await supabase.rpc('check_column_exists', { 
+      table_name: 'datasets',
+      column_name: 'storage_url'
+    });
+    
+    // If the function exists and doesn't return an error, add the storage_url field
+    if (!urlColumnError) {
+      datasetEntry.storage_url = storageUrl;
+    } else {
+      console.warn("Couldn't verify storage_url column, but continuing without it:", urlColumnError);
+    }
+  } catch (error) {
+    console.warn("Unable to check if storage_url column exists:", error);
+    // Continue without adding the field
   }
   
   // Check if the is_large_file column exists before trying to use it

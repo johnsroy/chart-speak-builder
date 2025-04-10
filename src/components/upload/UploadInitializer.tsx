@@ -42,6 +42,13 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
                 console.log("Permission test passed after initialization");
                 setBucketsVerified(true);
                 toast.success("Storage connected successfully");
+                
+                // Create or verify the check_column_exists function
+                try {
+                  await createColumnCheckFunction();
+                } catch (functionError) {
+                  console.warn("Error creating column check function, but continuing:", functionError);
+                }
                 return;
               } else {
                 console.warn(`${approach.name} appeared to succeed but permission test failed`);
@@ -152,6 +159,34 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
       } catch {
         return false;
       }
+    }
+  };
+  
+  /**
+   * Creates the check_column_exists database function if it doesn't exist
+   */
+  const createColumnCheckFunction = async (): Promise<boolean> => {
+    try {
+      console.log("Creating check_column_exists function...");
+      
+      const { data, error } = await supabase.functions.invoke('storage-setup', {
+        method: 'POST',
+        body: { action: 'create-column-check-function' },
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (error) {
+        console.error("Error creating column check function:", error);
+        return false;
+      }
+      
+      console.log("Column check function created or already exists:", data);
+      return data?.success || false;
+    } catch (error) {
+      console.error("Error creating column check function:", error);
+      return false;
     }
   };
   
