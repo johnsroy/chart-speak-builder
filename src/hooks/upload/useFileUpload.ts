@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { performUpload } from '@/utils/uploadUtils';
+import { performUpload, validateUserId } from '@/utils/upload';
 import { UseFileUploadResult } from './types';
 import { verifyStorageBucket, createStorageBucketIfNeeded } from './storageUtils';
 import { useFileHandlers } from './fileHandlers';
