@@ -1,3 +1,4 @@
+
 import { supabase } from '@/lib/supabase';
 import { UploadResult, ProgressCallback } from './types';
 import { ensureStorageBuckets } from './storageInit';
@@ -27,52 +28,20 @@ export const uploadFileToStorage = async (
     await ensureStorageBuckets();
     
     let uploadData = null;
-    let progressValue = 0;
-    
-    // Set up last progress check to detect rollbacks
-    let lastProgressValue = 0;
-    let progressRollbacks = 0;
-    
-    // Setup interval to keep UI updated even if progress stalls
-    const progressInterval = setInterval(() => {
-      if (onProgress && progressValue < 95) {
-        // Very small increment to show activity during stalls
-        progressValue += 0.1;
-        onProgress(progressValue);
-      }
-    }, 1000);
     
     try {
-      // Custom progress tracking that prevents rollbacks
-      const trackProgress = (progress: number) => {
-        // Only update if progress is increasing
-        if (progress > progressValue) {
-          progressValue = progress;
-          
-          if (onProgress) {
-            onProgress(progressValue);
-          }
-        } else if (progress < lastProgressValue) {
-          // Log if progress is rolling back but don't update the UI
-          console.warn(`Progress rollback detected: ${lastProgressValue} -> ${progress}`);
-          progressRollbacks++;
-        }
-        
-        lastProgressValue = progress;
-      };
-      
       if (file.size <= MAX_DIRECT_UPLOAD_SIZE) {
         // For smaller files, upload directly
-        const result = await uploadSmallFile(file, filePath, trackProgress);
+        const result = await uploadSmallFile(file, filePath, onProgress);
         uploadData = result.data;
       } else {
         // For larger files, use chunked upload
-        const result = await uploadLargeFile(file, filePath, CHUNK_SIZE, trackProgress);
+        const result = await uploadLargeFile(file, filePath, CHUNK_SIZE, onProgress);
         uploadData = result.data;
       }
-    } finally {
-      // Always clear interval
-      clearInterval(progressInterval);
+    } catch (uploadError) {
+      console.error('File upload error:', uploadError);
+      throw new Error(`Upload failed: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
     }
     
     // Add explicit null check for uploadData

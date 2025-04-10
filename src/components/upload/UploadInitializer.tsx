@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { createStorageBucketsDirect, updateAllStoragePolicies, testBucketPermissions } from '@/utils/storageUtils';
+import { ensureStorageBuckets } from '@/utils/upload/storage/storageInit';
 
 interface UploadInitializerProps {
   setBucketsVerified: (verified: boolean | null) => void;
@@ -17,7 +18,27 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
         console.log("UploadInitializer: Initializing storage...");
         setBucketsVerified(null);
         
-        // Try multiple approaches to ensure storage is properly set up
+        // Try edge function approach
+        try {
+          console.log("Using modular storage initialization approach");
+          await ensureStorageBuckets();
+          
+          // Test if we can actually upload files
+          const hasPermission = await testBucketPermissions('datasets');
+          
+          if (hasPermission) {
+            console.log("Storage permissions verified via new approach");
+            setBucketsVerified(true);
+            toast.success("Storage connected successfully");
+            return;
+          }
+          
+          console.warn("Permission test failed with new approach, trying legacy methods");
+        } catch (newError) {
+          console.error("Error with new storage initialization:", newError);
+        }
+        
+        // Try legacy approaches as fallback
         const approaches = [
           { name: "Edge function", fn: callStorageSetupFunction },
           { name: "Direct bucket creation", fn: createStorageBucketsDirect },
@@ -28,7 +49,7 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
         
         for (const approach of approaches) {
           try {
-            console.log(`Trying approach: ${approach.name}`);
+            console.log(`Trying legacy approach: ${approach.name}`);
             const result = await approach.fn();
             
             if (result) {
@@ -43,12 +64,6 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
                 setBucketsVerified(true);
                 toast.success("Storage connected successfully");
                 
-                // Create or verify the check_column_exists function
-                try {
-                  await createColumnCheckFunction();
-                } catch (functionError) {
-                  console.warn("Error creating column check function, but continuing:", functionError);
-                }
                 return;
               } else {
                 console.warn(`${approach.name} appeared to succeed but permission test failed`);
@@ -159,34 +174,6 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
       } catch {
         return false;
       }
-    }
-  };
-  
-  /**
-   * Creates the check_column_exists database function if it doesn't exist
-   */
-  const createColumnCheckFunction = async (): Promise<boolean> => {
-    try {
-      console.log("Creating check_column_exists function...");
-      
-      const { data, error } = await supabase.functions.invoke('storage-setup', {
-        method: 'POST',
-        body: { action: 'create-column-check-function' },
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (error) {
-        console.error("Error creating column check function:", error);
-        return false;
-      }
-      
-      console.log("Column check function created or already exists:", data);
-      return data?.success || false;
-    } catch (error) {
-      console.error("Error creating column check function:", error);
-      return false;
     }
   };
   

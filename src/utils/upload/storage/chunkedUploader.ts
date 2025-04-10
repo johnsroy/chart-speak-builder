@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { ProgressCallback } from './types';
 import { ensureStorageBuckets } from './storageInit';
