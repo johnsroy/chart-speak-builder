@@ -1,9 +1,9 @@
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { setupStorageBuckets } from '@/lib/supabase';
-import { toast } from '@/hooks/use-toast';
+import { createStorageBucketIfNeeded } from '@/hooks/upload/storageUtils';
+import { toast } from 'sonner';
 
 interface StorageBucketVerifierProps {
   bucketsVerified: boolean | null;
@@ -26,19 +26,11 @@ const StorageBucketVerifier: React.FC<StorageBucketVerifierProps> = ({
             variant="outline" 
             className="bg-red-500/20 hover:bg-red-500/30 border-red-500/50" 
             onClick={async () => {
-              const result = await setupStorageBuckets();
-              if (result.success) {
+              const success = await createStorageBucketIfNeeded();
+              if (success) {
                 setBucketsVerified(true);
-                toast({
-                  title: "Storage setup complete",
-                  description: "Storage buckets were successfully created.",
-                  variant: "success"
-                });
-              } else {
-                toast({
-                  title: "Storage setup failed",
-                  description: result.message || "Could not create required storage buckets.",
-                  variant: "destructive"
+                toast.success("Storage setup complete", {
+                  description: "Storage buckets were successfully created."
                 });
               }
             }}

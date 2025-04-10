@@ -1,17 +1,5 @@
 
 project_id = "rehadpogugijylybwmoe"
 
-[api]
-enabled = true
-port = 54321
-schemas = ["public", "storage", "graphql_public"]
-
-[db]
-port = 54322
-
-[functions]
-[functions.force-delete-queries]
-verify_jwt = true
-
-[functions.storage-manager]
+[functions.storage-setup]
 verify_jwt = false

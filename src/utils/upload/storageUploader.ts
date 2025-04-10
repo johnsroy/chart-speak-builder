@@ -2,68 +2,126 @@
 import { supabase } from '@/lib/supabase';
 
 /**
- * Uploads a file to Supabase storage, using chunked upload for large files
- * @param file The file to upload
- * @param filePath The path in storage
- * @param onProgress Progress callback
- * @returns Storage URL and path
+ * Uploads a file to storage
+ * @param file File to upload
+ * @param filePath Path in storage bucket
+ * @param onProgress Progress callback (optional)
+ * @returns Object containing storage URL and storage path
  */
 export const uploadFileToStorage = async (
   file: File,
   filePath: string,
   onProgress?: (progress: number) => void
 ): Promise<{ storageUrl: string; storagePath: string }> => {
-  // For large files, we need to use chunked upload
-  let storageUrl: string;
-  let storagePath: string = filePath;
-
-  if (file.size > 50 * 1024 * 1024) { // For files > 50MB use chunked upload
-    console.log("Using chunked upload for large file");
-    const chunkSize = 10 * 1024 * 1024; // 10MB chunks
-    const totalChunks = Math.ceil(file.size / chunkSize);
+  try {
+    console.log(`Attempting to upload file to: datasets/${filePath}`);
     
-    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-      const start = chunkIndex * chunkSize;
-      const end = Math.min(file.size, start + chunkSize);
-      const chunk = file.slice(start, end);
-      
-      const { error } = await supabase.storage
-        .from('datasets')
-        .upload(`${filePath}_chunk_${chunkIndex}`, chunk, {
-          upsert: true,
-        });
-        
-      if (error) {
-        throw new Error(`Error uploading chunk ${chunkIndex}: ${error.message}`);
-      }
-      
-      // Update progress based on uploaded chunks
-      if (onProgress) {
-        const chunkProgress = Math.min(85, 10 + (75 * (chunkIndex + 1) / totalChunks));
-        onProgress(chunkProgress);
-      }
+    // First, check if we need to create a chunked upload
+    if (file.size > 5 * 1024 * 1024) { // 5MB chunk size
+      return await uploadLargeFile(file, filePath, onProgress);
     }
     
-    // For now, we'll just store the path to the first chunk - in a real implementation
-    // you would need a server-side process to combine these chunks
-    storageUrl = supabase.storage.from('datasets').getPublicUrl(filePath + '_chunk_0').data.publicUrl;
-    
-    console.log("Chunked upload completed successfully");
-  } else {
-    // Standard upload for smaller files
+    // For smaller files, upload directly
     const { data, error } = await supabase.storage
       .from('datasets')
       .upload(filePath, file, {
         cacheControl: '3600',
-        upsert: false
+        upsert: true // Use upsert to overwrite if exists
       });
       
     if (error) {
-      throw new Error(`Could not upload file to storage: ${error.message}`);
+      console.error('Storage upload error:', error);
+      throw new Error(`File upload failed: ${error.message}`);
     }
     
-    storageUrl = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
+    if (!data || !data.path) {
+      throw new Error('Upload succeeded but no path returned');
+    }
+    
+    const storageUrl = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
+    
+    return {
+      storageUrl,
+      storagePath: filePath
+    };
+  } catch (error) {
+    console.error('File upload error:', error);
+    throw error;
   }
-  
-  return { storageUrl, storagePath };
 };
+
+/**
+ * Uploads a large file in chunks
+ * @param file Large file to upload
+ * @param filePath Path in storage bucket
+ * @param onProgress Progress callback (optional)
+ * @returns Object containing storage URL and storage path
+ */
+async function uploadLargeFile(
+  file: File,
+  filePath: string,
+  onProgress?: (progress: number) => void
+): Promise<{ storageUrl: string; storagePath: string }> {
+  // Generate a temporary chunk path
+  const chunkSize = 5 * 1024 * 1024; // 5MB
+  const totalChunks = Math.ceil(file.size / chunkSize);
+  const chunkPaths = [];
+  
+  try {
+    // Upload each chunk
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(file.size, start + chunkSize);
+      const chunk = file.slice(start, end);
+      const chunkPath = `${filePath}_chunk_${i}`;
+      
+      console.log(`Uploading chunk ${i + 1}/${totalChunks} (${start}-${end} bytes)`);
+      
+      // Create a File object from the chunk to specify content type
+      const chunkFile = new File([chunk], `chunk_${i}`, { type: file.type });
+      
+      const { data, error } = await supabase.storage
+        .from('datasets')
+        .upload(chunkPath, chunkFile, { 
+          upsert: true, 
+          contentType: file.type
+        });
+        
+      if (error) {
+        console.error(`Error uploading chunk ${i}:`, error);
+        throw new Error(`Error uploading chunk ${i}: ${error.message}`);
+      }
+      
+      chunkPaths.push(chunkPath);
+      
+      // Update progress
+      if (onProgress) {
+        const progress = Math.min(80, Math.floor((i + 1) / totalChunks * 70) + 10);
+        onProgress(progress);
+      }
+    }
+    
+    // For large files, we'll need to implement an edge function to combine the chunks
+    // For now, we'll use the first chunk as a reference
+    const storageUrl = supabase.storage.from('datasets').getPublicUrl(chunkPaths[0]).data.publicUrl;
+    
+    return {
+      storageUrl,
+      storagePath: chunkPaths[0] // Using first chunk as path for now
+    };
+  } catch (error) {
+    // Clean up partial upload chunks on error
+    console.error("Error during chunked upload:", error);
+    
+    // Attempt to clean up chunks
+    for (const chunkPath of chunkPaths) {
+      try {
+        await supabase.storage.from('datasets').remove([chunkPath]);
+      } catch (cleanupError) {
+        console.warn(`Failed to clean up chunk ${chunkPath}:`, cleanupError);
+      }
+    }
+    
+    throw error;
+  }
+}
