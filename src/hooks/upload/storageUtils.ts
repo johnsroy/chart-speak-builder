@@ -45,7 +45,10 @@ export const createStorageBucketIfNeeded = async (): Promise<boolean> => {
     // Call the storage-setup edge function
     const { data, error } = await supabase.functions.invoke('storage-setup', {
       method: 'POST',
-      body: { action: 'create-buckets' }
+      body: { action: 'create-buckets' },
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
     
     if (error) {
@@ -66,7 +69,9 @@ export const createStorageBucketIfNeeded = async (): Promise<boolean> => {
       description: "The application is ready to handle file uploads"
     });
     
-    return true;
+    // Double check that buckets now exist
+    const bucketsExist = await verifyStorageBucket();
+    return bucketsExist;
   } catch (error) {
     console.error("Error creating storage buckets:", error);
     toast.error("Storage initialization failed", {

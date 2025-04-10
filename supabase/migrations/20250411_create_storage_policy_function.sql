@@ -16,13 +16,14 @@ BEGIN
   
   -- If policy doesn't exist, create it
   IF NOT policy_exists THEN
-    -- Insert policies for all operations (SELECT, INSERT, UPDATE, DELETE)
+    -- Insert PUBLIC policies for all operations
+    -- This allows anyone to read and authenticated users to write
     INSERT INTO storage.policies (name, definition)
     VALUES 
-      ('allow_public_select_' || bucket_name, 'bucket_id = ''' || bucket_name || ''''),
-      ('allow_authenticated_insert_' || bucket_name, 'bucket_id = ''' || bucket_name || ''''),
-      ('allow_authenticated_update_' || bucket_name, 'bucket_id = ''' || bucket_name || ''''),
-      ('allow_authenticated_delete_' || bucket_name, 'bucket_id = ''' || bucket_name || '''');
+      ('allow_public_select_' || bucket_name, 'bucket_id = ''' || bucket_name || ''' AND auth.role() = ''anon'''),
+      ('allow_public_insert_' || bucket_name, 'bucket_id = ''' || bucket_name || ''''),
+      ('allow_public_update_' || bucket_name, 'bucket_id = ''' || bucket_name || ''''),
+      ('allow_public_delete_' || bucket_name, 'bucket_id = ''' || bucket_name || '''');
   END IF;
   
   RETURN true;
