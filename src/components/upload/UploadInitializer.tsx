@@ -93,45 +93,51 @@ const UploadInitializer: React.FC<UploadInitializerProps> = ({
     try {
       console.log("Calling storage-setup edge function...");
       
-      // Use a more robust approach to call the edge function
-      const response = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/storage-setup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.getSession().then(res => res.data.session?.access_token || '')}`
-        },
-        body: JSON.stringify({ action: 'create-buckets', force: true })
-      });
-      
-      if (!response.ok) {
-        console.error("Edge function HTTP error:", response.status, response.statusText);
+      // First try using direct fetch with correct URL
+      try {
+        const session = await supabase.auth.getSession();
+        const token = session.data.session?.access_token || '';
         
-        // Fallback to supabase.functions.invoke
-        const { data, error } = await supabase.functions.invoke('storage-setup', {
+        const response = await fetch('https://rehadpogugijylybwmoe.supabase.co/functions/v1/storage-setup', {
           method: 'POST',
-          body: { action: 'create-buckets', force: true },
           headers: {
-            'Content-Type': 'application/json'
-          }
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ action: 'create-buckets', force: true })
         });
         
-        if (error) {
-          console.error("Edge function invocation error:", error);
-          return false;
+        if (response.ok) {
+          const responseData = await response.json();
+          console.log("Edge function direct fetch succeeded:", responseData);
+          return responseData?.success || false;
         }
         
-        if (!data?.success) {
-          console.warn("Edge function did not report success:", data);
-          return false;
-        }
-        
-        return true;
+        console.error("Edge function HTTP error:", response.status, response.statusText);
+      } catch (fetchError) {
+        console.error("Error with direct fetch:", fetchError);
       }
       
-      // Process the direct fetch response
-      const responseData = await response.json();
-      console.log("Edge function direct fetch succeeded:", responseData);
-      return responseData?.success || false;
+      // Fallback to supabase.functions.invoke
+      const { data, error } = await supabase.functions.invoke('storage-setup', {
+        method: 'POST',
+        body: { action: 'create-buckets', force: true },
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (error) {
+        console.error("Edge function invocation error:", error);
+        return false;
+      }
+      
+      if (!data?.success) {
+        console.warn("Edge function did not report success:", data);
+        return false;
+      }
+      
+      return true;
     } catch (error) {
       console.error("Error calling storage-setup function:", error);
       

@@ -60,7 +60,7 @@ serve(async (req) => {
             console.log(`Creating bucket ${bucketName}...`);
             const { data, error } = await supabase.storage.createBucket(bucketName, {
               public: true, // Make buckets public for easier access
-              fileSizeLimit: 500 * 1024 * 1024, // 500MB limit
+              fileSizeLimit: 1024 * 1024 * 1024, // 1GB limit
             });
             
             if (error) {
@@ -81,6 +81,33 @@ serve(async (req) => {
         } else {
           console.log(`Bucket ${bucketName} already exists ${force ? '(will update policies)' : ''}`);
           results.push({ bucketName, success: true, message: "Already exists" });
+        }
+        
+        // Add explicit public access policy via direct SQL
+        try {
+          console.log(`Creating direct public policy for ${bucketName}...`);
+          
+          // Execute direct SQL to create very permissive policies
+          const { error: sqlError } = await supabase.rpc('execute_sql', {
+            sql_query: `
+              -- Drop existing policies
+              DROP POLICY IF EXISTS "Public Access Policy" ON storage.objects;
+              
+              -- Create permissive policy (anyone can access)
+              CREATE POLICY "Public Access Policy" 
+              ON storage.objects 
+              USING (true) 
+              WITH CHECK (true);
+            `
+          });
+          
+          if (sqlError) {
+            console.error(`Error creating public policy with SQL:`, sqlError);
+          } else {
+            console.log(`Successfully created public policy for all buckets`);
+          }
+        } catch (policyError) {
+          console.error(`Exception creating public policy:`, policyError);
         }
         
         // Try to create policies using direct SQL approach
@@ -118,68 +145,91 @@ serve(async (req) => {
           // Loop through each policy operation and create it
           for (const policy of policyOperations) {
             try {
-              // First try the execute_sql method for maximum flexibility
-              try {
-                const { error: directError } = await supabase.rpc('execute_sql', {
-                  sql_command: `
-                    DROP POLICY IF EXISTS "${policy.name}" ON storage.objects;
-                    CREATE POLICY "${policy.name}" 
-                    ON storage.objects
-                    FOR ${policy.operation}
-                    USING (${policy.definition})
-                    WITH CHECK (${policy.permission});
-                  `
-                });
-                
-                if (!directError) {
-                  console.log(`Created ${policy.operation} policy for ${bucketName} using direct SQL`);
-                  continue;
-                }
-              } catch {}
-              
-              // Use a parameterized query as fallback
-              const { error: policyError } = await supabase.rpc('create_storage_policy_custom', {
-                p_name: policy.name,
-                p_operation: policy.operation,
-                p_definition: policy.definition,
-                p_check: policy.permission
+              // Try direct SQL execution
+              const { error: directError } = await supabase.rpc('execute_sql', {
+                sql_query: `
+                  DROP POLICY IF EXISTS "${policy.name}" ON storage.objects;
+                  CREATE POLICY "${policy.name}" 
+                  ON storage.objects
+                  FOR ${policy.operation}
+                  USING (${policy.definition})
+                  WITH CHECK (${policy.permission});
+                `
               });
               
-              if (policyError) {
-                console.error(`Error creating ${policy.operation} policy for ${bucketName}:`, policyError);
-                
-                // Try yet another approach if both failed
-                try {
-                  const { error: fallbackError } = await supabase.rpc('create_public_storage_policies', { 
-                    bucket_name: bucketName 
-                  });
-                  
-                  if (!fallbackError) {
-                    console.log(`Created all policies for ${bucketName} using public_storage_policies function`);
-                    break; // Exit policy loop since this creates all policies at once
-                  }
-                } catch {}
-              } else {
-                console.log(`Created ${policy.operation} policy for ${bucketName}`);
+              if (!directError) {
+                console.log(`Created ${policy.operation} policy for ${bucketName} using direct SQL`);
+                continue;
               }
-            } catch (policyError) {
-              console.error(`Exception creating ${policy.operation} policy for ${bucketName}:`, policyError);
+            } catch (sqlError) {
+              console.warn(`SQL policy creation failed, trying alternative: ${sqlError}`);
+            }
+            
+            // Use a parameterized query as fallback
+            try {
+              const { error: policyError } = await supabase.rpc('create_storage_policy', {
+                bucket_name: policy.name
+              });
+              
+              if (!policyError) {
+                console.log(`Created policies for ${bucketName} using create_storage_policy function`);
+              }
+            } catch (fallbackError) {
+              console.warn(`Fallback policy creation failed: ${fallbackError}`);
+              
+              // Try yet another approach if both failed
+              try {
+                const { error: publicPolicyError } = await supabase.rpc('create_public_storage_policies', { 
+                  bucket_name: bucketName 
+                });
+                
+                if (!publicPolicyError) {
+                  console.log(`Created all policies for ${bucketName} using public_storage_policies function`);
+                }
+              } catch (publicError) {
+                console.warn(`Public policy creation failed: ${publicError}`);
+              }
             }
           }
         } catch (directPolicyError) {
           console.error(`Direct policy creation failed for ${bucketName}:`, directPolicyError);
-          
-          // Try another approach using a different function
-          try {
-            const { error: createPolicyError } = await supabase.rpc('create_storage_policy', { 
-              bucket_name: bucketName 
-            });
-            
-            if (!createPolicyError) {
-              console.log(`Created policies for ${bucketName} using create_storage_policy function`);
-            }
-          } catch {}
         }
+      }
+      
+      // Create check_column_exists function if it doesn't exist
+      try {
+        console.log("Creating check_column_exists function...");
+        
+        const { error: functionError } = await supabase.rpc('execute_sql', {
+          sql_query: `
+            CREATE OR REPLACE FUNCTION public.check_column_exists(
+              table_name TEXT,
+              column_name TEXT
+            ) RETURNS BOOLEAN AS $$
+            DECLARE
+              column_exists BOOLEAN;
+            BEGIN
+              SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                AND table_name = $1
+                AND column_name = $2
+              ) INTO column_exists;
+              
+              RETURN column_exists;
+            END;
+            $$ LANGUAGE plpgsql;
+          `
+        });
+        
+        if (functionError) {
+          console.error("Error creating check_column_exists function:", functionError);
+        } else {
+          console.log("Successfully created check_column_exists function");
+        }
+      } catch (functionCreationError) {
+        console.error("Exception creating check_column_exists function:", functionCreationError);
       }
       
       return new Response(

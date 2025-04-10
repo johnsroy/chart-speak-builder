@@ -18,9 +18,9 @@ export const uploadFileToStorage = async (
   try {
     console.log(`Attempting to upload file to: datasets/${filePath}`);
     
-    // Set the chunk size to 5MB for better upload performance
-    const CHUNK_SIZE = 10 * 1024 * 1024; // Increased to 10MB chunks
-    const MAX_DIRECT_UPLOAD_SIZE = 20 * 1024 * 1024; // Increased to 20MB threshold for direct upload
+    // Set the chunk size to 50MB for better upload performance with large files
+    const CHUNK_SIZE = 50 * 1024 * 1024; // Increased to 50MB chunks
+    const MAX_DIRECT_UPLOAD_SIZE = 50 * 1024 * 1024; // Increased to 50MB threshold for direct upload
     
     // First ensure we have proper permissions by creating bucket and policies
     await ensureStoragePermissions();
@@ -62,7 +62,8 @@ export const uploadFileToStorage = async (
       console.error('Error generating public URL:', urlError);
       
       // Fallback to constructing a URL manually
-      const supabaseUrl = supabase.supabaseUrl || 'https://rehadpogugijylybwmoe.supabase.co';
+      // Access the URL in a type-safe way
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://rehadpogugijylybwmoe.supabase.co';
       const fallbackUrl = `${supabaseUrl}/storage/v1/object/public/datasets/${finalPath}`;
       
       return {
@@ -179,7 +180,19 @@ const uploadSmallFile = async (file: File, filePath: string): Promise<{ data: an
     
     // Handle case where data might be undefined or null
     if (!uploadResult.data) {
-      uploadResult.data = { path: filePath };
+      // Provide a minimal compatible structure
+      uploadResult.data = { 
+        path: filePath,
+        id: filePath,
+        fullPath: `datasets/${filePath}`
+      };
+    } else if (!uploadResult.data.id || !uploadResult.data.fullPath) {
+      // Fill in missing fields
+      uploadResult.data = {
+        ...uploadResult.data,
+        id: uploadResult.data.id || filePath,
+        fullPath: uploadResult.data.fullPath || `datasets/${filePath}`
+      };
     }
     
     return uploadResult;
@@ -217,9 +230,20 @@ const uploadLargeFile = async (
           onProgress(100);
         }
         
-        // Ensure data contains at least the path
+        // Ensure data contains required fields
         if (!directResult.data) {
-          directResult.data = { path: filePath };
+          directResult.data = { 
+            path: filePath,
+            id: filePath,
+            fullPath: `datasets/${filePath}`
+          };
+        } else if (!directResult.data.id || !directResult.data.fullPath) {
+          // Fill in missing fields
+          directResult.data = {
+            ...directResult.data,
+            id: directResult.data.id || filePath,
+            fullPath: directResult.data.fullPath || `datasets/${filePath}`
+          };
         }
         
         return directResult;
@@ -231,7 +255,7 @@ const uploadLargeFile = async (
     }
     
     // Create a temporary file for combining chunks
-    const { data: { path }, error: initError } = await supabase.storage
+    const { data: { path } = {}, error: initError } = await supabase.storage
       .from('datasets')
       .upload(`${filePath}.part`, new Blob([]), {
         upsert: true
@@ -294,7 +318,7 @@ const uploadLargeFile = async (
         uploadedBytes += chunk.size;
         
         if (onProgress) {
-          const totalProgress = (uploadedBytes / file.size) * 100;
+          const totalProgress = Math.floor((uploadedBytes / file.size) * 100);
           onProgress(Math.min(95, totalProgress)); // Cap at 95% until final processing
         }
         
@@ -327,9 +351,13 @@ const uploadLargeFile = async (
       console.error('Final upload error:', finalUploadResult.error);
       
       // If chunks worked but final upload fails, it might still be usable
-      // Create a placeholder result with at least the path
+      // Create a placeholder result with required fields
       return {
-        data: { path: filePath },
+        data: { 
+          path: filePath,
+          id: filePath,
+          fullPath: `datasets/${filePath}`
+        },
         error: null
       };
     }
@@ -360,9 +388,20 @@ const uploadLargeFile = async (
       onProgress(100); // Complete
     }
     
-    // Ensure data contains at least the path
+    // Ensure data contains required fields
     if (!finalUploadResult.data) {
-      finalUploadResult.data = { path: filePath };
+      finalUploadResult.data = { 
+        path: filePath,
+        id: filePath,
+        fullPath: `datasets/${filePath}`
+      };
+    } else if (!finalUploadResult.data.id || !finalUploadResult.data.fullPath) {
+      // Fill in missing fields
+      finalUploadResult.data = {
+        ...finalUploadResult.data,
+        id: finalUploadResult.data.id || filePath,
+        fullPath: finalUploadResult.data.fullPath || `datasets/${filePath}`
+      };
     }
     
     console.log("Large file upload completed successfully");
@@ -370,9 +409,13 @@ const uploadLargeFile = async (
   } catch (error) {
     console.error("Error in uploadLargeFile:", error);
     
-    // Return a fallback result with at least the path
+    // Return a fallback result with required fields
     return {
-      data: { path: filePath },
+      data: { 
+        path: filePath,
+        id: filePath,
+        fullPath: `datasets/${filePath}`
+      },
       error: null
     };
   }

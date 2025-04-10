@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Upload, AlertTriangle, AlertCircle, Loader2, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -59,11 +58,9 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
   handleOverwriteCancel = () => {},
   overwriteInProgress = false
 }) => {
-  // Dispatch custom event when upload is successful
   useEffect(() => {
     if (uploadedDatasetId) {
       console.log("Dispatching upload:success event with dataset ID:", uploadedDatasetId);
-      // Dispatch a custom event that the upload page can listen for
       const event = new CustomEvent('upload:success', { 
         detail: { datasetId: uploadedDatasetId } 
       });
@@ -71,16 +68,21 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
     }
   }, [uploadedDatasetId]);
 
-  // Determine if any operation is in progress that should disable UI
   const operationInProgress = isUploading || overwriteInProgress;
   
-  // Format file size for display
   const formatFileSize = (bytes: number) => {
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     if (bytes === 0) return '0 Byte';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + ' ' + sizes[i];
   };
+
+  const formatProgress = (progress: number): number => {
+    if (isNaN(progress)) return 0;
+    return Math.min(100, Math.max(0, Math.round(progress)));
+  };
+
+  const progressValue = formatProgress(uploadProgress);
 
   return (
     <div className="glass-card p-6">
@@ -200,9 +202,9 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
                 <span>
                   {overwriteInProgress ? 'Processing overwrite...' : 'Uploading...'}
                 </span>
-                <span>{uploadProgress}%</span>
+                <span>{progressValue}%</span>
               </div>
-              <Progress value={uploadProgress} className="h-1" />
+              <Progress value={progressValue} className="h-1" />
             </div>
           )}
           
@@ -270,8 +272,8 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({
                   ? 'Uploading large file. This may take several minutes...'
                   : 'Please wait while we upload your file...'}
             </p>
-            <Progress value={uploadProgress} className="h-2 w-full" />
-            <p className="text-sm text-white/70 mt-2">{uploadProgress}% complete</p>
+            <Progress value={progressValue} className="h-2 w-full" />
+            <p className="text-sm text-white/70 mt-2">{progressValue}% complete</p>
           </div>
         </div>
       )}
