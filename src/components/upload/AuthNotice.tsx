@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 interface AuthNoticeProps {
   isAuthenticated: boolean;
   user: any;
-  adminLogin: () => Promise<void>;
+  adminLogin: () => Promise<{ success: boolean; error?: string } | void>;
 }
 
 const AuthNotice: React.FC<AuthNoticeProps> = ({
