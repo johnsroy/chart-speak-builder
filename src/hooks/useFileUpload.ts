@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -78,7 +77,6 @@ export const useFileUpload = (): UseFileUploadResult => {
   const [state, setState] = useState<State>(initialState);
   const navigate = useNavigate();
   
-  // Define handleOverwriteCancel early to avoid reference issues
   const handleOverwriteCancel = useCallback(() => {
     setState(prevState => ({ ...prevState, showOverwriteConfirm: false }));
   }, []);
@@ -214,6 +212,20 @@ export const useFileUpload = (): UseFileUploadResult => {
       return;
     }
 
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB - Supabase free tier limit
+    if (state.selectedFile.size > MAX_FILE_SIZE) {
+      toast.error("File too large", {
+        description: `File size exceeds the maximum limit of 10MB. Selected file is ${(state.selectedFile.size / (1024 * 1024)).toFixed(2)}MB`
+      });
+      
+      setState(prevState => ({
+        ...prevState,
+        uploadError: `File size exceeds the maximum limit of 10MB. Selected file is ${(state.selectedFile.size / (1024 * 1024)).toFixed(2)}MB`,
+      }));
+      
+      return;
+    }
+
     const user_id = userId || 'system_user';
     const file = state.selectedFile;
     const datasetName = state.datasetName;
@@ -225,6 +237,13 @@ export const useFileUpload = (): UseFileUploadResult => {
       uploadProgress: 0,
       uploadError: null,
     }));
+
+    const progressInterval = setInterval(() => {
+      setState(prevState => ({
+        ...prevState,
+        uploadProgress: Math.min(90, prevState.uploadProgress + (Math.random() * 5) + 1)
+      }));
+    }, 300);
 
     try {
       const fileExt = file.name.split('.').pop();
@@ -243,9 +262,17 @@ export const useFileUpload = (): UseFileUploadResult => {
 
       if (existingDataset && !isRetry) {
         console.warn("Dataset with this name already exists");
-        setState(prevState => ({ ...prevState, showOverwriteConfirm: true }));
+        clearInterval(progressInterval);
+        setState(prevState => ({ 
+          ...prevState, 
+          showOverwriteConfirm: true,
+          isUploading: false,
+          uploadProgress: 0
+        }));
         return;
       }
+      
+      setState(prevState => ({ ...prevState, uploadProgress: 20 }));
 
       const { data, error } = await supabase.storage
         .from('datasets')
@@ -258,9 +285,12 @@ export const useFileUpload = (): UseFileUploadResult => {
         throw new Error(error.message || 'Could not upload file to storage');
       }
 
-      const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
+      setState(prevState => ({ ...prevState, uploadProgress: 60 }));
 
+      const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
       const fileSizeInBytes = file.size;
+
+      setState(prevState => ({ ...prevState, uploadProgress: 80 }));
 
       const { data: datasetData, error: datasetError } = await supabase
         .from('datasets')
@@ -285,6 +315,10 @@ export const useFileUpload = (): UseFileUploadResult => {
         throw new Error(datasetError.message || 'Could not save dataset metadata');
       }
 
+      setState(prevState => ({ ...prevState, uploadProgress: 100 }));
+      
+      clearInterval(progressInterval);
+
       toast.success("Dataset uploaded successfully", {
         description: "Your dataset is now ready for analysis."
       });
@@ -300,9 +334,9 @@ export const useFileUpload = (): UseFileUploadResult => {
         schemaPreview: null,
       }));
       
-      // Replace router.refresh() with navigate(0)
       navigate(0);
     } catch (uploadError: any) {
+      clearInterval(progressInterval);
       console.error("Upload failed:", uploadError);
       toast.error("Upload failed", {
         description: uploadError.message || "An unexpected error occurred during upload."
@@ -327,9 +361,17 @@ export const useFileUpload = (): UseFileUploadResult => {
       isUploading: true,
       uploadProgress: 0
     }));
+    
+    const progressInterval = setInterval(() => {
+      setState(prevState => ({
+        ...prevState,
+        uploadProgress: Math.min(90, prevState.uploadProgress + (Math.random() * 5) + 1)
+      }));
+    }, 300);
 
     try {
       if (!state.selectedFile) {
+        clearInterval(progressInterval);
         toast.error("No file selected", {
           description: "The file selection was lost. Please select a file again."
         });
@@ -341,6 +383,25 @@ export const useFileUpload = (): UseFileUploadResult => {
       const file = state.selectedFile;
       const datasetName = state.datasetName;
       const datasetDescription = state.datasetDescription;
+      
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB - Supabase free tier limit
+      if (file.size > MAX_FILE_SIZE) {
+        clearInterval(progressInterval);
+        toast.error("File too large", {
+          description: `File size exceeds the maximum limit of 10MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB`
+        });
+        
+        setState(prevState => ({
+          ...prevState,
+          isUploading: false,
+          overwriteInProgress: false,
+          uploadError: `File size exceeds the maximum limit of 10MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB`,
+          uploadProgress: 0,
+          showOverwriteConfirm: false,
+        }));
+        
+        return;
+      }
 
       const { data: existingDataset, error: selectError } = await supabase
         .from('datasets')
@@ -355,6 +416,8 @@ export const useFileUpload = (): UseFileUploadResult => {
       if (!existingDataset?.storage_path) {
         throw new Error('Existing dataset has no storage path');
       }
+      
+      setState(prevState => ({ ...prevState, uploadProgress: 20 }));
 
       const { error: deleteError } = await supabase.storage
         .from('datasets')
@@ -363,6 +426,8 @@ export const useFileUpload = (): UseFileUploadResult => {
       if (deleteError) {
         throw new Error(deleteError.message || 'Could not delete previous file version');
       }
+      
+      setState(prevState => ({ ...prevState, uploadProgress: 40 }));
 
       const fileExt = file.name.split('.').pop();
       const fileName = `${datasetName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${fileExt}`;
@@ -378,9 +443,13 @@ export const useFileUpload = (): UseFileUploadResult => {
       if (error) {
         throw new Error(error.message || 'Could not upload file to storage');
       }
+      
+      setState(prevState => ({ ...prevState, uploadProgress: 70 }));
 
       const publicURL = supabase.storage.from('datasets').getPublicUrl(filePath).data.publicUrl;
       const fileSizeInBytes = file.size;
+      
+      setState(prevState => ({ ...prevState, uploadProgress: 85 }));
 
       const { data: datasetData, error: datasetError } = await supabase
         .from('datasets')
@@ -400,6 +469,10 @@ export const useFileUpload = (): UseFileUploadResult => {
         await supabase.storage.from('datasets').remove([filePath]);
         throw new Error(datasetError.message || 'Could not update dataset metadata');
       }
+      
+      setState(prevState => ({ ...prevState, uploadProgress: 100 }));
+      
+      clearInterval(progressInterval);
 
       toast.success("Dataset overwritten successfully", {
         description: "The dataset has been updated with your new file."
@@ -418,9 +491,9 @@ export const useFileUpload = (): UseFileUploadResult => {
         schemaPreview: null,
       }));
       
-      // Replace router.refresh() with navigate(0)
       navigate(0);
     } catch (overwriteError: any) {
+      clearInterval(progressInterval);
       console.error("Overwrite failed:", overwriteError);
       toast.error("Overwrite failed", {
         description: overwriteError.message || "An unexpected error occurred during overwrite."

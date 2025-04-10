@@ -4,6 +4,9 @@ import { dataService } from '@/services/dataService';
 import { Dataset } from '@/services/types/datasetTypes';
 import { parseCSV } from '@/services/utils/fileUtils';
 
+// Maximum file size constant - 10MB for Supabase free tier
+export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
 /**
  * Validates file for upload
  * @param file The file to validate
@@ -14,10 +17,9 @@ export const validateFileForUpload = (file: File): void => {
     throw new Error('No file selected');
   }
   
-  // Check file size (100MB limit for general validation)
-  const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+  // Check file size (10MB limit for Supabase free tier)
   if (file.size > MAX_FILE_SIZE) {
-    throw new Error(`File size exceeds the maximum limit of 100MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
+    throw new Error(`File size exceeds the maximum limit of 10MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
   }
   
   // Check file type
@@ -100,7 +102,7 @@ export const simulateProgress = (
     if (currentProgress >= 90) {
       clearInterval(progressInterval);
     }
-  }, 500);
+  }, 300); // Faster updates for more responsive UI
   
   return progressInterval;
 };
@@ -118,6 +120,11 @@ export const performUpload = async (
 ): Promise<Dataset> => {
   try {
     console.log("Starting file upload with props:", { name, size: file.size, userId, ...additionalProps });
+    
+    // Validate file size before upload
+    if (file.size > MAX_FILE_SIZE) {
+      throw new Error(`File size exceeds the maximum limit of 10MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
+    }
     
     // Generate a preview_key for storage
     const timestamp = Date.now();
@@ -167,6 +174,28 @@ export const performUpload = async (
       }
     }
     
+    // Setup progress tracking
+    if (onProgress) {
+      const progressHandler = (progress: number) => {
+        console.log(`Upload progress: ${progress}%`);
+        onProgress(progress);
+      };
+      
+      // Start with 10% to show immediate feedback
+      progressHandler(10);
+      
+      // Setup progress simulation
+      const progressInterval = setInterval(() => {
+        progressHandler(Math.min(85, (Math.random() * 20) + 20));
+      }, 500);
+      
+      // Clean up interval after upload completes or fails
+      setTimeout(() => clearInterval(progressInterval), 30000); // Safety timeout
+      
+      // Attach the progress interval to additionalProps so we can clear it when done
+      additionalProps._progressInterval = progressInterval;
+    }
+    
     // Upload dataset
     const dataset = await dataService.uploadDataset(
       file,
@@ -178,9 +207,25 @@ export const performUpload = async (
       additionalProps // Pass additional props including preview_key
     );
     
+    // Clean up progress interval if it exists
+    if (additionalProps._progressInterval) {
+      clearInterval(additionalProps._progressInterval);
+    }
+    
+    // Set final progress to 100%
+    if (onProgress) {
+      onProgress(100);
+    }
+    
     return dataset;
   } catch (error) {
     console.error("Error during upload:", error);
+    
+    // Set progress to 0 to indicate failure
+    if (onProgress) {
+      onProgress(0);
+    }
+    
     throw error;
   }
 };

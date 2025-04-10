@@ -1,4 +1,3 @@
-
 import { supabase } from '@/lib/supabase';
 import { toast } from "sonner";
 import { Dataset, StorageStats } from '@/services/types/datasetTypes';
@@ -276,8 +275,7 @@ export const callStorageManager = async (action: string, options: any = {}) => {
         body: { action, ...options },
         headers: {
           'Content-Type': 'application/json'
-        },
-        signal: controller.signal
+        }
       });
       
       clearTimeout(timeoutId);
