@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { extractDatasetNameFromFileName } from '@/utils/chartUtils';
 import { useNavigate } from 'react-router-dom';
+import { performUpload } from '@/utils/uploadUtils';
 
 interface SchemaPreview {
   [columnName: string]: string;
