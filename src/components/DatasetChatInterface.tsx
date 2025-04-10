@@ -90,7 +90,8 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       try {
         // Try to get custom suggestions based on actual dataset content
         if (datasetInfo) {
-          const customSuggestions = await generateDatasetSuggestions(datasetId, datasetInfo);
+          // Fix here: `generateDatasetSuggestions` expects only one argument
+          const customSuggestions = await generateDatasetSuggestions(datasetId);
           setSuggestions(customSuggestions);
           return;
         }
@@ -156,13 +157,12 @@ const DatasetChatInterface: React.FC<DatasetChatInterfaceProps> = ({
       }
       
       // Generate AI response with enhanced context
+      // Fix here: `generateAIQuery` expects fewer arguments
       const aiResponse = await generateAIQuery(
         content, 
         datasetId, 
         currentModel, 
-        user?.id,
-        datasetInfo, // Pass dataset metadata
-        datasetContent // Pass sample data
+        user?.id
       );
 
       if (aiResponse) {
