@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.storage-manager]
 verify_jwt = false
+
+[functions.create-dataset-data-table]
+verify_jwt = false

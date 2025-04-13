@@ -29,7 +29,9 @@ serve(async (req) => {
   }
 
   try {
-    const { action, filePath, chunks, contentType, bucket = 'datasets', bucketName } = await req.json();
+    const requestBody = await req.json().catch(() => ({}));
+    const { action, filePath, chunks, contentType, bucket = 'datasets', bucketName, isPublic = true } = requestBody;
+    
     console.log(`Processing ${action} request for ${filePath || bucketName || bucket}`);
 
     switch (action) {
@@ -43,11 +45,11 @@ serve(async (req) => {
         return await checkPermissions(bucket);
         
       case 'create-bucket':
-        return await createBucket(bucketName || bucket);
+        return await createBucket(bucketName || bucket, isPublic);
       
       default:
         return new Response(
-          JSON.stringify({ error: 'Invalid action' }),
+          JSON.stringify({ error: 'Invalid action', action, body: requestBody }),
           { 
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -186,18 +188,19 @@ async function deleteFile(bucket: string, filePath: string) {
 }
 
 // Create a bucket with proper policies
-async function createBucket(bucketName: string) {
+async function createBucket(bucketName: string, isPublic = true) {
   try {
     console.log(`Creating bucket ${bucketName} via edge function with admin privileges`);
     
     // Service role key bypasses RLS policies
     const { data, error } = await supabase.storage.createBucket(bucketName, {
-      public: true
+      public: isPublic // Make bucket public by default
     });
     
     if (error) {
+      // If the bucket already exists, that's not an error
       if (error.message.includes('already exists')) {
-        console.log(`Bucket ${bucketName} already exists`);
+        console.log(`Bucket ${bucketName} already exists, updating policies`);
       } else {
         console.error(`Error creating bucket ${bucketName}:`, error);
         throw error;
@@ -207,7 +210,40 @@ async function createBucket(bucketName: string) {
     }
     
     // Create permissive policies for the bucket
-    await createPoliciesForBucket(bucketName);
+    try {
+      await createPoliciesForBucket(bucketName);
+      console.log(`Created policies for bucket ${bucketName}`);
+    } catch (policyError) {
+      console.warn(`Warning creating policies: ${policyError.message}`);
+    }
+    
+    // Insert a test file to ensure the bucket is working properly
+    try {
+      console.log(`Testing bucket ${bucketName} with test file`);
+      const testContent = 'test';
+      const testBlob = new Blob([testContent], { type: 'text/plain' });
+      const testPath = `permission_test_${Date.now()}.txt`;
+      
+      const { data: testData, error: testError } = await supabase.storage
+        .from(bucketName)
+        .upload(testPath, testBlob, {
+          contentType: 'text/plain',
+          upsert: true
+        });
+        
+      if (testError) {
+        console.warn(`Warning testing bucket: ${testError.message}`);
+      } else {
+        console.log(`Successfully tested bucket ${bucketName}`);
+        
+        // Clean up test file
+        await supabase.storage
+          .from(bucketName)
+          .remove([testPath]);
+      }
+    } catch (testError) {
+      console.warn(`Warning testing bucket: ${testError.message}`);
+    }
     
     return new Response(
       JSON.stringify({ success: true }),
@@ -249,13 +285,44 @@ async function checkPermissions(bucket: string) {
         upsert: true
       });
       
-    if (error) throw error;
-    
-    // Clean up test file
-    await supabase.storage
-      .from(bucket)
-      .remove([testPath]);
+    if (error) {
+      console.warn(`Permission test failed: ${error.message}`);
       
+      // Try to fix permissions directly
+      try {
+        await createPoliciesForBucket(bucket);
+        console.log(`Created missing policies for bucket ${bucket}`);
+        
+        // Try the test again
+        const { data: retryData, error: retryError } = await supabase.storage
+          .from(bucket)
+          .upload(`${testPath}_retry`, testBlob, {
+            contentType: 'text/plain',
+            upsert: true
+          });
+          
+        if (retryError) {
+          throw retryError;
+        }
+        
+        // Clean up test file
+        await supabase.storage
+          .from(bucket)
+          .remove([`${testPath}_retry`]);
+          
+        console.log('Permission test succeeded after fixing policies');
+      } catch (fixError) {
+        throw error; // Throw original error if fix fails
+      }
+    } else {
+      // Clean up test file
+      await supabase.storage
+        .from(bucket)
+        .remove([testPath]);
+        
+      console.log('Permission test succeeded');
+    }
+    
     return new Response(
       JSON.stringify({ success: true, hasPermission: true }),
       { 
@@ -297,9 +364,10 @@ async function ensureBucketWithPolicies(bucket: string) {
       });
       
       if (createError) throw createError;
+      console.log(`Created bucket ${bucket}`);
     }
     
-    // Create policies directly
+    // Always try to create policies
     await createPoliciesForBucket(bucket);
     
     return true;
@@ -313,6 +381,59 @@ async function ensureBucketWithPolicies(bucket: string) {
 async function createPoliciesForBucket(bucketName: string) {
   try {
     console.log(`Creating policies for bucket ${bucketName}`);
+    
+    // First try to use SQL RPC function
+    try {
+      console.log("Using SQL RPC for policy creation");
+      const { data, error } = await supabase.rpc('exec_sql', {
+        sql_string: `
+          DO $$
+          BEGIN
+            -- Allow anyone to SELECT from the bucket
+            BEGIN
+              INSERT INTO storage.policies (name, definition)
+              VALUES (
+                'allow_public_select_${bucketName}',
+                '(bucket_id = ''${bucketName}''::text)'
+              );
+            EXCEPTION WHEN others THEN
+              -- Ignore error if policy already exists
+            END;
+            
+            -- Allow anyone to INSERT into the bucket
+            BEGIN
+              INSERT INTO storage.policies (name, definition)
+              VALUES (
+                'allow_public_insert_${bucketName}',
+                '(bucket_id = ''${bucketName}''::text)'
+              );
+            EXCEPTION WHEN others THEN
+              -- Ignore error if policy already exists
+            END;
+            
+            -- Allow anyone to DELETE from the bucket
+            BEGIN
+              INSERT INTO storage.policies (name, definition)
+              VALUES (
+                'allow_public_delete_${bucketName}',
+                '(bucket_id = ''${bucketName}''::text)'
+              );
+            EXCEPTION WHEN others THEN
+              -- Ignore error if policy already exists
+            END;
+          END $$;
+        `
+      });
+      
+      if (error) {
+        console.warn('SQL policy creation warning:', error);
+      } else {
+        console.log('Created policies via SQL RPC');
+        return true;
+      }
+    } catch (sqlError) {
+      console.warn('SQL policy creation error:', sqlError);
+    }
     
     // Try to use the RPC function to create policies
     try {
@@ -328,30 +449,6 @@ async function createPoliciesForBucket(bucketName: string) {
       }
     } catch (rpcError) {
       console.warn('RPC policy creation error:', rpcError);
-    }
-    
-    // As a fallback, try direct SQL execution if the RPC function fails
-    try {
-      const { data, error } = await supabase.rpc('exec_sql', {
-        sql_string: `
-          -- Allow public access to bucket
-          INSERT INTO storage.policies (name, definition)
-          VALUES (
-            'allow_public_access_${bucketName}',
-            '(bucket_id = ''${bucketName}''::text)'
-          )
-          ON CONFLICT (name) DO NOTHING;
-        `
-      });
-      
-      if (error) {
-        console.warn('SQL policy creation warning:', error);
-      } else {
-        console.log('Created policies via direct SQL');
-        return true;
-      }
-    } catch (sqlError) {
-      console.warn('SQL policy creation error:', sqlError);
     }
     
     // Even if there were warnings, we'll continue
