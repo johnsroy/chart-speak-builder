@@ -24,28 +24,46 @@ export const ensureStorageBuckets = async (): Promise<void> => {
     if (!datasetsBucketExists) {
       console.log("Creating 'datasets' bucket");
       
-      // First try using the direct bucket creation
+      // Try using the storage-manager edge function first
       try {
+        console.log("Using storage-manager function to check permissions");
+        const { data, error } = await supabase.functions.invoke('storage-manager', {
+          method: 'POST',
+          body: { action: 'check-permissions', bucket: 'datasets' }
+        });
+        
+        if (error || !data?.success) {
+          console.warn("Edge function check had issues:", error || data);
+        } else {
+          console.log("Storage permissions verified via edge function");
+          return; // If edge function indicates success, we're done
+        }
+      } catch (edgeFunctionError) {
+        console.warn("Edge function approach had issues:", edgeFunctionError);
+      }
+      
+      // If edge function approach didn't work, try direct bucket creation
+      try {
+        console.log("Trying direct bucket creation");
         const { error: createError } = await supabase.storage.createBucket('datasets', {
-          public: true,
-          fileSizeLimit: 10 * 1024 * 1024 * 1024, // 10GB limit
-          allowedMimeTypes: ['text/csv', 'application/json', 'application/vnd.ms-excel', 
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream']
+          public: true // Ensure bucket is public
         });
         
         if (createError) {
-          console.warn("Direct bucket creation failed, will try edge function:", createError);
+          console.warn("Direct bucket creation failed:", createError);
           throw createError;
         }
         
         console.log("'datasets' bucket created successfully via direct API");
       } catch (directCreateError) {
-        // Try using edge function
+        console.warn("Direct bucket creation failed:", directCreateError);
+        
+        // Try using the storage-setup edge function as last resort
         try {
-          console.log("Attempting to create bucket via edge function");
+          console.log("Attempting to create bucket via storage-setup edge function");
           const { data, error: functionError } = await supabase.functions.invoke('storage-setup', {
             method: 'POST',
-            body: { action: 'create-buckets' },
+            body: { action: 'create-buckets', force: true },
             headers: {
               'Content-Type': 'application/json'
             }
@@ -81,18 +99,52 @@ export const ensureStorageBuckets = async (): Promise<void> => {
       console.log("'datasets' bucket already exists");
     }
     
-    // Check and update bucket policies to ensure files are accessible
+    // Execute a direct SQL command to create proper policies using Postgres RPC
     try {
-      await supabase.functions.invoke('storage-setup', {
-        method: 'POST',
-        body: { action: 'update-policies' },
-        headers: {
-          'Content-Type': 'application/json'
-        }
+      console.log("Setting up storage policies via SQL");
+      
+      // Using RPC to execute the SQL with elevated privileges
+      const { data, error } = await supabase.rpc('exec_sql', {
+        sql_string: `
+          DO $$
+          BEGIN
+            -- Allow anon and authenticated users to use the datasets bucket
+            IF NOT EXISTS (
+              SELECT 1 FROM storage.policies 
+              WHERE name = 'allow_public_access_datasets'
+            ) THEN
+              INSERT INTO storage.policies (name, definition, owner)
+              VALUES (
+                'allow_public_access_datasets',
+                '(bucket_id = ''datasets''::text)',
+                'authenticated'
+              );
+            END IF;
+          END $$;
+        `
       });
-      console.log("Storage policies updated");
-    } catch (policyError) {
-      console.warn("Error updating storage policies (non-fatal):", policyError);
+      
+      if (error) {
+        console.warn("Policy setup had warning:", error);
+      } else {
+        console.log("Storage policies updated via SQL");
+      }
+    } catch (sqlError) {
+      console.warn("SQL policy update had issues (non-fatal):", sqlError);
+      
+      // Try to update policies using the edge function as fallback
+      try {
+        await supabase.functions.invoke('storage-setup', {
+          method: 'POST',
+          body: { action: 'update-policies' },
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        console.log("Storage policies updated via edge function");
+      } catch (policyError) {
+        console.warn("Error updating storage policies (non-fatal):", policyError);
+      }
     }
   } catch (error) {
     console.error("Error ensuring buckets:", error);

@@ -24,6 +24,27 @@ export const uploadSmallFile = async (
     const contentType = file.type || 'application/octet-stream';
     console.log(`File content type: ${contentType}`);
     
+    // Check storage permissions before uploading
+    try {
+      console.log("Checking storage permissions...");
+      const { data, error } = await supabase.functions.invoke('storage-manager', {
+        method: 'POST',
+        body: { action: 'check-permissions', bucket: 'datasets' }
+      });
+      
+      if (error || !data?.hasPermission) {
+        console.warn("Permission check indicated issues:", error || data);
+        // Continue anyway and let the actual upload attempt handle errors
+      } else {
+        console.log("Storage permissions verified");
+      }
+    } catch (permError) {
+      console.warn("Error checking permissions:", permError);
+    }
+    
+    // Update progress to indicate permissions check is complete
+    onProgress?.(10);
+    
     // Upload the file with explicit content type
     const { data, error } = await supabase.storage
       .from('datasets')
@@ -35,7 +56,37 @@ export const uploadSmallFile = async (
       
     if (error) {
       console.error('Direct upload error:', error);
-      throw error;
+      
+      // Try fallback approach by directly calling the storage-setup function
+      try {
+        console.log("Trying to fix storage permissions before retrying...");
+        await supabase.functions.invoke('storage-setup', {
+          method: 'POST',
+          body: { action: 'create-buckets', force: true }
+        });
+        
+        // Retry the upload after ensuring buckets exist
+        console.log("Retrying upload after fixing permissions...");
+        const { data: retryData, error: retryError } = await supabase.storage
+          .from('datasets')
+          .upload(filePath, file, {
+            upsert: true,
+            cacheControl: '3600',
+            contentType
+          });
+          
+        if (retryError) {
+          console.error('Retry upload error:', retryError);
+          throw retryError;
+        }
+        
+        // If retry succeeded, continue as normal
+        data = retryData;
+        
+      } catch (fallbackError) {
+        console.error('Fallback approach failed:', fallbackError);
+        throw error; // Throw the original error
+      }
     }
     
     // Complete progress
