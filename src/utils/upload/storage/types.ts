@@ -20,3 +20,21 @@ export interface ChunkUploadResponse {
   path?: string;
   error?: string;
 }
+
+/**
+ * Storage bucket configuration
+ */
+export interface StorageBucketConfig {
+  public: boolean;
+  fileSizeLimit?: number;
+  allowedMimeTypes?: string[];
+}
+
+/**
+ * Storage policy configuration
+ */
+export interface StoragePolicyConfig {
+  bucket: string;
+  policy: string;
+  definition: any;
+}
