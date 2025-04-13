@@ -13,7 +13,7 @@ import { UploadResult, ProgressCallback, ChunkUploadResponse } from './types';
 export const uploadLargeFile = async (
   file: File,
   filePath: string,
-  chunkSize: number = 10 * 1024 * 1024, // Default 10MB
+  chunkSize: number = 5 * 1024 * 1024, // Default 5MB (reduced from 10MB)
   onProgress?: ProgressCallback
 ): Promise<UploadResult> => {
   try {
@@ -26,14 +26,49 @@ export const uploadLargeFile = async (
     // Start progress at 0%
     onProgress?.(0);
     
+    // Try direct upload first for files that aren't extremely large
+    if (file.size < 100 * 1024 * 1024) { // 100MB threshold
+      try {
+        console.log('Attempting direct upload for moderately-sized file');
+        const contentType = file.type || 'application/octet-stream';
+        
+        const { data, error } = await supabase.storage
+          .from('datasets')
+          .upload(filePath, file, {
+            upsert: true,
+            cacheControl: '3600',
+            contentType
+          });
+          
+        if (!error) {
+          console.log('Direct upload succeeded');
+          onProgress?.(100);
+          
+          // Get the public URL
+          const publicUrl = supabase.storage
+            .from('datasets')
+            .getPublicUrl(filePath).data.publicUrl;
+          
+          return {
+            storageUrl: publicUrl,
+            storagePath: filePath
+          };
+        } else {
+          console.warn('Direct upload failed, falling back to chunked upload:', error);
+        }
+      } catch (directError) {
+        console.warn('Direct upload failed, falling back to chunked upload:', directError);
+      }
+    }
+    
     // Create an array to track uploaded chunks
     const uploadedChunks: boolean[] = Array(totalChunks).fill(false);
+    let failedChunks: number[] = [];
     
-    // Try to upload all chunks in parallel with a reasonable concurrency limit
-    const MAX_CONCURRENT_UPLOADS = 3;
+    // Set a more reasonable concurrency limit
+    const MAX_CONCURRENT_UPLOADS = 2;
     let activeUploads = 0;
     let nextChunkIndex = 0;
-    let failedChunks: number[] = [];
     
     // Function to upload a single chunk
     const uploadChunk = async (chunkIndex: number): Promise<boolean> => {
@@ -49,18 +84,22 @@ export const uploadLargeFile = async (
         // Add chunk index to filename to avoid conflicts
         const chunkPath = `${filePath}_chunk_${chunkIndex}`;
         
-        console.log(`Uploading chunk ${chunkIndex} (${start}-${end}, size: ${chunk.size} bytes)`);
+        console.log(`Uploading chunk ${chunkIndex + 1}/${totalChunks} (${start}-${end}, size: ${chunk.size} bytes)`);
         
-        // Upload the chunk
+        // Force the correct content type for the chunk
+        const chunkType = file.type || 'application/octet-stream';
+        
+        // Upload the chunk with explicit content type
         const { data, error } = await supabase.storage
           .from('datasets')
           .upload(chunkPath, chunk, {
             upsert: true,
-            cacheControl: '3600'
+            cacheControl: '3600',
+            contentType: chunkType
           });
           
         if (error) {
-          console.error(`Error uploading chunk ${chunkIndex}:`, error);
+          console.error(`Error uploading chunk ${chunkIndex + 1}/${totalChunks}:`, error);
           return false;
         }
         
@@ -72,10 +111,10 @@ export const uploadLargeFile = async (
         const progressPercent = Math.floor((uploadedCount / totalChunks) * 90); // Leave 10% for finalization
         onProgress?.(progressPercent);
         
-        console.log(`Chunk ${chunkIndex} uploaded successfully (${progressPercent}% complete)`);
+        console.log(`Chunk ${chunkIndex + 1}/${totalChunks} uploaded successfully (${progressPercent}% complete)`);
         return true;
       } catch (chunkError) {
-        console.error(`Failed to upload chunk ${chunkIndex}:`, chunkError);
+        console.error(`Failed to upload chunk ${chunkIndex + 1}/${totalChunks}:`, chunkError);
         return false;
       }
     };
@@ -111,6 +150,11 @@ export const uploadLargeFile = async (
     // Wait for all chunks to complete
     await Promise.all(initialUploads);
     
+    // Wait until all active uploads are done
+    while (activeUploads > 0) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
     // Retry failed chunks (up to 3 attempts)
     for (let attempt = 0; attempt < 3 && failedChunks.length > 0; attempt++) {
       console.log(`Retry attempt ${attempt + 1} for ${failedChunks.length} failed chunks`);
@@ -132,53 +176,86 @@ export const uploadLargeFile = async (
       }
     }
     
-    // If there are still failed chunks, try one last direct upload of the complete file
+    // Handle the case of still having failed chunks
     if (failedChunks.length > 0) {
-      console.log(`Still have ${failedChunks.length} failed chunks, attempting direct upload as fallback`);
+      console.warn(`${failedChunks.length} chunks still failed after retries`);
       
-      try {
-        onProgress?.(91);
+      // If only a few chunks failed out of many, we can try to proceed
+      if (failedChunks.length <= Math.max(3, Math.floor(totalChunks * 0.05))) {
+        console.log("Only a small number of chunks failed, attempting to proceed with merge");
+      } else {
+        console.error(`Too many chunks (${failedChunks.length}/${totalChunks}) failed, aborting`);
+        throw new Error(`Failed to upload file: ${failedChunks.length} chunks could not be uploaded after retries`);
+      }
+    }
+    
+    // Finalize the upload - combine chunks or upload complete file directly
+    onProgress?.(95);
+    console.log("Finalizing upload");
+    
+    try {
+      if (file.size <= 50 * 1024 * 1024) {
+        // For smaller files, it's better to just upload the whole file
+        console.log("Using direct upload as final step");
         
-        // Try direct upload of the full file
+        const contentType = file.type || 'application/octet-stream';
         const { data, error } = await supabase.storage
           .from('datasets')
           .upload(filePath, file, {
             upsert: true,
-            cacheControl: '3600'
+            cacheControl: '3600',
+            contentType
           });
           
         if (error) {
-          console.error("Fallback direct upload failed:", error);
-          throw new Error(`Failed to upload file after retries: ${error.message}`);
+          throw error;
         }
+      } else {
+        // For larger files, we need to use an edge function to combine chunks
+        // But since we don't have that functionality yet, try direct upload with explicit content type
+        console.log("Trying direct upload for final file");
         
-        onProgress?.(95);
-        console.log("Fallback direct upload successful");
-      } catch (directError) {
-        console.error("All upload attempts failed:", directError);
-        throw new Error("Failed to upload file: All upload methods failed");
-      }
-    } else {
-      // All chunks were uploaded successfully, now merge them
-      onProgress?.(95);
-      console.log("All chunks uploaded successfully, finalizing");
-      
-      try {
-        // For larger files, it's better to use the direct upload as the final step
-        // since we've verified the storage connection works with the chunks
+        const contentType = file.type || 'application/octet-stream';
         const { data, error } = await supabase.storage
           .from('datasets')
           .upload(filePath, file, {
             upsert: true,
-            cacheControl: '3600'
+            cacheControl: '3600',
+            contentType
           });
           
         if (error) {
           console.error("Error finalizing upload:", error);
           throw error;
         }
-      } catch (finalizeError) {
-        console.error("Error finalizing upload:", finalizeError);
+      }
+    } catch (finalizeError) {
+      console.error("Error finalizing upload:", finalizeError);
+      
+      // Last ditch effort: try uploading in a different format
+      try {
+        console.log("Trying one last approach for upload");
+        
+        // For CSV files, try text/csv explicitly
+        let specialContentType = file.type;
+        if (filePath.toLowerCase().endsWith('.csv')) {
+          specialContentType = 'text/csv';
+        } else if (filePath.toLowerCase().endsWith('.json')) {
+          specialContentType = 'application/json';
+        }
+        
+        const { data, error } = await supabase.storage
+          .from('datasets')
+          .upload(filePath, file, {
+            upsert: true,
+            cacheControl: '3600',
+            contentType: specialContentType
+          });
+          
+        if (error) {
+          throw finalizeError; // Throw the original error if this fails too
+        }
+      } catch (lastAttemptError) {
         throw new Error(`Failed to finalize upload: ${finalizeError instanceof Error ? finalizeError.message : 'Unknown error'}`);
       }
     }

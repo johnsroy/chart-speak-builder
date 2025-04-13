@@ -20,15 +20,21 @@ export const uploadSmallFile = async (
     // Start with 0% progress
     onProgress?.(0);
     
-    // Upload the file
+    // Make sure the file has the correct content type
+    const contentType = file.type || 'application/octet-stream';
+    console.log(`File content type: ${contentType}`);
+    
+    // Upload the file with explicit content type
     const { data, error } = await supabase.storage
       .from('datasets')
       .upload(filePath, file, {
         upsert: true,
-        cacheControl: '3600'
+        cacheControl: '3600',
+        contentType
       });
       
     if (error) {
+      console.error('Direct upload error:', error);
       throw error;
     }
     

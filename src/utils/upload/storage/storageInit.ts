@@ -24,59 +24,58 @@ export const ensureStorageBuckets = async (): Promise<void> => {
     if (!datasetsBucketExists) {
       console.log("Creating 'datasets' bucket");
       
-      try {
-        // First try using edge function
-        const { data, error: functionError } = await supabase.functions.invoke('storage-setup', {
-          method: 'POST',
-          body: { action: 'create-buckets' },
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (functionError) {
-          console.warn("Edge function approach failed:", functionError);
-          throw functionError;
-        }
-        
-        if (data?.success) {
-          console.log("Storage buckets created via edge function");
-          
-          // Verify buckets were created
-          const { data: updatedBuckets, error: verifyError } = await supabase.storage.listBuckets();
-          if (verifyError) {
-            console.warn("Error verifying bucket creation:", verifyError);
-          } else {
-            const nowExists = updatedBuckets?.some(bucket => bucket.name === 'datasets');
-            if (!nowExists) {
-              console.warn("Bucket still doesn't exist after edge function call, will try direct creation");
-              throw new Error("Edge function didn't create the bucket");
-            }
-          }
-          
-          return;
-        }
-      } catch (edgeFunctionError) {
-        console.warn("Edge function approach failed:", edgeFunctionError);
-      }
-      
-      // Fallback to direct bucket creation
+      // First try using the direct bucket creation
       try {
         const { error: createError } = await supabase.storage.createBucket('datasets', {
           public: true,
           fileSizeLimit: 10 * 1024 * 1024 * 1024, // 10GB limit
-          allowedMimeTypes: ['text/csv', 'application/json', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+          allowedMimeTypes: ['text/csv', 'application/json', 'application/vnd.ms-excel', 
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream']
         });
         
         if (createError) {
-          console.error("Error creating 'datasets' bucket:", createError);
+          console.warn("Direct bucket creation failed, will try edge function:", createError);
           throw createError;
         }
         
-        console.log("'datasets' bucket created successfully");
+        console.log("'datasets' bucket created successfully via direct API");
       } catch (directCreateError) {
-        console.error("Direct bucket creation failed:", directCreateError);
-        throw directCreateError;
+        // Try using edge function
+        try {
+          console.log("Attempting to create bucket via edge function");
+          const { data, error: functionError } = await supabase.functions.invoke('storage-setup', {
+            method: 'POST',
+            body: { action: 'create-buckets' },
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (functionError) {
+            console.error("Edge function approach failed:", functionError);
+            throw functionError;
+          }
+          
+          console.log("Storage buckets created via edge function");
+        } catch (edgeFunctionError) {
+          console.error("All bucket creation methods failed:", edgeFunctionError);
+          throw new Error("Could not create storage buckets: " + 
+            (edgeFunctionError instanceof Error ? edgeFunctionError.message : 'Unknown error'));
+        }
+      }
+      
+      // Verify buckets were created
+      const { data: updatedBuckets, error: verifyError } = await supabase.storage.listBuckets();
+      if (verifyError) {
+        console.warn("Error verifying bucket creation:", verifyError);
+      } else {
+        const nowExists = updatedBuckets?.some(bucket => bucket.name === 'datasets');
+        if (!nowExists) {
+          console.error("Bucket still doesn't exist after creation attempts");
+          throw new Error("Failed to create storage bucket");
+        } else {
+          console.log("Verified 'datasets' bucket now exists");
+        }
       }
     } else {
       console.log("'datasets' bucket already exists");
@@ -91,6 +90,7 @@ export const ensureStorageBuckets = async (): Promise<void> => {
           'Content-Type': 'application/json'
         }
       });
+      console.log("Storage policies updated");
     } catch (policyError) {
       console.warn("Error updating storage policies (non-fatal):", policyError);
     }

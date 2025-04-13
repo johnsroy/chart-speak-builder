@@ -20,9 +20,9 @@ export const uploadFileToStorage = async (
   try {
     console.log(`Attempting to upload file to: datasets/${filePath}`);
     
-    // Set the chunk size to 10MB for better upload performance with large files
-    const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
-    const MAX_DIRECT_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB threshold for direct upload
+    // Reduced chunk size for better reliability
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+    const MAX_DIRECT_UPLOAD_SIZE = 30 * 1024 * 1024; // 30MB threshold for direct upload
     
     // First ensure we have proper permissions by creating bucket and policies
     try {
@@ -36,6 +36,14 @@ export const uploadFileToStorage = async (
     let uploadAttempted = false;
     let uploadError: any = null;
     
+    // Verify the content type
+    const contentType = file.type || 
+      (filePath.toLowerCase().endsWith('.csv') ? 'text/csv' : 
+       filePath.toLowerCase().endsWith('.json') ? 'application/json' : 
+       'application/octet-stream');
+    
+    console.log(`File content type: ${contentType}`);
+    
     // For files smaller than the threshold, try direct upload first
     if (file.size <= MAX_DIRECT_UPLOAD_SIZE) {
       try {
@@ -44,6 +52,9 @@ export const uploadFileToStorage = async (
         
         uploadData = await uploadSmallFile(file, filePath, onProgress);
         console.log('Direct upload succeeded');
+        
+        // If we succeeded, return immediately
+        return uploadData;
       } catch (directError) {
         console.warn('Direct upload failed for small file:', directError);
         uploadError = directError;
@@ -56,31 +67,35 @@ export const uploadFileToStorage = async (
         uploadAttempted = true;
         uploadData = await uploadLargeFile(file, filePath, CHUNK_SIZE, onProgress);
         console.log('Chunked upload succeeded');
+        
+        // If chunked upload succeeded, return immediately
+        return uploadData;
       } catch (chunkedError) {
         console.warn('Chunked upload failed:', chunkedError);
         uploadError = chunkedError;
       }
     }
     
-    // If previous methods failed, try a fallback approach with direct upload
+    // If both methods failed, try a simple fallback approach
     if (!uploadData) {
       try {
         console.log('Trying fallback direct upload as last resort');
         uploadAttempted = true;
         
-        // First make sure the bucket exists
+        // First make sure the bucket exists again
         await ensureStorageBuckets();
         
-        // Try direct Supabase upload
+        // Try direct Supabase upload with explicit content type
         const { data, error } = await supabase.storage
           .from('datasets')
           .upload(filePath, file, { 
             upsert: true,
-            cacheControl: '3600'
+            cacheControl: '3600',
+            contentType
           });
           
         if (error) {
-          console.warn('Fallback direct upload failed:', error);
+          console.error('Fallback direct upload failed:', error);
           throw error;
         }
         
