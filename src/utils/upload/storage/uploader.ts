@@ -58,85 +58,27 @@ export const uploadFileToStorage = async (
     }
     
     // If direct upload didn't work or didn't return data, try the more complex methods
-    if (!uploadData && (!uploadAttempted || file.size <= MAX_DIRECT_UPLOAD_SIZE)) {
-      try {
-        console.log('Trying upload for smaller file');
-        const result = await uploadSmallFile(file, filePath, onProgress);
-        uploadData = result.data;
-      } catch (smallError) {
-        console.warn('Small file upload method failed:', smallError);
-      }
-    }
-    
-    // For larger files or if small file upload didn't work, try chunked upload
-    if (!uploadData && (!uploadAttempted || file.size > MAX_DIRECT_UPLOAD_SIZE)) {
-      try {
-        console.log('Trying chunked upload for larger file');
-        const result = await uploadLargeFile(file, filePath, CHUNK_SIZE, onProgress);
-        uploadData = result.data;
-      } catch (chunkedError) {
-        console.warn('Chunked upload method failed:', chunkedError);
-      }
-    }
-    
-    // Last resort - try a simpler direct upload without options
     if (!uploadData) {
-      try {
-        console.log('Trying last resort direct upload with minimal options');
-        const { data, error } = await supabase.storage
-          .from('datasets')
-          .upload(filePath, file);
-          
-        if (error) {
-          console.warn('Last resort upload failed:', error);
-        } else {
-          uploadData = data;
-        }
-      } catch (lastAttemptError) {
-        console.error('All upload methods failed:', lastAttemptError);
-        throw new Error(`Upload failed after trying all available methods`);
+      if (file.size <= MAX_DIRECT_UPLOAD_SIZE) {
+        // For smaller files, try a different direct upload method
+        uploadData = await uploadSmallFile(file, filePath, onProgress);
+      } else {
+        // For larger files, use chunked upload
+        uploadData = await uploadLargeFile(file, filePath, CHUNK_SIZE, onProgress);
       }
     }
     
-    // Create a fallback result if uploadData is missing or incomplete
-    if (!uploadData || !uploadData.path) {
-      console.warn('Upload returned incomplete data, creating fallback response');
-      uploadData = {
-        path: filePath,
-        id: filePath,
-        fullPath: `datasets/${filePath}`
-      };
-    }
+    // Construct the public URL
+    const publicUrl = supabase.storage
+      .from('datasets')
+      .getPublicUrl(filePath).data.publicUrl;
     
-    // Use file path as fallback if path is missing in the response
-    const finalPath = uploadData.path || filePath;
-    
-    // Use a try-catch block specifically for getting the public URL
-    try {
-      const publicUrlResult = supabase.storage.from('datasets').getPublicUrl(finalPath);
-      
-      if (!publicUrlResult.data || !publicUrlResult.data.publicUrl) {
-        throw new Error('Could not generate public URL');
-      }
-      
-      return {
-        storageUrl: publicUrlResult.data.publicUrl,
-        storagePath: finalPath
-      };
-    } catch (urlError) {
-      console.error('Error generating public URL:', urlError);
-      
-      // Fallback to constructing a URL manually
-      const supabaseUrl = 'https://rehadpogugijylybwmoe.supabase.co';
-      const fallbackUrl = `${supabaseUrl}/storage/v1/object/public/datasets/${finalPath}`;
-      
-      return {
-        storageUrl: fallbackUrl,
-        storagePath: finalPath
-      };
-    }
+    return {
+      storageUrl: publicUrl,
+      storagePath: filePath
+    };
   } catch (error) {
-    console.error('File upload error:', error);
-    throw error;
+    console.error('File upload failed:', error);
+    throw new Error(`Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };

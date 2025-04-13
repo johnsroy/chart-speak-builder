@@ -22,6 +22,7 @@ export type Database = {
           row_count: number
           storage_path: string
           storage_type: string
+          storage_url: string | null
           updated_at: string
           user_id: string
         }
@@ -37,6 +38,7 @@ export type Database = {
           row_count: number
           storage_path: string
           storage_type: string
+          storage_url?: string | null
           updated_at?: string
           user_id: string
         }
@@ -52,6 +54,7 @@ export type Database = {
           row_count?: number
           storage_path?: string
           storage_type?: string
+          storage_url?: string | null
           updated_at?: string
           user_id?: string
         }

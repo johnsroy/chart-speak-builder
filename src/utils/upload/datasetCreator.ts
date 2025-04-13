@@ -42,8 +42,8 @@ export const createDatasetRecord = async (
       file_name: file.name,
       file_size: file.size,
       storage_path: storagePath,
-      storage_url: storageUrl,
-      storage_type: 'supabase',
+      storage_url: storageUrl, // This is now explicitly included
+      storage_type: 'datasets',
       user_id: userId,
       row_count: estimatedRowCount,
       column_schema: finalColumnSchema

@@ -1,216 +1,160 @@
+
 import { supabase } from '@/lib/supabase';
-import { ProgressCallback } from './types';
-import { ensureStorageBuckets } from './storageInit';
+import { UploadResult, ProgressCallback, ChunkUploadResponse } from './types';
 
 /**
- * Uploads a large file using chunking for better reliability
+ * Uploads a large file in chunks
+ * @param file File to upload
+ * @param filePath Path in storage bucket
+ * @param chunkSize Size of each chunk in bytes
+ * @param onProgress Progress callback (optional)
+ * @returns Object containing upload result
  */
 export const uploadLargeFile = async (
-  file: File, 
-  filePath: string, 
-  chunkSize: number, 
+  file: File,
+  filePath: string,
+  chunkSize: number = 10 * 1024 * 1024, // Default 10MB
   onProgress?: ProgressCallback
-): Promise<{ data: any; error: any }> => {
+): Promise<UploadResult> => {
   try {
-    console.log(`Uploading large file (${(file.size / (1024 * 1024)).toFixed(2)} MB) using chunks of ${chunkSize / (1024 * 1024)}MB`);
-    
-    // Try direct upload first as a fallback option for some environments
-    try {
-      console.log("Attempting direct upload for large file...");
-      const directResult = await supabase.storage
-        .from('datasets')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
-        
-      if (!directResult.error) {
-        console.log("Direct upload of large file succeeded");
-        if (onProgress) {
-          onProgress(95);
-        }
-        
-        // Ensure data contains required fields
-        if (!directResult.data) {
-          directResult.data = { 
-            path: filePath,
-            id: filePath,
-            fullPath: `datasets/${filePath}`
-          };
-        } else if (!directResult.data.path) {
-          // Make sure path is set
-          directResult.data.path = filePath;
-        }
-        
-        return directResult;
-      }
-      
-      console.log("Direct upload failed, falling back to chunked upload");
-    } catch (directError) {
-      console.log("Direct upload attempt failed:", directError);
-    }
-    
-    // Create a temporary file for combining chunks
-    const { data: { path } = {}, error: initError } = await supabase.storage
-      .from('datasets')
-      .upload(`${filePath}.part`, new Blob([]), {
-        upsert: true
-      });
-      
-    if (initError) {
-      console.error('Error initializing chunked upload:', initError);
-      throw new Error(`Failed to initialize chunked upload: ${initError.message}`);
-    }
+    console.log(`Uploading large file (${file.size} bytes) in chunks of ${chunkSize} bytes to ${filePath}`);
     
     // Calculate total chunks
     const totalChunks = Math.ceil(file.size / chunkSize);
-    console.log(`File will be uploaded in ${totalChunks} chunks`);
+    console.log(`Total chunks: ${totalChunks}`);
     
-    let uploadedChunks = 0;
-    let uploadedBytes = 0;
+    // Start progress at 0%
+    onProgress?.(0);
     
-    // Upload each chunk
-    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-      const start = chunkIndex * chunkSize;
-      const end = Math.min(file.size, start + chunkSize);
-      const chunk = file.slice(start, end);
-      
+    // Create an array to track uploaded chunks
+    const uploadedChunks: boolean[] = Array(totalChunks).fill(false);
+    
+    // Try to upload all chunks in parallel with a reasonable concurrency limit
+    const MAX_CONCURRENT_UPLOADS = 3;
+    let activeUploads = 0;
+    let nextChunkIndex = 0;
+    
+    // Function to upload a single chunk
+    const uploadChunk = async (chunkIndex: number): Promise<void> => {
       try {
-        console.log(`Uploading chunk ${chunkIndex + 1}/${totalChunks} (${(chunk.size / 1024).toFixed(2)} KB)`);
-        
-        // Try up to 3 times per chunk
-        let attempt = 0;
-        let chunkUploaded = false;
-        
-        while (attempt < 3 && !chunkUploaded) {
-          try {
-            const { error: chunkError } = await supabase.storage
-              .from('datasets')
-              .upload(`${filePath}_chunk_${chunkIndex}`, chunk, {
-                upsert: true
-              });
-              
-            if (chunkError) {
-              console.error(`Error uploading chunk ${chunkIndex} (attempt ${attempt + 1}/3):`, chunkError);
-              attempt++;
-              // Short delay before retry
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            } else {
-              chunkUploaded = true;
-            }
-          } catch (chunkUploadError) {
-            console.error(`Exception uploading chunk ${chunkIndex} (attempt ${attempt + 1}/3):`, chunkUploadError);
-            attempt++;
-            // Longer delay before retry
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
+        if (uploadedChunks[chunkIndex]) {
+          return; // Skip already uploaded chunks
         }
         
-        if (!chunkUploaded) {
-          throw new Error(`Failed to upload chunk ${chunkIndex} after 3 attempts`);
+        const start = chunkIndex * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
+        
+        // Add chunk index to filename to avoid conflicts
+        const chunkPath = `${filePath}_chunk_${chunkIndex}`;
+        
+        // Upload the chunk
+        const { data, error } = await supabase.storage
+          .from('datasets')
+          .upload(chunkPath, chunk, {
+            upsert: true,
+            cacheControl: '3600'
+          });
+          
+        if (error) {
+          console.error(`Error uploading chunk ${chunkIndex}:`, error);
+          throw error;
         }
         
-        uploadedChunks++;
-        uploadedBytes += chunk.size;
+        // Mark chunk as uploaded
+        uploadedChunks[chunkIndex] = true;
         
-        if (onProgress) {
-          // Calculate progress as percentage but cap at 95% until final processing
-          const totalProgress = Math.floor((uploadedBytes / file.size) * 95);
-          onProgress(Math.min(95, totalProgress));
-        }
+        // Calculate and report progress
+        const uploadedCount = uploadedChunks.filter(Boolean).length;
+        const progressPercent = Math.floor((uploadedCount / totalChunks) * 90); // Leave 10% for finalization
+        onProgress?.(progressPercent);
         
-        console.log(`Chunk ${chunkIndex + 1}/${totalChunks} uploaded (${uploadedChunks}/${totalChunks} complete)`);
+        console.log(`Chunk ${chunkIndex} uploaded successfully (${progressPercent}% complete)`);
       } catch (chunkError) {
         console.error(`Failed to upload chunk ${chunkIndex}:`, chunkError);
-        throw new Error(`Chunk upload failed: ${chunkError instanceof Error ? chunkError.message : String(chunkError)}`);
+        throw chunkError;
       }
+    };
+    
+    // Function to start the next chunk upload when possible
+    const startNextChunk = async () => {
+      if (nextChunkIndex >= totalChunks) {
+        return;
+      }
+      
+      const chunkIndex = nextChunkIndex++;
+      activeUploads++;
+      
+      try {
+        await uploadChunk(chunkIndex);
+      } catch (error) {
+        console.error(`Chunk ${chunkIndex} upload failed, retrying:`, error);
+        // Retry once
+        try {
+          await uploadChunk(chunkIndex);
+        } catch (retryError) {
+          console.error(`Retry for chunk ${chunkIndex} failed:`, retryError);
+          throw retryError;
+        }
+      } finally {
+        activeUploads--;
+        await startNextChunk(); // Start another chunk when this one completes
+      }
+    };
+    
+    // Start initial batch of uploads
+    const initialUploads = Array(Math.min(MAX_CONCURRENT_UPLOADS, totalChunks))
+      .fill(0)
+      .map(() => startNextChunk());
+      
+    // Wait for all chunks to complete
+    await Promise.all(initialUploads);
+    
+    // Ensure all chunks were uploaded
+    if (!uploadedChunks.every(Boolean)) {
+      throw new Error('Not all chunks were uploaded successfully');
     }
     
-    // Signal that we're finalizing
-    if (onProgress) {
-      onProgress(95);
-    }
+    // Report progress for finalization phase
+    onProgress?.(95);
     
-    console.log("All chunks uploaded, finalizing file...");
-    
-    // Try to get permission to delete chunks and upload final file
-    await ensureStorageBuckets();
-    
-    // Upload the complete file
-    const finalUploadResult = await supabase.storage
+    // Merge chunks and create final file
+    // In a real implementation, we might use a server-side function to merge the chunks
+    // For now, we'll use a direct upload of the full file since we have all the chunks
+    const { data, error } = await supabase.storage
       .from('datasets')
       .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: true
+        upsert: true,
+        cacheControl: '3600'
       });
       
-    if (finalUploadResult.error) {
-      console.error('Final upload error:', finalUploadResult.error);
-      
-      // If chunks worked but final upload fails, it might still be usable
-      // Create a placeholder result with required fields
-      return {
-        data: { 
-          path: filePath,
-          id: filePath,
-          fullPath: `datasets/${filePath}`
-        },
-        error: null
-      };
+    if (error) {
+      throw error;
     }
     
     // Clean up chunks
-    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-      try {
-        await supabase.storage
+    await Promise.all(
+      uploadedChunks.map((_, index) => 
+        supabase.storage
           .from('datasets')
-          .remove([`${filePath}_chunk_${chunkIndex}`]);
-      } catch (cleanupError) {
-        console.warn(`Failed to cleanup chunk ${chunkIndex}:`, cleanupError);
-        // Non-fatal, continue
-      }
-    }
+          .remove([`${filePath}_chunk_${index}`])
+      )
+    );
     
-    // Also remove the initial .part file
-    try {
-      await supabase.storage
-        .from('datasets')
-        .remove([`${filePath}.part`]);
-    } catch (cleanupError) {
-      console.warn(`Failed to cleanup part file:`, cleanupError);
-      // Non-fatal, continue
-    }
+    // Complete progress
+    onProgress?.(100);
     
-    // At 100% when finished
-    if (onProgress) {
-      onProgress(100);
-    }
+    // Get the public URL
+    const publicUrl = supabase.storage
+      .from('datasets')
+      .getPublicUrl(filePath).data.publicUrl;
     
-    // Ensure data contains required fields
-    if (!finalUploadResult.data) {
-      finalUploadResult.data = { 
-        path: filePath,
-        id: filePath,
-        fullPath: `datasets/${filePath}`
-      };
-    } else if (!finalUploadResult.data.path) {
-      // Make sure path is set for consistency
-      finalUploadResult.data.path = filePath;
-    }
-    
-    console.log("Large file upload completed successfully");
-    return finalUploadResult;
-  } catch (error) {
-    console.error("Error in uploadLargeFile:", error);
-    
-    // Return a fallback result with required fields
     return {
-      data: { 
-        path: filePath,
-        id: filePath,
-        fullPath: `datasets/${filePath}`
-      },
-      error: null
+      storageUrl: publicUrl,
+      storagePath: filePath
     };
+  } catch (error) {
+    console.error('Chunked upload failed:', error);
+    throw new Error(`Failed to upload large file: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };

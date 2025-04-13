@@ -1,6 +1,6 @@
 
 /**
- * Result of a successful upload
+ * Result of a storage upload operation
  */
 export interface UploadResult {
   storageUrl: string;
@@ -8,16 +8,15 @@ export interface UploadResult {
 }
 
 /**
- * Progress tracking callback
+ * Progress callback function type
  */
 export type ProgressCallback = (progress: number) => void;
 
 /**
- * Internal progress tracking options
+ * Chunk upload response
  */
-export interface ProgressTrackingOptions {
-  lastProgressValue: number;
-  progressRollbacks: number;
-  progressValue: number;
-  progressInterval?: NodeJS.Timeout;
+export interface ChunkUploadResponse {
+  success: boolean;
+  path?: string;
+  error?: string;
 }
