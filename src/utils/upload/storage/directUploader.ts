@@ -45,7 +45,7 @@ export const uploadSmallFile = async (
     // Update progress to indicate permissions check is complete
     onProgress?.(10);
     
-    // Use let instead of const for data so we can reassign it later if needed
+    // Use let instead of const for data and error so we can reassign them later if needed
     let uploadData = null;
     let uploadError = null;
     
