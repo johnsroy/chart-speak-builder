@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -23,20 +22,23 @@ const Dashboard = () => {
     loadDatasets, 
     isRefreshing, 
     hasError, 
-    emptyStateConfirmed 
+    emptyStateConfirmed,
+    forceRefresh
   } = useDatasets();
   
   const [filterType, setFilterType] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [datasetToDelete, setDatasetToDelete] = useState<{id: string, name: string} | null>(null);
   const [duplicateWarnings, setDuplicateWarnings] = useState<boolean>(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   
   useEffect(() => {
     const setupAuth = async () => {
-      if (!isAuthenticated && !user) {
+      if (!isAuthenticated && !user && !initialLoadComplete) {
         console.log("No authenticated user, performing admin login");
         try {
           await adminLogin();
+          setInitialLoadComplete(true);
         } catch (error) {
           console.error("Admin login failed:", error);
           toast.error("Authentication error, some features may be limited");
@@ -45,7 +47,7 @@ const Dashboard = () => {
     };
 
     setupAuth();
-  }, [isAuthenticated, user, adminLogin]);
+  }, [isAuthenticated, user, adminLogin, initialLoadComplete]);
 
   const handleDatasetDeleted = useCallback(() => {
     console.log("Dataset deleted callback executed");
@@ -194,7 +196,6 @@ const Dashboard = () => {
       );
     }
     
-    // Empty state
     return (
       <div className="text-center py-12">
         <Database className="h-12 w-12 mx-auto mb-4 text-gray-500" />

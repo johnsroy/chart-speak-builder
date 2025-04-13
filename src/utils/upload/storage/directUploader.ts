@@ -24,26 +24,28 @@ export const uploadSmallFile = async (
     const contentType = file.type || 'application/octet-stream';
     console.log(`File content type: ${contentType}`);
     
-    // Check storage permissions before uploading
+    // Ensure the storage bucket exists before uploading
     try {
-      console.log("Checking storage permissions...");
-      const { data, error } = await supabase.functions.invoke('storage-manager', {
+      console.log("Ensuring storage bucket exists...");
+      
+      // Call storage-setup to make sure the bucket exists
+      const { data: setupData, error: setupError } = await supabase.functions.invoke('storage-setup', {
         method: 'POST',
-        body: { action: 'check-permissions', bucket: 'datasets' }
+        body: { action: 'create-buckets', force: true }
       });
       
-      if (error || !data?.hasPermission) {
-        console.warn("Permission check indicated issues:", error || data);
-        // Continue anyway and let the actual upload attempt handle errors
+      if (setupError) {
+        console.warn("Storage setup had issues:", setupError);
       } else {
-        console.log("Storage permissions verified");
+        console.log("Storage bucket verified");
       }
-    } catch (permError) {
-      console.warn("Error checking permissions:", permError);
+      
+      // Update progress to indicate preparation is complete
+      onProgress?.(10);
+    } catch (setupError) {
+      console.warn("Error in storage setup:", setupError);
+      // Continue anyway as the upload might still work
     }
-    
-    // Update progress to indicate permissions check is complete
-    onProgress?.(10);
     
     // Use let instead of const for data and error so we can reassign them later if needed
     let uploadData = null;
@@ -65,16 +67,28 @@ export const uploadSmallFile = async (
     if (uploadError) {
       console.error('Direct upload error:', uploadError);
       
-      // Try fallback approach by directly calling the storage-setup function
+      // Try fallback approach with direct policy update
       try {
-        console.log("Trying to fix storage permissions before retrying...");
-        await supabase.functions.invoke('storage-setup', {
+        console.log("Trying to update storage policies before retrying...");
+        
+        // Call the storage-manager function to update policies
+        const { data: managerData, error: managerError } = await supabase.functions.invoke('storage-manager', {
           method: 'POST',
-          body: { action: 'create-buckets', force: true }
+          body: { 
+            action: 'create-bucket', 
+            bucketName: 'datasets',
+            isPublic: true
+          }
         });
         
-        // Retry the upload after ensuring buckets exist
-        console.log("Retrying upload after fixing permissions...");
+        if (managerError) {
+          console.warn("Policy update failed:", managerError);
+        } else {
+          console.log("Storage policies updated successfully");
+        }
+        
+        // Retry the upload after updating policies
+        console.log("Retrying upload...");
         const retryResult = await supabase.storage
           .from('datasets')
           .upload(filePath, file, {

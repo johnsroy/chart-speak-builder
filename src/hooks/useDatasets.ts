@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { toast } from 'sonner';
@@ -19,7 +18,9 @@ export const useDatasets = () => {
   const [emptyStateConfirmed, setEmptyStateConfirmed] = useState(false);
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialLoadDoneRef = useRef(false);
+  const dataRefreshTimestampRef = useRef<number>(Date.now());
   const maxRetries = 2;
+  const minTimeBetweenRefreshes = 15000; // 15 seconds minimum between auto refreshes
   
   const { toast: hookToast } = useToast();
   const { isAuthenticated, user } = useAuth();
@@ -41,14 +42,26 @@ export const useDatasets = () => {
       return;
     }
     
+    // Prevent excessive refreshing by enforcing minimum time between refreshes
+    const currentTime = Date.now();
+    if (!forceRefresh && currentTime - dataRefreshTimestampRef.current < minTimeBetweenRefreshes) {
+      console.log("Skipping refresh, too soon since last refresh");
+      return;
+    }
+    
     // Clear any existing fetch timer
     clearFetchTimer();
     
     setIsRefreshing(true);
-    setIsLoading(true);
+    
+    // Only set loading on first load or forced refresh to prevent UI flickering
+    if (!initialLoadDoneRef.current || forceRefresh) {
+      setIsLoading(true);
+    }
     
     try {
       console.log("Fetching all datasets...");
+      dataRefreshTimestampRef.current = Date.now();
       
       if (forceRefresh) {
         // Clear state before refreshing
@@ -75,7 +88,7 @@ export const useDatasets = () => {
           fetchTimerRef.current = setTimeout(() => {
             setIsRefreshing(false);
             loadDatasets();
-          }, 2000); // Increased delay to reduce fetch frequency
+          }, 5000); // Increased delay to reduce fetch frequency
           return;
         }
       } else {
@@ -103,15 +116,16 @@ export const useDatasets = () => {
       // Reset retry counter
       setRetryCount(0);
       
-      // Preload dataset content if authenticated
-      if (filtered.length > 0 && isAuthenticated) {
+      // Preload dataset content if authenticated - but don't do this automatically
+      // to reduce unnecessary network traffic
+      if (filtered.length > 0 && isAuthenticated && forceRefresh) {
         const datasetToPreload = selectedDatasetId || filtered[0].id;
         fetchTimerRef.current = setTimeout(() => {
           datasetUtils.loadDatasetContent(datasetToPreload, {
             preventSampleFallback: true,
             showToasts: false
           }).catch(err => console.warn("Preloading dataset failed:", err));
-        }, 500);
+        }, 2000);
       }
     } catch (error) {
       const showErrorToast = () => {
@@ -141,7 +155,7 @@ export const useDatasets = () => {
         fetchTimerRef.current = setTimeout(() => {
           setIsRefreshing(false);
           loadDatasets();
-        }, 3000 * (retryCount + 1)); // Longer delay between retries
+        }, 5000 * (retryCount + 1)); // Longer delay between retries
         
         if (retryCount === 1) {
           showErrorToast();
@@ -155,7 +169,7 @@ export const useDatasets = () => {
           setIsRefreshing(false);
           setEmptyStateConfirmed(false); // Reset for next try
           loadDatasets();
-        }, 30000); // 30 seconds before trying again after max retries
+        }, 60000); // 60 seconds before trying again after max retries
       }
     } finally {
       initialLoadDoneRef.current = true;
@@ -163,7 +177,7 @@ export const useDatasets = () => {
       // Allow a minimum time between refreshes
       setTimeout(() => {
         setIsRefreshing(false);
-      }, 1000);
+      }, 2000);
     }
   }, [selectedDatasetId, hookToast, retryCount, maxRetries, isAuthenticated, isRefreshing, emptyStateConfirmed]);
 
@@ -176,7 +190,7 @@ export const useDatasets = () => {
 
   // Only load datasets once on initial authentication
   useEffect(() => {
-    if (isAuthenticated && !isRefreshing) {
+    if (isAuthenticated && !isRefreshing && !initialLoadDoneRef.current) {
       loadDatasets();
     }
   }, [isAuthenticated, loadDatasets, isRefreshing]);
