@@ -45,6 +45,10 @@ export const uploadSmallFile = async (
     // Update progress to indicate permissions check is complete
     onProgress?.(10);
     
+    // Use let instead of const for data so we can reassign it later if needed
+    let uploadData = null;
+    let uploadError = null;
+    
     // Upload the file with explicit content type
     const { data, error } = await supabase.storage
       .from('datasets')
@@ -53,9 +57,13 @@ export const uploadSmallFile = async (
         cacheControl: '3600',
         contentType
       });
+    
+    // Assign response to our variables  
+    uploadData = data;
+    uploadError = error;
       
-    if (error) {
-      console.error('Direct upload error:', error);
+    if (uploadError) {
+      console.error('Direct upload error:', uploadError);
       
       // Try fallback approach by directly calling the storage-setup function
       try {
@@ -80,12 +88,13 @@ export const uploadSmallFile = async (
           throw retryError;
         }
         
-        // If retry succeeded, continue as normal
-        data = retryData;
+        // If retry succeeded, update our variables
+        uploadData = retryData;
+        uploadError = null;
         
       } catch (fallbackError) {
         console.error('Fallback approach failed:', fallbackError);
-        throw error; // Throw the original error
+        throw uploadError; // Throw the original error
       }
     }
     
