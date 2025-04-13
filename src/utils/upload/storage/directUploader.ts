@@ -50,7 +50,7 @@ export const uploadSmallFile = async (
     let uploadError = null;
     
     // Upload the file with explicit content type
-    const { data, error } = await supabase.storage
+    const uploadResult = await supabase.storage
       .from('datasets')
       .upload(filePath, file, {
         upsert: true,
@@ -59,8 +59,8 @@ export const uploadSmallFile = async (
       });
     
     // Assign response to our variables  
-    uploadData = data;
-    uploadError = error;
+    uploadData = uploadResult.data;
+    uploadError = uploadResult.error;
       
     if (uploadError) {
       console.error('Direct upload error:', uploadError);
@@ -75,7 +75,7 @@ export const uploadSmallFile = async (
         
         // Retry the upload after ensuring buckets exist
         console.log("Retrying upload after fixing permissions...");
-        const { data: retryData, error: retryError } = await supabase.storage
+        const retryResult = await supabase.storage
           .from('datasets')
           .upload(filePath, file, {
             upsert: true,
@@ -83,13 +83,13 @@ export const uploadSmallFile = async (
             contentType
           });
           
-        if (retryError) {
-          console.error('Retry upload error:', retryError);
-          throw retryError;
+        if (retryResult.error) {
+          console.error('Retry upload error:', retryResult.error);
+          throw retryResult.error;
         }
         
         // If retry succeeded, update our variables
-        uploadData = retryData;
+        uploadData = retryResult.data;
         uploadError = null;
         
       } catch (fallbackError) {

@@ -26,16 +26,17 @@ export const ensureStorageBuckets = async (): Promise<void> => {
       
       // Try using the storage-manager edge function first
       try {
-        console.log("Using storage-manager function to check permissions");
+        console.log("Using storage-manager function to create bucket");
         const { data, error } = await supabase.functions.invoke('storage-manager', {
           method: 'POST',
-          body: { action: 'check-permissions', bucket: 'datasets' }
+          body: { action: 'create-bucket', bucketName: 'datasets' }
         });
         
         if (error || !data?.success) {
-          console.warn("Edge function check had issues:", error || data);
+          console.warn("Edge function bucket creation had issues:", error || data);
+          // Continue to try other methods
         } else {
-          console.log("Storage permissions verified via edge function");
+          console.log("Storage bucket created via edge function");
           return; // If edge function indicates success, we're done
         }
       } catch (edgeFunctionError) {
